@@ -41,10 +41,10 @@
 namespace mozc {
 namespace fcitx {
 
-bool SurroundingTextUtil::GetSafeDelta(uint from, uint to, int32 *delta) {
+bool SurroundingTextUtil::GetSafeDelta(unsigned from, unsigned to, int32 *delta) {
   DCHECK(delta);
 
-  static_assert(sizeof(int64) >= sizeof(uint),
+  static_assert(sizeof(int64) >= sizeof(unsigned),
                 "int64 must be sufficient to store a guint value.");
   static_assert(sizeof(int64) == sizeof(llabs(0)),
                 "|llabs(0)| must returns a 64-bit integer.");
@@ -113,8 +113,8 @@ bool SearchAnchorPosForward(
     const std::string &surrounding_text,
     const std::string &selected_text,
     size_t selected_chars_len,
-    uint cursor_pos,
-    uint *anchor_pos) {
+    unsigned cursor_pos,
+    unsigned *anchor_pos) {
 
   ConstChar32Iterator iter(surrounding_text);
   // Move |iter| to cursor pos.
@@ -137,15 +137,15 @@ bool SearchAnchorPosBackward(
     const std::string &surrounding_text,
     const std::string &selected_text,
     size_t selected_chars_len,
-    uint cursor_pos,
-    uint *anchor_pos) {
+    unsigned cursor_pos,
+    unsigned *anchor_pos) {
   if (cursor_pos < selected_chars_len) {
     return false;
   }
 
   ConstChar32Iterator iter(surrounding_text);
   // Skip |iter| to (potential) anchor pos.
-  const uint skip_count = cursor_pos - selected_chars_len;
+  const unsigned skip_count = cursor_pos - selected_chars_len;
   DCHECK_LE(skip_count, cursor_pos);
   if (!Skip(&iter, skip_count)) {
     return false;
@@ -164,8 +164,8 @@ bool SearchAnchorPosBackward(
 bool SurroundingTextUtil::GetAnchorPosFromSelection(
     const std::string &surrounding_text,
     const std::string &selected_text,
-    uint cursor_pos,
-    uint *anchor_pos) {
+    unsigned cursor_pos,
+    unsigned *anchor_pos) {
   DCHECK(anchor_pos);
 
   if (surrounding_text.empty()) {
@@ -196,8 +196,8 @@ bool GetSurroundingText(FcitxInstance* instance,
         return false;
     }
 
-    uint cursor_pos = 0;
-    uint anchor_pos = 0;
+    unsigned cursor_pos = 0;
+    unsigned anchor_pos = 0;
     char* str = NULL;
 
     if (!FcitxInstanceGetSurroundingText(instance, ic, &str, &cursor_pos, &anchor_pos)) {
@@ -211,7 +211,7 @@ bool GetSurroundingText(FcitxInstance* instance,
         const char* primary = NULL;
 
         if ((primary = FcitxClipboardGetPrimarySelection(instance, NULL)) != NULL) {
-            uint new_anchor_pos = 0;
+            unsigned new_anchor_pos = 0;
             const std::string primary_text(primary);
             if (SurroundingTextUtil::GetAnchorPosFromSelection(
                 surrounding_text, primary_text,

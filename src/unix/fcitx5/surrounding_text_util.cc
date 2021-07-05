@@ -43,10 +43,10 @@ namespace fcitx {
 
 using namespace mozc;
 
-bool SurroundingTextUtil::GetSafeDelta(uint from, uint to, int32 *delta) {
+bool SurroundingTextUtil::GetSafeDelta(unsigned from, unsigned to, int32 *delta) {
   DCHECK(delta);
 
-  static_assert(sizeof(int64) >= sizeof(uint),
+  static_assert(sizeof(int64) >= sizeof(unsigned),
                 "int64 must be sufficient to store a guint value.");
   static_assert(sizeof(int64) == sizeof(llabs(0)),
                 "|llabs(0)| must returns a 64-bit integer.");
@@ -110,8 +110,8 @@ bool StartsWith(ConstChar32Iterator *iter, ConstChar32Iterator *prefix_iter) {
 // Otherwise returns false.
 bool SearchAnchorPosForward(const std::string &surrounding_text,
                             const std::string &selected_text,
-                            size_t selected_chars_len, uint cursor_pos,
-                            uint *anchor_pos) {
+                            size_t selected_chars_len, unsigned cursor_pos,
+                            unsigned *anchor_pos) {
   ConstChar32Iterator iter(surrounding_text);
   // Move |iter| to cursor pos.
   if (!Skip(&iter, cursor_pos)) {
@@ -131,15 +131,15 @@ bool SearchAnchorPosForward(const std::string &surrounding_text,
 // Otherwise returns false.
 bool SearchAnchorPosBackward(const std::string &surrounding_text,
                              const std::string &selected_text,
-                             size_t selected_chars_len, uint cursor_pos,
-                             uint *anchor_pos) {
+                             size_t selected_chars_len, unsigned cursor_pos,
+                             unsigned *anchor_pos) {
   if (cursor_pos < selected_chars_len) {
     return false;
   }
 
   ConstChar32Iterator iter(surrounding_text);
   // Skip |iter| to (potential) anchor pos.
-  const uint skip_count = cursor_pos - selected_chars_len;
+  const unsigned skip_count = cursor_pos - selected_chars_len;
   DCHECK_LE(skip_count, cursor_pos);
   if (!Skip(&iter, skip_count)) {
     return false;
@@ -157,7 +157,7 @@ bool SearchAnchorPosBackward(const std::string &surrounding_text,
 
 bool SurroundingTextUtil::GetAnchorPosFromSelection(
     const std::string &surrounding_text, const std::string &selected_text,
-    uint cursor_pos, uint *anchor_pos) {
+    unsigned cursor_pos, unsigned *anchor_pos) {
   DCHECK(anchor_pos);
 
   if (surrounding_text.empty()) {
@@ -187,13 +187,13 @@ bool GetSurroundingText(InputContext *ic, SurroundingTextInfo *info,
   }
 
   const auto surrounding_text = ic->surroundingText().text();
-  uint cursor_pos = ic->surroundingText().cursor();
-  uint anchor_pos = ic->surroundingText().anchor();
+  unsigned cursor_pos = ic->surroundingText().cursor();
+  unsigned anchor_pos = ic->surroundingText().anchor();
 
   if (cursor_pos == anchor_pos && clipboard) {
     std::string primary = clipboard->call<IClipboard::primary>(ic);
     if (!primary.empty()) {
-      uint new_anchor_pos = 0;
+      unsigned new_anchor_pos = 0;
       if (SurroundingTextUtil::GetAnchorPosFromSelection(
               surrounding_text, primary, cursor_pos, &new_anchor_pos)) {
         anchor_pos = new_anchor_pos;

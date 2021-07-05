@@ -94,7 +94,7 @@ QString GetEnv(const char *envname) {
       return QString::fromUtf16(reinterpret_cast<const ushort *>(buffer.get()));
     } else {
       // This is a fallback just in case.
-      return QString::fromUcs4(reinterpret_cast<const uint *>(buffer.get()));
+      return QString::fromUcs4(reinterpret_cast<const unsigned *>(buffer.get()));
     }
   }
   return QLatin1String("");
