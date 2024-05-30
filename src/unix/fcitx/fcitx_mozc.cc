@@ -38,8 +38,8 @@
 // Resolve macro naming conflict with absl.
 #undef InvokeFunction
 
+#include "absl/log/check.h"
 #include "base/const.h"
-#include "base/logging.h"
 #include "base/vlog.h"
 #include "base/process.h"
 #include "base/util.h"

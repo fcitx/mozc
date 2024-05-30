@@ -33,7 +33,7 @@
 #include <string>
 #include <vector>
 
-#include "base/logging.h"
+#include "absl/log/check.h"
 #include "base/vlog.h"
 #include "base/util.h"
 #include "protocol/commands.pb.h"
