@@ -34,7 +34,7 @@
 #include <set>
 #include <string>
 
-#include "base/logging.h"
+#include "absl/log/check.h"
 #include "base/vlog.h"
 
 namespace mozc {
