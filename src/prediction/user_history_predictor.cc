@@ -43,6 +43,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -80,6 +81,7 @@
 namespace mozc::prediction {
 namespace {
 
+using ::mozc::composer::TypeCorrectedQuery;
 using ::mozc::usage_stats::UsageStats;
 
 // Finds suggestion candidates from the most recent 3000 history in LRU.
@@ -346,7 +348,8 @@ UserHistoryPredictor::UserHistoryPredictor(const engine::Modules &modules,
       predictor_name_("UserHistoryPredictor"),
       content_word_learning_enabled_(enable_content_word_learning),
       updated_(false),
-      dic_(new DicCache(UserHistoryPredictor::cache_size())) {
+      dic_(new DicCache(UserHistoryPredictor::cache_size())),
+      modules_(modules) {
   AsyncLoad();  // non-blocking
   // Load()  blocking version can be used if any
 }
@@ -713,6 +716,27 @@ std::string UserHistoryPredictor::GetRomanMisspelledKey(
   }
 
   return "";
+}
+
+std::vector<TypeCorrectedQuery> UserHistoryPredictor::GetTypingCorrectedQueries(
+    const ConversionRequest &request, const Segments &segments) const {
+  const int size = request.request()
+                       .decoder_experiment_params()
+                       .typing_correction_apply_user_history_size();
+  if (size == 0) return {};
+
+  const engine::SupplementalModelInterface *supplemental_model =
+      modules_.GetSupplementalModel();
+  if (supplemental_model == nullptr) return {};
+
+  const std::optional<std::vector<TypeCorrectedQuery>> corrected =
+      supplemental_model->CorrectComposition(request, segments.history_key());
+  if (!corrected) return {};
+
+  std::vector<TypeCorrectedQuery> result = std::move(corrected.value());
+  if (size < result.size()) result.resize(size);
+
+  return result;
 }
 
 // static
@@ -1134,10 +1158,21 @@ bool UserHistoryPredictor::PredictForRequest(const ConversionRequest &request,
 
   const bool is_zero_query =
       ((request_type == ZERO_QUERY_SUGGESTION) && (input_key_len == 0));
-  const size_t max_prediction_size =
-      is_zero_query
-          ? request.max_user_history_prediction_candidates_size_for_zero_query()
-          : request.max_user_history_prediction_candidates_size();
+  size_t max_prediction_size =
+      request.max_user_history_prediction_candidates_size();
+  size_t max_prediction_char_coverage =
+      request.request()
+          .decoder_experiment_params()
+          .user_history_prediction_max_char_coverage();
+
+  if (is_zero_query) {
+    max_prediction_size =
+        request.max_user_history_prediction_candidates_size_for_zero_query();
+  } else if (max_prediction_char_coverage > 0) {
+    // When char coverage feature is enabled,
+    // set a fixed value so that we can enumerate enough candidates.
+    max_prediction_size = 3;
+  }
 
   EntryPriorityQueue results;
   GetResultsFromHistoryDictionary(request_type, request, *segments, prev_entry,
@@ -1147,8 +1182,8 @@ bool UserHistoryPredictor::PredictForRequest(const ConversionRequest &request,
     return false;
   }
 
-  return InsertCandidates(request_type, request, max_prediction_size, segments,
-                          &results);
+  return InsertCandidates(request_type, request, max_prediction_size,
+                          max_prediction_char_coverage, segments, &results);
 }
 
 bool UserHistoryPredictor::ShouldPredict(RequestType request_type,
@@ -1267,8 +1302,8 @@ void UserHistoryPredictor::GetResultsFromHistoryDictionary(
   // Gets romanized input key if the given preedit looks misspelled.
   const std::string roman_input_key = GetRomanMisspelledKey(request, segments);
 
-  // TODO(team): make GetKanaMisspelledKey(segments);
-  // const string kana_input_key = GetKanaMisspelledKey(segments);
+  const std::vector<TypeCorrectedQuery> corrected =
+      GetTypingCorrectedQueries(request, segments);
 
   // If we have ambiguity for the input, get expanded key.
   // Example1 roman input: for "あk", we will get |base|, "あ" and |expanded|,
@@ -1295,6 +1330,11 @@ void UserHistoryPredictor::GetResultsFromHistoryDictionary(
   const absl::Time now = Clock::GetAbslTime();
   int trial = 0;
   for (const DicElement &elm : *dic_) {
+    // already found enough results.
+    if (results->size() >= max_results_size) {
+      break;
+    }
+
     if (!IsValidEntryIgnoringRemovedField(elm.value)) {
       continue;
     }
@@ -1310,16 +1350,20 @@ void UserHistoryPredictor::GetResultsFromHistoryDictionary(
 
     // Lookup key from elm_value and prev_entry.
     // If a new entry is found, the entry is pushed to the results.
-    // TODO(team): make KanaFuzzyLookupEntry().
-    if (!LookupEntry(request_type, input_key, base_key, expanded.get(),
-                     &(elm.value), prev_entry, results) &&
-        !RomanFuzzyLookupEntry(roman_input_key, &(elm.value), results)) {
+    if (LookupEntry(request_type, input_key, base_key, expanded.get(),
+                    &(elm.value), prev_entry, results) ||
+        RomanFuzzyLookupEntry(roman_input_key, &(elm.value), results)) {
       continue;
     }
 
-    // already found enough results.
-    if (results->size() >= max_results_size) {
-      break;
+    // Lookup typing corrected keys when the original `input_key` doesn't match.
+    // Since dic_ is sorted in LRU, typing corrected queries are ranked lower
+    // than the original key.
+    for (const auto &c : corrected) {
+      if (LookupEntry(request_type, c.correction, c.correction, nullptr,
+                      &(elm.value), prev_entry, results)) {
+        break;
+      }
     }
   }
 }
@@ -1386,6 +1430,7 @@ UserHistoryPredictor::ResultType UserHistoryPredictor::GetResultType(
 bool UserHistoryPredictor::InsertCandidates(RequestType request_type,
                                             const ConversionRequest &request,
                                             size_t max_prediction_size,
+                                            size_t max_prediction_char_coverage,
                                             Segments *segments,
                                             EntryPriorityQueue *results) const {
   DCHECK(results);
@@ -1401,7 +1446,80 @@ bool UserHistoryPredictor::InsertCandidates(RequestType request_type,
   }
   const uint32_t input_key_len = Util::CharsLen(segment->key());
 
+  const int filter_mode =
+      request.request()
+          .decoder_experiment_params()
+          .user_history_prediction_filter_redundant_candidates_mode();
+
   size_t inserted_num = 0;
+  size_t inserted_char_coverage = 0;
+
+  std::vector<const UserHistoryPredictor::Entry *> entries;
+  entries.reserve(results->size());
+
+  // Bit fields to specify the filtering mode.
+  enum FilterMode {
+    // Current LRU-based candidates = ["東京"]
+    //  target="東京は" -> Remove.   (target is longer)
+    //  target="東"     -> Keep.     (target is shorter)
+    FILTER_LONG_ENTRY = 1,
+
+    // Current LRU-based candidates = ["東京は"]
+    //  target="東京"     -> Remove. (target is shorter)
+    //  target="東京はが" -> Keep.   (target is longer)
+    FILTER_SHORT_ENTRY = 2,
+
+    // Current LRU-based candidates = ["東京は"]
+    //   target="東京" -> Replace "東京は" and "東京"
+    // FILTER_SHORT_ENTRY and REPLACE_SHORT_ENTRY are exclusive.
+    REPLACE_SHORT_ENTRY = 4,
+
+    // - Non-shared suffix can be any script type.
+    //   Note that this flag is for prefix match.
+    //  Current LRU-based candidates = ["東京"]
+    //   target="東京タワー" -> Remove. (suffix can be any type)
+    SUFFIX_IS_ALL_CHAR_TYPE = 8,
+  };
+
+  auto starts_with = [&filter_mode](absl::string_view text,
+                                    absl::string_view prefix) {
+    if (filter_mode & SUFFIX_IS_ALL_CHAR_TYPE) {
+      return absl::StartsWith(text, prefix);
+    }
+    return absl::StartsWith(text, prefix) &&
+           Util::IsScriptType(text.substr(prefix.size()), Util::HIRAGANA);
+  };
+
+  auto is_redandant = [&](absl::string_view target,
+                          absl::string_view inserted) {
+    return ((filter_mode & FILTER_LONG_ENTRY) &&
+            starts_with(target, inserted)) ||
+           ((filter_mode & FILTER_SHORT_ENTRY) &&
+            starts_with(inserted, target));
+  };
+
+  auto is_redandant_entry = [&](const Entry &entry) {
+    return absl::c_find_if(entries, [&](const Entry *inserted_entry) {
+             return is_redandant(entry.value(), inserted_entry->value());
+           }) != entries.end();
+  };
+
+  // Replace `entry` with the one entry in `entries`.
+  auto maybe_replace_entry = [&](const Entry *entry) {
+    if (!(filter_mode & REPLACE_SHORT_ENTRY)) return false;
+
+    auto it = absl::c_find_if(entries, [&](const Entry *inserted_entry) {
+      return starts_with(inserted_entry->value(), entry->value());
+    });
+    if (it == entries.end()) return false;
+
+    inserted_char_coverage -= Util::CharsLen((*it)->value());
+    inserted_char_coverage += Util::CharsLen(entry->value());
+    *it = entry;
+
+    return true;
+  };
+
   while (inserted_num < max_prediction_size) {
     // |results| is a priority queue where the element
     // in the queue is sorted by the score defined in GetScore().
@@ -1415,11 +1533,32 @@ bool UserHistoryPredictor::InsertCandidates(RequestType request_type,
         GetResultType(request, request_type, segment->candidates_size() == 0,
                       input_key_len, *result_entry);
     if (result == STOP_ENUMERATION) {
-      return false;
+      break;
     } else if (result == BAD_RESULT) {
       continue;
     }
 
+    // Check candidate redundancy.
+    if (filter_mode > 0 && (is_redandant_entry(*result_entry) ||
+                            maybe_replace_entry(result_entry))) {
+      continue;
+    }
+
+    // Break when the accumulated character length exceeds the
+    // `max_prediction_char_coverage`. Allows to add at least one candidate.
+    const size_t value_len = Util::CharsLen(result_entry->value());
+    if (max_prediction_char_coverage > 0 && inserted_num > 0 &&
+        inserted_char_coverage + value_len > max_prediction_char_coverage) {
+      break;
+    }
+
+    entries.emplace_back(result_entry);
+
+    ++inserted_num;
+    inserted_char_coverage += value_len;
+  }
+
+  for (const auto *result_entry : entries) {
     Segment::Candidate *candidate = segment->push_back_candidate();
     DCHECK(candidate);
     candidate->key = result_entry->key();
@@ -1447,10 +1586,9 @@ bool UserHistoryPredictor::InsertCandidates(RequestType request_type,
       candidate->description += " History";
     }
 #endif  // DEBUG
-    ++inserted_num;
   }
 
-  return inserted_num > 0;
+  return !entries.empty();
 }
 
 void UserHistoryPredictor::InsertNextEntry(const NextEntry &next_entry,
@@ -1803,14 +1941,14 @@ void UserHistoryPredictor::Finish(const ConversionRequest &request,
   }
 }
 
-void UserHistoryPredictor::MakeLearningSegments(
-    const Segments &segments, SegmentsForLearning *learning_segments) const {
-  DCHECK(learning_segments);
+UserHistoryPredictor::SegmentsForLearning
+UserHistoryPredictor::MakeLearningSegments(const Segments &segments) const {
+  SegmentsForLearning learning_segments;
 
   for (const Segment &segment : segments.history_segments()) {
     DCHECK_LE(1, segment.candidates_size());
     auto &candidate = segment.candidate(0);
-    learning_segments->history_segments.push_back(
+    learning_segments.history_segments.push_back(
         {candidate.key, candidate.value, candidate.content_key,
          candidate.content_value, GetDescription(candidate)});
   }
@@ -1821,29 +1959,32 @@ void UserHistoryPredictor::MakeLearningSegments(
     absl::StrAppend(&all_key, candidate.key);
     absl::StrAppend(&all_value, candidate.value);
     if (candidate.inner_segment_boundary.empty()) {
-      learning_segments->conversion_segments.push_back(
+      learning_segments.conversion_segments.push_back(
           {candidate.key, candidate.value, candidate.content_key,
            candidate.content_value, GetDescription(candidate)});
     } else {
       for (Segment::Candidate::InnerSegmentIterator iter(&candidate);
            !iter.Done(); iter.Next()) {
-        learning_segments->conversion_segments.push_back(
+        learning_segments.conversion_segments.push_back(
             {std::string(iter.GetKey()), std::string(iter.GetValue()),
              std::string(iter.GetContentKey()),
              std::string(iter.GetContentValue()), ""});
       }
     }
   }
-  learning_segments->conversion_segments_key = std::move(all_key);
-  learning_segments->conversion_segments_value = std::move(all_value);
+
+  learning_segments.conversion_segments_key = std::move(all_key);
+  learning_segments.conversion_segments_value = std::move(all_value);
+
+  return learning_segments;
 }
 
 void UserHistoryPredictor::InsertHistory(RequestType request_type,
                                          bool is_suggestion_selected,
                                          uint64_t last_access_time,
                                          Segments *segments) {
-  SegmentsForLearning learning_segments;
-  MakeLearningSegments(*segments, &learning_segments);
+  const SegmentsForLearning learning_segments = MakeLearningSegments(*segments);
+
   InsertHistoryForConversionSegments(request_type, is_suggestion_selected,
                                      last_access_time, learning_segments,
                                      segments);
@@ -2103,19 +2244,6 @@ bool UserHistoryPredictor::IsValidSuggestionForMixedConversion(
     // Don't show long history for mixed conversion
     MOZC_VLOG(2) << "long candidate: " << entry.value();
     return false;
-  }
-
-  const auto &params = request.request().decoder_experiment_params();
-
-  if (params.enable_history_prediction_triggering_v2()) {
-    const uint32_t freq =
-        std::max(entry.suggestion_freq(), entry.conversion_freq());
-    const int remaining_len =
-        std::max<int>(0, Util::CharsLen(entry.key()) - prefix_len);
-    return freq - params.history_prediction_min_freq() -
-               params.history_prediction_remaining_char_length_weight() *
-                   remaining_len >=
-           0.0f;
   }
 
   return true;

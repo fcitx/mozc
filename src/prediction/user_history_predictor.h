@@ -45,6 +45,7 @@
 #include "base/container/freelist.h"
 #include "base/container/trie.h"
 #include "base/thread.h"
+#include "composer/query.h"
 #include "converter/segments.h"
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/pos_matcher.h"
@@ -143,9 +144,9 @@ class UserHistoryPredictor : public PredictorInterface {
   }
 
   // From user_history_predictor.proto
-  typedef user_history_predictor::UserHistory::Entry Entry;
-  typedef user_history_predictor::UserHistory::NextEntry NextEntry;
-  typedef user_history_predictor::UserHistory::Entry::EntryType EntryType;
+  using Entry = user_history_predictor::UserHistory::Entry;
+  using NextEntry = user_history_predictor::UserHistory::NextEntry;
+  using EntryType = user_history_predictor::UserHistory::Entry::EntryType;
 
   // Returns fingerprints from various object.
   static uint32_t Fingerprint(absl::string_view key, absl::string_view value);
@@ -328,8 +329,8 @@ class UserHistoryPredictor : public PredictorInterface {
     Entry *NewEntry();
 
    private:
-    typedef std::pair<uint32_t, Entry *> QueueElement;
-    typedef std::priority_queue<QueueElement> Agenda;
+    using QueueElement = std::pair<uint32_t, Entry *>;
+    using Agenda = std::priority_queue<QueueElement>;
 
     friend class UserHistoryPredictor;
 
@@ -340,8 +341,8 @@ class UserHistoryPredictor : public PredictorInterface {
     absl::flat_hash_set<size_t> seen_;
   };
 
-  typedef mozc::storage::LruCache<uint32_t, Entry> DicCache;
-  typedef DicCache::Element DicElement;
+  using DicCache = mozc::storage::LruCache<uint32_t, Entry>;
+  using DicElement = DicCache::Element;
 
   bool CheckSyncerAndDelete() const;
 
@@ -396,11 +397,11 @@ class UserHistoryPredictor : public PredictorInterface {
 
   bool InsertCandidates(RequestType request_type,
                         const ConversionRequest &request,
-                        size_t max_prediction_size, Segments *segments,
+                        size_t max_prediction_size,
+                        size_t max_prediction_char_coverage, Segments *segments,
                         EntryPriorityQueue *results) const;
 
-  void MakeLearningSegments(const Segments &segments,
-                            SegmentsForLearning *learning_segments) const;
+  SegmentsForLearning MakeLearningSegments(const Segments &segments) const;
 
   // Returns true if |prefix| is a fuzzy-prefix of |str|.
   // 'Fuzzy' means that
@@ -416,6 +417,10 @@ class UserHistoryPredictor : public PredictorInterface {
   // below to check the preedit looks misspelled or not.
   static std::string GetRomanMisspelledKey(const ConversionRequest &request,
                                            const Segments &segments);
+
+  // Returns the typing corrected queries.
+  std::vector<::mozc::composer::TypeCorrectedQuery> GetTypingCorrectedQueries(
+      const ConversionRequest &request, const Segments &segments) const;
 
   // Returns true if |key| may contain miss spelling.
   // Currently, this function returns true if
@@ -496,6 +501,7 @@ class UserHistoryPredictor : public PredictorInterface {
   mutable std::atomic<bool> updated_;
   std::unique_ptr<DicCache> dic_;
   mutable std::optional<BackgroundFuture<void>> sync_;
+  const engine::Modules &modules_;
 };
 
 }  // namespace mozc::prediction

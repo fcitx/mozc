@@ -37,6 +37,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -47,6 +48,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "base/clock_mock.h"
 #include "base/container/trie.h"
 #include "base/file/temp_dir.h"
@@ -63,6 +65,8 @@
 #include "dictionary/dictionary_mock.h"
 #include "dictionary/suppression_dictionary.h"
 #include "engine/modules.h"
+#include "engine/supplemental_model_interface.h"
+#include "engine/supplemental_model_mock.h"
 #include "prediction/user_history_predictor.pb.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
@@ -80,9 +84,12 @@ namespace mozc::prediction {
 namespace {
 
 using ::mozc::commands::Request;
+using ::mozc::composer::TypeCorrectedQuery;
 using ::mozc::config::Config;
 using ::mozc::dictionary::MockDictionary;
 using ::mozc::dictionary::SuppressionDictionary;
+using ::testing::_;
+using ::testing::Return;
 
 }  // namespace
 
@@ -400,6 +407,11 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
       }
     }
     return std::nullopt;
+  }
+
+  void SetSupplementalModel(
+      const engine::SupplementalModelInterface *supplemental_model) {
+    data_and_predictor_->modules.SetSupplementalModel(supplemental_model);
   }
 
   std::unique_ptr<composer::Composer> composer_;
@@ -2018,62 +2030,6 @@ TEST_F(UserHistoryPredictorTest, IsValidSuggestionForMixedConversion) {
   entry.set_value("よろしくおねがいします。");  // too long
   EXPECT_FALSE(UserHistoryPredictor::IsValidSuggestionForMixedConversion(
       conversion_request, 1, entry));
-
-  entry.set_value("test");
-  entry.set_key("test");
-
-  auto *params = request.mutable_decoder_experiment_params();
-  params->set_enable_history_prediction_triggering_v2(true);
-
-  // Default param is always true.
-  for (int freq = 0; freq <= 10; ++freq) {
-    entry.set_suggestion_freq(freq);
-    for (int prefix_len = 0; prefix_len <= 4; ++prefix_len) {
-      EXPECT_TRUE(UserHistoryPredictor::IsValidSuggestionForMixedConversion(
-          conversion_request, prefix_len, entry));
-    }
-  }
-
-  // Uses new triggering logic.
-  params->set_enable_history_prediction_triggering_v2(true);
-  params->set_history_prediction_min_freq(2.0);
-  params->set_history_prediction_remaining_char_length_weight(0.5);
-
-  const int key_len = Util::CharsLen(entry.key());
-
-  for (int freq = 0; freq <= 10; ++freq) {
-    entry.set_suggestion_freq(freq);
-    for (int prefix_len = 0; prefix_len <= key_len; ++prefix_len) {
-      const bool expected = (freq - 2.0 - 0.5 * (key_len - prefix_len)) >= 0.0;
-      EXPECT_EQ(UserHistoryPredictor::IsValidSuggestionForMixedConversion(
-                    conversion_request, prefix_len, entry),
-                expected);
-    }
-  }
-
-  // Extreme case 1 (always false).
-  params->set_history_prediction_min_freq(1000.0);
-  params->set_history_prediction_remaining_char_length_weight(0.0);
-
-  for (int freq = 0; freq <= 10; ++freq) {
-    entry.set_suggestion_freq(freq);
-    for (int prefix_len = 0; prefix_len <= key_len; ++prefix_len) {
-      EXPECT_FALSE(UserHistoryPredictor::IsValidSuggestionForMixedConversion(
-          conversion_request, prefix_len, entry));
-    }
-  }
-
-  // Extreme case 2 (Exact match only).
-  params->set_history_prediction_min_freq(0.0);
-  params->set_history_prediction_remaining_char_length_weight(1000.0);
-  for (int freq = 0; freq <= 10; ++freq) {
-    entry.set_suggestion_freq(freq);
-    for (int prefix_len = 0; prefix_len <= key_len; ++prefix_len) {
-      EXPECT_EQ(UserHistoryPredictor::IsValidSuggestionForMixedConversion(
-                    conversion_request, prefix_len, entry),
-                prefix_len == key_len);
-    }
-  }
 }
 
 TEST_F(UserHistoryPredictorTest, EntryPriorityQueueTest) {
@@ -4410,6 +4366,218 @@ TEST_F(UserHistoryPredictorTest, MaxPredictionCandidatesSizeForZeroQuery) {
     EXPECT_EQ(segments.conversion_segments_size(), 1);
     EXPECT_EQ(segments.conversion_segment(0).candidates_size(), 3);
   }
+}
+
+TEST_F(UserHistoryPredictorTest, TypingCorrection) {
+  UserHistoryPredictor *predictor = GetUserHistoryPredictorWithClearedHistory();
+  ScopedClockMock clock(absl::FromUnixSeconds(1));
+
+  Segments segments;
+  {
+    clock->Advance(absl::Hours(1));
+    SetUpInputForPrediction("がっこう", composer_.get(), &segments);
+    AddCandidate(0, "学校", &segments);
+    predictor->Finish(*convreq_, &segments);
+  }
+
+  {
+    clock->Advance(absl::Hours(1));
+    SetUpInputForPrediction("がっこう", composer_.get(), &segments);
+    AddCandidate(0, "ガッコウ", &segments);
+    predictor->Finish(*convreq_, &segments);
+  }
+
+  {
+    clock->Advance(absl::Hours(1));
+    SetUpInputForPrediction("かっこう", composer_.get(), &segments);
+    AddCandidate(0, "格好", &segments);
+    predictor->Finish(*convreq_, &segments);
+  }
+
+  request_->mutable_decoder_experiment_params()
+      ->set_typing_correction_apply_user_history_size(1);
+
+  SetUpInputForSuggestion("がっこ", composer_.get(), &segments);
+  EXPECT_TRUE(predictor->PredictForRequest(*convreq_, &segments));
+
+  // No typing correction.
+  SetUpInputForSuggestion("かつこ", composer_.get(), &segments);
+  EXPECT_FALSE(predictor->PredictForRequest(*convreq_, &segments));
+
+  std::vector<TypeCorrectedQuery> expected;
+  auto add_expected = [&](const std::string &key) {
+    expected.emplace_back(
+        TypeCorrectedQuery{key, TypeCorrectedQuery::CORRECTION});
+  };
+
+  // かつこ -> がっこ and かっこ
+  add_expected("がっこ");
+  add_expected("かっこ");
+  engine::MockSupplementalModel mock;
+  EXPECT_CALL(mock, CorrectComposition(_, "")).WillRepeatedly(Return(expected));
+  SetSupplementalModel(&mock);
+
+  // set_typing_correction_apply_user_history_size=0
+  request_->mutable_decoder_experiment_params()
+      ->set_typing_correction_apply_user_history_size(0);
+  SetUpInputForSuggestion("かつこ", composer_.get(), &segments);
+  EXPECT_FALSE(predictor->PredictForRequest(*convreq_, &segments));
+
+  // set_typing_correction_apply_user_history_size=1
+  request_->mutable_decoder_experiment_params()
+      ->set_typing_correction_apply_user_history_size(1);
+  SetUpInputForSuggestion("かつこ", composer_.get(), &segments);
+  EXPECT_TRUE(predictor->PredictForRequest(*convreq_, &segments));
+  ASSERT_EQ(segments.segments_size(), 1);
+  ASSERT_EQ(segments.segment(0).candidates_size(), 2);
+  EXPECT_EQ(segments.segment(0).candidate(0).value, "ガッコウ");
+  EXPECT_EQ(segments.segment(0).candidate(1).value, "学校");
+
+  // set_typing_correction_apply_user_history_size=2
+  request_->mutable_decoder_experiment_params()
+      ->set_typing_correction_apply_user_history_size(2);
+  SetUpInputForSuggestion("かつこ", composer_.get(), &segments);
+  EXPECT_TRUE(predictor->PredictForRequest(*convreq_, &segments));
+  ASSERT_EQ(segments.segments_size(), 1);
+  ASSERT_EQ(segments.segment(0).candidates_size(), 3);
+  EXPECT_EQ(segments.segment(0).candidate(0).value, "格好");
+  EXPECT_EQ(segments.segment(0).candidate(1).value, "ガッコウ");
+  EXPECT_EQ(segments.segment(0).candidate(2).value, "学校");
+
+  SetSupplementalModel(nullptr);
+  SetUpInputForSuggestion("かつこ", composer_.get(), &segments);
+  EXPECT_FALSE(predictor->PredictForRequest(*convreq_, &segments));
+}
+
+TEST_F(UserHistoryPredictorTest, MaxCharCoverage) {
+  UserHistoryPredictor *predictor = GetUserHistoryPredictorWithClearedHistory();
+  Segments segments;
+
+  {
+    SetUpInputForPrediction("てすと", composer_.get(), &segments);
+    AddCandidate(0, "てすと", &segments);
+    predictor->Finish(*convreq_, &segments);
+  }
+  {
+    SetUpInputForPrediction("てすと", composer_.get(), &segments);
+    AddCandidate(0, "テスト", &segments);
+    predictor->Finish(*convreq_, &segments);
+  }
+  {
+    SetUpInputForPrediction("てすと", composer_.get(), &segments);
+    AddCandidate(0, "Test", &segments);
+    predictor->Finish(*convreq_, &segments);
+  }
+
+  // [max_char_coverage, expected_candidate_size]
+  const std::vector<std::pair<int, int>> kTestCases = {
+      {1, 1}, {2, 1}, {3, 1}, {4, 1},  {5, 1}, {6, 2},
+      {7, 2}, {8, 2}, {9, 2}, {10, 3}, {11, 3}};
+
+  for (const auto &[coverage, candidates_size] : kTestCases) {
+    request_->mutable_decoder_experiment_params()
+        ->set_user_history_prediction_max_char_coverage(coverage);
+    MakeSegmentsForSuggestion("てすと", &segments);
+    EXPECT_TRUE(predictor->PredictForRequest(*convreq_, &segments));
+    EXPECT_EQ(segments.segments_size(), 1);
+    EXPECT_EQ(segments.segment(0).candidates_size(), candidates_size);
+  }
+}
+
+TEST_F(UserHistoryPredictorTest, RemoveRedundantCandidates) {
+  // pass the input candidates and expected (filtered) candidates.
+  auto run_test = [this](int filter_mode,
+                         absl::Span<const absl::string_view> candidates,
+                         absl::Span<const absl::string_view> expected) {
+    ScopedClockMock clock(absl::FromUnixSeconds(1));
+    UserHistoryPredictor *predictor =
+        GetUserHistoryPredictorWithClearedHistory();
+    Segments segments;
+    // Insert in reverse order to emulate LRU.
+    for (auto it = candidates.rbegin(); it != candidates.rend(); ++it) {
+      clock->Advance(absl::Hours(1));
+      SetUpInputForPrediction("とうき", composer_.get(), &segments);
+      AddCandidate(0, *it, &segments);
+      predictor->Finish(*convreq_, &segments);
+    }
+    convreq_->set_max_user_history_prediction_candidates_size(10);
+    request_->mutable_decoder_experiment_params()
+        ->set_user_history_prediction_filter_redundant_candidates_mode(
+            filter_mode);
+    MakeSegmentsForSuggestion("とうき", &segments);
+    EXPECT_TRUE(predictor->PredictForRequest(*convreq_, &segments));
+    EXPECT_EQ(segments.segments_size(), 1);
+    ASSERT_EQ(expected.size(), segments.segment(0).candidates_size());
+    for (int i = 0; i < expected.size(); ++i) {
+      EXPECT_EQ(expected[i], segments.segment(0).candidate(i).value);
+    }
+  };
+
+  // filter long entries.
+  run_test(1, {"東京", "東京は"}, {"東京"});
+  run_test(1, {"東京", "東京は", "東京で"}, {"東京"});
+  run_test(1, {"東京は", "東京で", "東京"}, {"東京は", "東京で", "東京"});
+
+  // filter short entries.
+  run_test(2, {"東京", "東京は"}, {"東京", "東京は"});
+  run_test(2, {"東京", "東京は", "東京で"}, {"東京", "東京は", "東京で"});
+  run_test(2, {"東京は", "東京で", "東京"}, {"東京は", "東京で"});
+
+  // replace short entries.
+  run_test(4, {"東京", "東京は"}, {"東京", "東京は"});
+  run_test(4, {"東京は", "東京"}, {"東京"});
+  // only replace the first entry.
+  run_test(4, {"東京は", "東京で", "東京"}, {"東京", "東京で"});
+
+  // filter long and short entries.
+  run_test(1 + 2, {"東京は", "東京", "大阪", "大阪は"}, {"東京は", "大阪"});
+  run_test(1 + 2, {"東京", "東京は", "大阪は", "大阪"}, {"東京", "大阪は"});
+
+  // filter long and replace short entries.
+  run_test(1 + 4, {"東京は", "東京", "大阪", "大阪は"}, {"東京", "大阪"});
+  run_test(1 + 4, {"東京", "東京は", "大阪は", "大阪"}, {"東京", "大阪"});
+
+  // Suffix is non hiragana
+  // Default setting doesn't allow non-hiragana suffix.
+  run_test(1 + 2, {"東京駅", "東京", "大阪", "大阪駅"},
+           {"東京駅", "東京", "大阪", "大阪駅"});
+  run_test(1 + 2, {"東京", "東京駅", "大阪駅", "大阪"},
+           {"東京", "東京駅", "大阪駅", "大阪"});
+
+  // filter long and replace short entries.
+  run_test(1 + 4, {"東京駅", "東京", "大阪", "大阪駅"},
+           {"東京駅", "東京", "大阪", "大阪駅"});
+  run_test(1 + 4, {"東京", "東京駅", "大阪駅", "大阪"},
+           {"東京", "東京駅", "大阪駅", "大阪"});
+
+  // filter long and short entries.
+  run_test(1 + 2, {"東京は", "東京", "大阪", "大阪駅"},
+           {"東京は", "大阪", "大阪駅"});
+  run_test(1 + 2, {"東京", "東京は", "大阪駅", "大阪"},
+           {"東京", "大阪駅", "大阪"});
+
+  // filter long and replace short entries.
+  run_test(1 + 4, {"東京は", "東京", "大阪", "大阪駅"},
+           {"東京", "大阪", "大阪駅"});
+  run_test(1 + 4, {"東京", "東京は", "大阪駅", "大阪"},
+           {"東京", "大阪駅", "大阪"});
+
+  // Allows non-hiragana suffix.
+  // filter long and short entries.
+  run_test(1 + 2 + 8, {"東京駅", "東京", "大阪", "大阪駅"}, {"東京駅", "大阪"});
+  run_test(1 + 2 + 8, {"東京", "東京駅", "大阪駅", "大阪"}, {"東京", "大阪駅"});
+
+  // filter long and replace short entries.
+  run_test(1 + 4 + 8, {"東京駅", "東京", "大阪", "大阪駅"}, {"東京", "大阪"});
+  run_test(1 + 4 + 8, {"東京", "東京駅", "大阪駅", "大阪"}, {"東京", "大阪"});
+
+  // filter long and short entries.
+  run_test(1 + 2 + 8, {"東京は", "東京", "大阪", "大阪駅"}, {"東京は", "大阪"});
+  run_test(1 + 2 + 8, {"東京", "東京は", "大阪駅", "大阪"}, {"東京", "大阪駅"});
+
+  // filter long and replace short entries.
+  run_test(1 + 4 + 8, {"東京は", "東京", "大阪", "大阪駅"}, {"東京", "大阪"});
+  run_test(1 + 4 + 8, {"東京", "東京は", "大阪駅", "大阪"}, {"東京", "大阪"});
 }
 
 }  // namespace mozc::prediction

@@ -1149,7 +1149,6 @@ mozc_cc_library(
         "//converter:segments",
         "//protocol:commands_cc_proto",
         "//request:conversion_request",
-        "//request:request_util",
         "//transliteration",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -1333,6 +1332,7 @@ mozc_cc_test(
     deps = [
         ":rewriter_interface",
         ":usage_rewriter",
+        "//base/container:serialized_string_array",
         "//config:config_handler",
         "//converter:segments",
         "//data_manager/testing:mock_data_manager",

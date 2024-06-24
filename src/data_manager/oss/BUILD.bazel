@@ -64,6 +64,8 @@ mozc_dataset(
     dictionary_srcs = [
         "//data/dictionary_oss:dictionary_data",
         "//data/dictionary_oss:reading_correction.tsv",
+        "//data/dictionary_manual:domain.txt",
+        "//data/dictionary_manual:era.txt",
     ],
     emoji_src = "//data/emoji:emoji_data.tsv",
     emoticon_categorized_src = (
@@ -113,8 +115,8 @@ mozc_cc_library(
         ":mozc_dataset_for_oss@header",
     ],
     hdrs = ["oss_data_manager.h"],
-    copts = [
-        "-DMOZC_DATASET_MAGIC_NUMBER='\"" + MOZC_DATASET_MAGIC_NUMBER + "\"'",
+    local_defines = [
+        "MOZC_DATASET_MAGIC_NUMBER='\"" + MOZC_DATASET_MAGIC_NUMBER + "\"'",
     ],
     deps = [
         "//base:embedded_file",
@@ -131,7 +133,6 @@ mozc_cc_test(
         "oss_data_manager_test.cc",
         ":mozc_dataset_for_oss@segmenter_inl_header",
     ],
-    copts = ["-Wno-parentheses"],
     data = [
         "//data/dictionary_oss:base_dictionary_data",
         "//data/dictionary_oss:connection_single_column.txt",

@@ -81,6 +81,7 @@ mozc_cc_library(
         "//base/container:freelist",
         "//base/container:trie",
         "//composer",
+        "//composer:query",
         "//converter:segments",
         "//dictionary:dictionary_interface",
         "//dictionary:pos_matcher",
@@ -94,6 +95,7 @@ mozc_cc_library(
         "//storage:lru_cache",
         "//testing:friend_test",
         "//usage_stats",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
@@ -131,6 +133,8 @@ mozc_cc_test(
         "//dictionary:dictionary_mock",
         "//dictionary:suppression_dictionary",
         "//engine:modules",
+        "//engine:supplemental_model_interface",
+        "//engine:supplemental_model_mock",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
         "//request:conversion_request",
@@ -146,6 +150,7 @@ mozc_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
