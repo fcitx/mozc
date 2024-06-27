@@ -38,8 +38,8 @@
 #undef InvokeFunction
 #endif
 
+#include "absl/log/check.h"
 #include "base/port.h"
-#include "base/logging.h"
 #include "base/vlog.h"
 #include "base/util.h"
 
