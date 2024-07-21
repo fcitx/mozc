@@ -46,6 +46,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "base/config_file_stream.h"
 #include "base/file_util.h"
 #include "base/number_util.h"
@@ -92,12 +93,6 @@ bool UseInnerSegments(const ConversionRequest &request) {
   return request.request()
       .decoder_experiment_params()
       .user_segment_history_rewriter_use_inner_segments();
-}
-
-bool IsNewReplaceableEnabled(const ConversionRequest &request) {
-  return request.request()
-      .decoder_experiment_params()
-      .user_segment_history_rewriter_new_replaceable();
 }
 
 class FeatureValue {
@@ -406,27 +401,10 @@ bool IsT13NCandidate(const Segment::Candidate &cand) {
   return (cand.lid == 0 && cand.rid == 0);
 }
 
-bool IsT13NCandidateV2(const Segment::Candidate &cand) {
-  // In V2, treat single script type candidate as T13N in addition to
-  // the original conditions.
-  const Util::ScriptType script_type = Util::GetScriptType(cand.value);
-  return ((cand.lid == 0 && cand.rid == 0) || script_type == Util::KATAKANA ||
-          script_type == Util::HIRAGANA || script_type == Util::ALPHABET);
-}
-
-bool IsSingleKanjiCandidate(const Segment::Candidate &cand) {
-  // POS info for single kanji can be filled using the base candidate and not
-  // reliable in general.
-  if (strings::CharsLen(cand.content_value) != 1) {
-    return false;
-  }
-  return Util::IsScriptType(cand.content_value, Util::KANJI);
-}
-
 }  // namespace
 
 bool UserSegmentHistoryRewriter::SortCandidates(
-    const std::vector<ScoreCandidate> &sorted_scores, Segment *segment) const {
+    absl::Span<const ScoreCandidate> sorted_scores, Segment *segment) const {
   const uint32_t top_score = sorted_scores[0].score;
   const size_t size = std::min(sorted_scores.size(), kMaxRerankSize);
   constexpr uint32_t kScoreGap = 20;  // TODO(taku): no justification
@@ -595,15 +573,8 @@ bool UserSegmentHistoryRewriter::Replaceable(
       (lhs.functional_value() == rhs.functional_value());
   const bool same_pos_group =
       (pos_group_->GetPosGroup(lhs.lid) == pos_group_->GetPosGroup(rhs.lid));
-  if (IsNewReplaceableEnabled(request)) {
-    return (same_functional_value &&
-            (same_pos_group || IsT13NCandidateV2(lhs) ||
-             IsT13NCandidateV2(rhs) || IsSingleKanjiCandidate(lhs) ||
-             IsSingleKanjiCandidate(rhs)));
-  } else {
-    return (same_functional_value &&
-            (same_pos_group || IsT13NCandidate(lhs) || IsT13NCandidate(rhs)));
-  }
+  return (same_functional_value &&
+          (same_pos_group || IsT13NCandidate(lhs) || IsT13NCandidate(rhs)));
 }
 
 void UserSegmentHistoryRewriter::RememberNumberPreference(
