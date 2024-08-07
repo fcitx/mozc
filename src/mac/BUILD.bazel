@@ -44,6 +44,12 @@ load(
 
 package(default_visibility = ["//:__subpackages__"])
 
+# BUILD_TYPE_SELECT is treated as a function, but not a string. This cannot be a value of join().
+BUILD_TYPE_SELECT = select({
+    "//:dev_channel": "dev",
+    "//conditions:default": "stable",
+})
+
 mozc_macos_application(
     name = "mozc_macos",
     additional_contents = mozc_select(
@@ -376,15 +382,13 @@ genrule(
         oss = ["installer/preflight_template.sh"],
     ),
     outs = ["preflight.sh"],
-    cmd = ("$(location //build_tools:tweak_macinstaller_script)" +
-           " --output $@" +
-           " --input $<" +
-           " --version_file $(location //base:mozc_version_txt)" +
-           " --build_type dev"),  # or stable.
-    tools = [
-        "//base:mozc_version_txt",
-        "//build_tools:tweak_macinstaller_script",
-    ],
+    cmd = " ".join([
+        "$(location //build_tools:tweak_macinstaller_script)",
+        " --output $@",
+        " --input $<",
+        " --build_type ",
+    ]) + BUILD_TYPE_SELECT,  # "dev" or "stable".
+    tools = ["//build_tools:tweak_macinstaller_script"],
 )
 
 genrule(
@@ -394,11 +398,13 @@ genrule(
         oss = ["installer/postflight_template.sh"],
     ),
     outs = ["postflight.sh"],
-    cmd = ("$(location //build_tools:tweak_macinstaller_script)" +
-           " --output $@" +
-           " --input $<" +
-           " --version_file $(location //base:mozc_version_txt)" +
-           " --build_type dev"),  # or stable.
+    cmd = " ".join([
+        "$(location //build_tools:tweak_macinstaller_script)",
+        " --output $@",
+        " --input $<",
+        " --version_file $(location //base:mozc_version_txt)",
+        " --build_type ",
+    ]) + BUILD_TYPE_SELECT,  # "dev" or "stable".
     tools = [
         "//base:mozc_version_txt",
         "//build_tools:tweak_macinstaller_script",
@@ -444,6 +450,7 @@ genrule(
         prod_macos = [
             "//gui/config_dialog:config_dialog_macos",
             "//gui/dictionary_tool:dictionary_tool_macos",
+            "//google_updater:GoogleUpdater.pkg",
             "installer/distribution.xml",
             "installer/InstallerSections.plist",
             "installer/LaunchAgents/com.google.inputmethod.Japanese.Converter.plist",
@@ -504,18 +511,38 @@ genrule(
         prod_macos = ["installer/Mozc_template.pkgproj"],
     ),
     outs = ["Mozc_Packages.pkg"],
-    cmd = ("$(location :build_installer) --input $(location :tweaked_installer_files) --output $@" +
-           " --pkgproj_command $(location //build_tools:tweak_pkgproj)" +
-           " --pkgproj_input $(location installer/Mozc_template.pkgproj)" +
-           " --pkgproj_output installer.pkgproj" +
-           " --version_file $(location //base:mozc_version_txt)" +
-           " --auto_updater_dir " + AUTO_UPDATER_DIR +
-           " --build_type dev"),  # or stable
+    cmd = " ".join([
+        "$(location :build_installer)",
+        "--input $(location :tweaked_installer_files) --output $@" +
+        "--pkgproj_command $(location //build_tools:tweak_pkgproj)",
+        "--pkgproj_input $(location installer/Mozc_template.pkgproj)",
+        "--pkgproj_output installer.pkgproj",
+        "--version_file $(location //base:mozc_version_txt)",
+        "--auto_updater_dir " + AUTO_UPDATER_DIR,
+        "--build_type ",
+    ]) + BUILD_TYPE_SELECT,  # "dev" or "stable"
     tags = ["manual"],
     tools = [
         ":build_installer",
         "//base:mozc_version_txt",
         "//build_tools:tweak_pkgproj",
+    ],
+)
+
+# .keystone_install stored in the installer .dmg file.
+genrule(
+    name = "keystone_install",
+    srcs = ["installer/.keystone_install_template"],
+    outs = [".keystone_install"],
+    cmd = " ".join([
+        "$(location //build_tools:tweak_macinstaller_script)",
+        "--output $@",
+        "--input $(SRCS)",
+        "--build_type ",
+    ]) + BUILD_TYPE_SELECT,  # "dev" or "stable"
+    tags = ["manual"],
+    tools = [
+        "//build_tools:tweak_macinstaller_script",
     ],
 )
 
@@ -541,4 +568,25 @@ genrule(
     # TODO(b/269007577): version_file, auto_updater_dir and build_type should be supported.
     tags = ["manual"],
     tools = [":build_package"],
+)
+
+# This rule may fail in a sandbox environment because it uses `hdiutil` that accesses to /Volumes/.
+# To workaround use `--strategy_regexp=//mac:diskimage=local` or `--spawn_strategy=local`.
+# .bazelrc already has the --strategy_regexp option.
+genrule(
+    name = "diskimage",
+    srcs = [
+        ":keystone_install",
+        ":package",
+    ],
+    outs = ["Mozc.dmg"],
+    cmd = " ".join([
+        "$(location //build_tools:build_diskimage_mac)",
+        "--output $@",
+        "--pkg_file $(location :package)",
+        "--keystone_install_file $(location :keystone_install)",
+    ]),
+    exec_compatible_with = ["@platforms//os:macos"],
+    tags = ["manual"],
+    tools = ["//build_tools:build_diskimage_mac"],
 )

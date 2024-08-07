@@ -34,7 +34,6 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -46,6 +45,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "base/container/serialized_string_array.h"
 #include "base/util.h"
 #include "composer/query.h"
@@ -201,56 +201,60 @@ using ::testing::WithParamInterface;
 
 // Action to call the third argument of LookupPrefix/LookupPredictive with the
 // token <key, value>.
-ACTION_P6(InvokeCallbackWithOneToken, key, value, cost, lid, rid, attributes) {
+struct InvokeCallbackWithOneToken {
+  template <class T, class U>
+  void operator()(T, U, DictionaryInterface::Callback *callback) {
+    callback->OnToken(key, key, token);
+  }
+
+  std::string key;
   Token token;
-  token.key = key;
-  token.value = value;
-  token.cost = cost;
-  token.lid = lid;
-  token.rid = rid;
-  token.attributes = attributes;
-  arg2->OnToken(key, key, token);
-}
+};
 
-ACTION_P(InvokeCallbackWithTokens, token_list) {
+struct InvokeCallbackWithTokens {
   using Callback = DictionaryInterface::Callback;
-  Callback *callback = arg2;
-  for (const Token &token : token_list) {
-    if (callback->OnKey(token.key) != Callback::TRAVERSE_CONTINUE ||
-        callback->OnActualKey(token.key, token.key, false) !=
-            Callback::TRAVERSE_CONTINUE) {
-      return;
-    }
-    if (callback->OnToken(token.key, token.key, token) !=
-        Callback::TRAVERSE_CONTINUE) {
-      return;
+
+  template <class T, class U>
+  void operator()(T, U, Callback *callback) {
+    for (const Token &token : tokens) {
+      if (callback->OnKey(token.key) != Callback::TRAVERSE_CONTINUE ||
+          callback->OnActualKey(token.key, token.key, false) !=
+              Callback::TRAVERSE_CONTINUE) {
+        return;
+      }
+      if (callback->OnToken(token.key, token.key, token) !=
+          Callback::TRAVERSE_CONTINUE) {
+        return;
+      }
     }
   }
-}
 
-ACTION_P2(InvokeCallbackWithKeyValuesImpl, key_value_list, token_attribute) {
+  std::vector<Token> tokens;
+};
+
+struct InvokeCallbackWithKeyValues {
   using Callback = DictionaryInterface::Callback;
-  Callback *callback = arg2;
-  for (const auto &[key, value] : key_value_list) {
-    if (callback->OnKey(key) != Callback::TRAVERSE_CONTINUE ||
-        callback->OnActualKey(key, key, false) != Callback::TRAVERSE_CONTINUE) {
-      return;
-    }
-    const Token token(key, value, MockDictionary::kDefaultCost,
-                      MockDictionary::kDefaultPosId,
-                      MockDictionary::kDefaultPosId, token_attribute);
-    if (callback->OnToken(key, key, token) != Callback::TRAVERSE_CONTINUE) {
-      return;
+
+  template <class T, class U>
+  void operator()(T, U, Callback *callback) {
+    for (const auto &[key, value] : kv_list) {
+      if (callback->OnKey(key) != Callback::TRAVERSE_CONTINUE ||
+          callback->OnActualKey(key, key, false) !=
+              Callback::TRAVERSE_CONTINUE) {
+        return;
+      }
+      const Token token(key, value, MockDictionary::kDefaultCost,
+                        MockDictionary::kDefaultPosId,
+                        MockDictionary::kDefaultPosId, token_attribute);
+      if (callback->OnToken(key, key, token) != Callback::TRAVERSE_CONTINUE) {
+        return;
+      }
     }
   }
-}
 
-auto InvokeCallbackWithKeyValues(
-    const std::vector<std::pair<std::string, std::string>> &key_value_list,
-    Token::Attribute attribute = Token::NONE)
-    -> decltype(InvokeCallbackWithKeyValuesImpl(key_value_list, attribute)) {
-  return InvokeCallbackWithKeyValuesImpl(key_value_list, attribute);
-}
+  std::vector<std::pair<std::string, std::string>> kv_list;
+  Token::Attribute token_attribute = Token::NONE;
+};
 
 void InitSegmentsWithKey(absl::string_view key, Segments *segments) {
   segments->Clear();
@@ -320,7 +324,7 @@ PredictionTypes AddDefaultPredictionTypes(PredictionTypes types,
   return types | REALTIME | PREFIX;
 }
 
-bool FindResultByValue(const std::vector<Result> &results,
+bool FindResultByValue(absl::Span<const Result> results,
                        const absl::string_view value) {
   for (const auto &result : results) {
     if (result.value == value && !result.removed) {
@@ -330,7 +334,7 @@ bool FindResultByValue(const std::vector<Result> &results,
   return false;
 }
 
-bool FindResultByKeyValue(const std::vector<Result> &results,
+bool FindResultByKeyValue(absl::Span<const Result> results,
                           const absl::string_view key,
                           const absl::string_view value) {
   for (const auto &result : results) {
@@ -468,56 +472,56 @@ class DictionaryPredictionAggregatorTest
     EXPECT_CALL(*mock, LookupPrefix(_, _, _)).Times(AnyNumber());
 
     EXPECT_CALL(*mock, LookupPredictive(StrEq("ぐーぐるあ"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"ぐーぐるあどせんす", "グーグルアドセンス"},
             {"ぐーぐるあどわーず", "グーグルアドワーズ"},
-        }));
+        }});
     EXPECT_CALL(*mock, LookupPredictive(StrEq("ぐーぐる"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"ぐーぐるあどせんす", "グーグルアドセンス"},
             {"ぐーぐるあどわーず", "グーグルアドワーズ"},
-        }));
+        }});
     EXPECT_CALL(*mock, LookupPrefix(StrEq("ぐーぐる"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"ぐーぐる", "グーグル"},
-        }));
+        }});
     EXPECT_CALL(*mock, LookupPrefix(StrEq("あどせんす"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"あどせんす", "アドセンス"},
-        }));
+        }});
     EXPECT_CALL(*mock, LookupPrefix(StrEq("てすと"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"てすと", "テスト"},
-        }));
+        }});
 
     // SpellingCorrection entry
     EXPECT_CALL(*mock, LookupPredictive(StrEq("かぷりちょうざ"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues(
+        .WillRepeatedly(InvokeCallbackWithKeyValues{
             {
                 {"かぷりちょーざ", "カプリチョーザ"},
             },
-            Token::SPELLING_CORRECTION));
+            Token::SPELLING_CORRECTION});
 
     // user dictionary entry
     EXPECT_CALL(*mock, LookupPredictive(StrEq("ゆーざー"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues(
-            {
-                {"ゆーざー", "ユーザー"},
-            },
-            Token::USER_DICTIONARY));
+        .WillRepeatedly(
+            InvokeCallbackWithKeyValues{{
+                                            {"ゆーざー", "ユーザー"},
+                                        },
+                                        Token::USER_DICTIONARY});
 
     // Some English entries
     EXPECT_CALL(*mock, LookupPredictive(StrEq("conv"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"converge", "converge"},
             {"converged", "converged"},
             {"convergent", "convergent"},
-        }));
+        }});
     EXPECT_CALL(*mock, LookupPredictive(StrEq("con"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"contraction", "contraction"},
             {"control", "control"},
-        }));
+        }});
   }
 
   static void AddDefaultImplToMockImmutableConverter(
@@ -1038,9 +1042,9 @@ TEST_F(DictionaryPredictionAggregatorTest,
   MockDictionary mock_dict;
   EXPECT_CALL(mock_dict, LookupPredictive(_, _, _)).Times(AnyNumber());
   EXPECT_CALL(mock_dict, LookupPredictive(StrEq(kHiraganaA), _, _))
-      .WillRepeatedly(InvokeCallbackWithTokens(a_tokens));
+      .WillRepeatedly(InvokeCallbackWithTokens{a_tokens});
   EXPECT_CALL(mock_dict, LookupPredictive(StrEq(kHiraganaAA), _, _))
-      .WillRepeatedly(InvokeCallbackWithTokens(aa_tokens));
+      .WillRepeatedly(InvokeCallbackWithTokens{aa_tokens});
 
   config_->set_use_dictionary_suggest(true);
   config_->set_use_realtime_conversion(false);
@@ -1129,7 +1133,7 @@ TEST_F(DictionaryPredictionAggregatorTest, MobileUnigram) {
     EXPECT_CALL(*mock, LookupPrefix(_, _, _)).Times(AnyNumber());
     EXPECT_CALL(*mock, LookupPredictive(_, _, _)).Times(AnyNumber());
     EXPECT_CALL(*mock, LookupPredictive(StrEq("とうきょう"), _, _))
-        .WillRepeatedly(InvokeCallbackWithTokens(std::vector<Token>{
+        .WillRepeatedly(InvokeCallbackWithTokens{{
             {"とうきょう", "東京", 100, kPosId, kPosId, Token::NONE},
             {"とうきょう", "TOKYO", 200, kPosId, kPosId, Token::NONE},
             {"とうきょうと", "東京都", 110, kPosId, kPosId, Token::NONE},
@@ -1145,7 +1149,7 @@ TEST_F(DictionaryPredictionAggregatorTest, MobileUnigram) {
             {"とうきょう!", "東京!", 1100, kPosId, kPosId, Token::NONE},
             {"とうきょう!?", "東京!?", 1200, kPosId, kPosId, Token::NONE},
             {"とうきょう", "東京❤", 1300, kPosId, kPosId, Token::NONE},
-        }));
+        }});
   }
 
   std::vector<Result> results;
@@ -1326,11 +1330,11 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateZeroQueryBigramPrediction) {
     EXPECT_CALL(*mock, LookupPrefix(_, _, _)).Times(AnyNumber());
     EXPECT_CALL(*mock, LookupPredictive(_, _, _)).Times(AnyNumber());
     EXPECT_CALL(*mock, LookupPrefix(StrEq(kHistory), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {kHistory, kHistory},
-        }));
+        }});
     EXPECT_CALL(*mock, LookupPredictive(StrEq(kHistory), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{
             {"ありがとうございます", "ありがとうございます"},
             {"ありがとうございます", "ありがとう御座います"},
             {"ありがとうございました", "ありがとうございました"},
@@ -1344,7 +1348,7 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateZeroQueryBigramPrediction) {
             // Word less than 10.
             {"ありがとうね", "ありがとうね"},
             {"ね", "ね"},
-        }));
+        }});
     EXPECT_CALL(*mock, HasKey(StrEq("ございます")))
         .WillRepeatedly(Return(true));
     EXPECT_CALL(*mock, HasKey(StrEq("ございました")))
@@ -2090,6 +2094,39 @@ TEST_F(DictionaryPredictionAggregatorTest,
   }
 }
 
+TEST_F(DictionaryPredictionAggregatorTest,
+       AggregateExtendedTypeCorrectingPredictionWithCharacterForm) {
+  std::unique_ptr<MockDataAndAggregator> data_and_aggregator =
+      CreateAggregatorWithMockData();
+  const DictionaryPredictionAggregatorTestPeer &aggregator =
+      data_and_aggregator->aggregator();
+
+  config_->set_use_typing_correction(true);
+
+  Segments segments;
+  SetUpInputForSuggestionWithHistory("よろさく!", "", "", composer_.get(),
+                                     &segments);
+
+  std::vector<TypeCorrectedQuery> expected;
+  expected.emplace_back(
+      TypeCorrectedQuery{"よろしく!", TypeCorrectedQuery::CORRECTION});
+
+  auto mock = std::make_unique<engine::MockSupplementalModel>();
+  EXPECT_CALL(*mock, CorrectComposition(_, _)).WillOnce(Return(expected));
+
+  data_and_aggregator->set_supplemental_model(mock.get());
+
+  std::vector<Result> results;
+  aggregator.AggregateTypingCorrectedPrediction(*prediction_convreq_, segments,
+                                                &results);
+  data_and_aggregator->set_supplemental_model(nullptr);
+
+  EXPECT_EQ(results.size(), 1);
+
+  EXPECT_EQ(results[0].key, expected[0].correction);
+  EXPECT_EQ(results[0].value, "よろしく！");  // default is full width.
+}
+
 TEST_F(DictionaryPredictionAggregatorTest, ZeroQuerySuggestionAfterNumbers) {
   std::unique_ptr<MockDataAndAggregator> data_and_aggregator =
       CreateAggregatorWithMockData();
@@ -2299,13 +2336,17 @@ TEST_F(DictionaryPredictionAggregatorTest, MobileZipcodeEntries) {
   const PosMatcher &pos_matcher = data_and_aggregator->pos_matcher();
   MockDictionary *mock = data_and_aggregator->mutable_dictionary();
   EXPECT_CALL(*mock, LookupPredictive(StrEq("101-000"), _, _))
-      .WillOnce(InvokeCallbackWithOneToken(
-          "101-0001", "東京都千代田", 100 /* cost */,
-          pos_matcher.GetZipcodeId(), pos_matcher.GetZipcodeId(), Token::NONE));
+      .WillOnce(InvokeCallbackWithOneToken{
+          .key = "101-0001",
+          .token = Token("101-0001", "東京都千代田", 100 /* cost */,
+                         pos_matcher.GetZipcodeId(), pos_matcher.GetZipcodeId(),
+                         Token::NONE)});
   EXPECT_CALL(*mock, LookupPredictive(StrEq("101-0001"), _, _))
-      .WillOnce(InvokeCallbackWithOneToken(
-          "101-0001", "東京都千代田", 100 /* cost */,
-          pos_matcher.GetZipcodeId(), pos_matcher.GetZipcodeId(), Token::NONE));
+      .WillOnce(InvokeCallbackWithOneToken{
+          .key = "101-0001",
+          .token = Token("101-0001", "東京都千代田", 100 /* cost */,
+                         pos_matcher.GetZipcodeId(), pos_matcher.GetZipcodeId(),
+                         Token::NONE)});
   {
     Segments segments;
     SetUpInputForSuggestion("101-000", composer_.get(), &segments);
@@ -2564,7 +2605,7 @@ TEST_F(DictionaryPredictionAggregatorTest, CandidatesFromUserDictionary) {
          pos_matcher.GetGeneralNounId(), Token::USER_DICTIONARY},
     };
     EXPECT_CALL(*mock, LookupPredictive(_, _, _))
-        .WillRepeatedly(InvokeCallbackWithTokens(tokens));
+        .WillRepeatedly(InvokeCallbackWithTokens{tokens});
     EXPECT_CALL(*mock, LookupPrefix(_, _, _)).Times(AnyNumber());
   }
 
@@ -2781,13 +2822,13 @@ TEST_F(DictionaryPredictionAggregatorTest, DoNotPredictNoisyNumberEntries) {
   {
     MockDictionary *mock = data_and_aggregator->mutable_dictionary();
     EXPECT_CALL(*mock, LookupPredictive(StrEq("1"), _, _))
-        .WillRepeatedly(InvokeCallbackWithKeyValues({{"1", "一"},
+        .WillRepeatedly(InvokeCallbackWithKeyValues{{{"1", "一"},
                                                      {"1じ", "一時"},
                                                      {"1じ", "1時"},
                                                      {"10じ", "10時"},
                                                      {"10じ", "十時"},
                                                      {"1じすぎ", "1時過ぎ"},
-                                                     {"19じ", "19時"}}));
+                                                     {"19じ", "19時"}}});
   }
 
   composer_->SetInputMode(transliteration::HALF_ASCII);
@@ -2929,7 +2970,7 @@ TEST_F(DictionaryPredictionAggregatorTest, Handwriting) {
 
   EXPECT_CALL(*mock_dict, LookupPredictive(_, _, _)).Times(AnyNumber());
   EXPECT_CALL(*mock_dict, LookupExact(StrEq("かんじじてん"), _, _))
-      .WillRepeatedly(InvokeCallbackWithKeyValues({
+      .WillRepeatedly(InvokeCallbackWithKeyValues{{
           {"かんじじてん", "漢字辞典"},
           {"かんじじてん", "漢字字典"},
           {"かんじじてん", "感じじてん"},
@@ -2937,7 +2978,7 @@ TEST_F(DictionaryPredictionAggregatorTest, Handwriting) {
           {"かんじじてん", "換字字典"},
           {"かんじじてん", "換字自転"},
           {"かんじじてん", "換字じてん"},
-      }));
+      }});
 
   std::vector<Result> results;
   EXPECT_TRUE(aggregator.AggregatePredictionForRequest(*prediction_convreq_,
@@ -3010,10 +3051,10 @@ TEST_F(DictionaryPredictionAggregatorTest, HandwritingT13N) {
 
   EXPECT_CALL(*mock_dict, LookupPredictive(_, _, _)).Times(AnyNumber());
   EXPECT_CALL(*mock_dict, LookupExact(StrEq("きた"), _, _))
-      .WillRepeatedly(InvokeCallbackWithKeyValues({
+      .WillRepeatedly(InvokeCallbackWithKeyValues{{
           {"きた", "きた"},
           {"きた", "北"},
-      }));
+      }});
 
   std::vector<Result> results;
   EXPECT_TRUE(aggregator.AggregatePredictionForRequest(*prediction_convreq_,
