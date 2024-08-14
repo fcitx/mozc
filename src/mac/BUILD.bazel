@@ -40,6 +40,7 @@ load(
     "//:config.bzl",
     "BRANDING",
     "MACOS_BUNDLE_ID_PREFIX",
+    "MACOS_CODESIGN_IDENTITY",
 )
 
 package(default_visibility = ["//:__subpackages__"])
@@ -440,16 +441,12 @@ genrule(
             "installer/LaunchAgents/com.google.inputmethod.Japanese.Renderer.plist",
         ],
         oss_macos = [
-            "//gui/config_dialog:config_dialog_macos",
-            "//gui/dictionary_tool:dictionary_tool_macos",
             "installer/distribution.xml",
             "installer/InstallerSections.plist",
             "installer/LaunchAgents/org.mozc.inputmethod.Japanese.Converter.plist",
             "installer/LaunchAgents/org.mozc.inputmethod.Japanese.Renderer.plist",
         ],
         prod_macos = [
-            "//gui/config_dialog:config_dialog_macos",
-            "//gui/dictionary_tool:dictionary_tool_macos",
             "//google_updater:GoogleUpdater.pkg",
             "installer/distribution.xml",
             "installer/InstallerSections.plist",
@@ -471,15 +468,7 @@ mozc_py_binary(
     deps = ["//build_tools:util"],
 )
 
-genrule(
-    name = "tweaked_installer_files",
-    srcs = [":zipped_installer_files"],
-    outs = ["tweaked_installer.zip"],
-    cmd = "$(location :tweak_installer_files) --input $(SRCS) --output $@",
-    tags = ["manual"],
-    tools = [":tweak_installer_files"],
-)
-
+# Create a zip file for productbuild. The files in the zip file are codesigned.
 genrule(
     name = "productbuild_files",
     srcs = [":zipped_installer_files"],
@@ -488,7 +477,20 @@ genrule(
         default = " --noqt",
         oss_macos = " --oss",
         prod_macos = "",
-    ),
+    ) + " --codesign_identity \"" + MACOS_CODESIGN_IDENTITY + "\"",
+    # Use local execution instead of sandbox because it uses `codesign` that accesses to keychain.
+    local = True,
+    tags = ["manual"],
+    tools = [":tweak_installer_files"],
+)
+
+# TODO(b/357456172): The rules from tweaked_installer_files till installer_oss_macos are deprecated.
+# Those rules will be removed after the migration to the new build system.
+genrule(
+    name = "tweaked_installer_files",
+    srcs = [":zipped_installer_files"],
+    outs = ["tweaked_installer.zip"],
+    cmd = "$(location :tweak_installer_files) --input $(SRCS) --output $@",
     tags = ["manual"],
     tools = [":tweak_installer_files"],
 )
@@ -570,9 +572,6 @@ genrule(
     tools = [":build_package"],
 )
 
-# This rule may fail in a sandbox environment because it uses `hdiutil` that accesses to /Volumes/.
-# To workaround use `--strategy_regexp=//mac:diskimage=local` or `--spawn_strategy=local`.
-# .bazelrc already has the --strategy_regexp option.
 genrule(
     name = "diskimage",
     srcs = [
@@ -587,6 +586,27 @@ genrule(
         "--keystone_install_file $(location :keystone_install)",
     ]),
     exec_compatible_with = ["@platforms//os:macos"],
+    # Use local execution instead of sandbox because it uses `hdiutil` that accesses to /Volumes/.
+    local = True,
     tags = ["manual"],
     tools = ["//build_tools:build_diskimage_mac"],
+)
+
+genrule(
+    name = "diskimage_signed",
+    srcs = [":diskimage"],
+    outs = ["Mozc_signed.dmg"],
+    cmd = " ".join([
+        "cp $(location :diskimage) $@ &&",
+        "chmod u+w $@ &&",
+        "/usr/bin/codesign",
+        "--timestamp --options=runtime",  # For notarization
+        "--sign \"" + MACOS_CODESIGN_IDENTITY + "\"",
+        "--keychain login.keychain",
+        "$@",
+    ]),
+    exec_compatible_with = ["@platforms//os:macos"],
+    # Use local execution instead of sandbox because it uses `codesign` that accesses to keychain.
+    local = True,
+    tags = ["manual"],
 )
