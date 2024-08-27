@@ -148,6 +148,18 @@ pkg_config_repository(
     packages = ["glib-2.0", "gobject-2.0", "ibus-1.0"],
 )
 
+# Fcitx
+pkg_config_repository(
+  name = "fcitx",
+  packages = ["fcitx"],
+)
+
+# Fcitx 5
+pkg_config_repository(
+  name = "fcitx5",
+  packages = ["Fcitx5Module", "Fcitx5Core"],
+)
+
 # Qt for Linux
 pkg_config_repository(
     name = "qt_linux",
