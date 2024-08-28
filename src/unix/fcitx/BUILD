@@ -18,6 +18,7 @@ mozc_cc_library(
         "//base:vlog",
         "//client:client",
         "//protocol:commands_cc_proto",
+	"@com_google_absl//absl/log:check",
     ]
 )
 
@@ -42,6 +43,7 @@ mozc_cc_library(
         "//base:vlog",
         "//protocol:commands_cc_proto",
         "//client:client_interface",
+	"@com_google_absl//absl/log:check",
     ],
 )
 
@@ -56,12 +58,12 @@ mozc_cc_library(
         "fcitx_key_translator.h",
     ],
     deps = [
-        "//base:logging",
         "//base:port",
+	"//base:singleton",
         "//base:vlog",
         "//protocol:config_cc_proto",
         "//protocol:commands_cc_proto",
-        "@fcitx//:fcitx",
+	"@com_google_absl//absl/log:check",
     ],
 )
 
@@ -75,10 +77,9 @@ mozc_cc_library(
     ],
     deps = [
         "//base:util",
-        "//base:logging",
         "//base:port",
         "//base:vlog",
-        "@fcitx//:fcitx",
+	"@com_google_absl//absl/log:check",
     ],
 )
 
@@ -88,7 +89,6 @@ mozc_cc_binary(
     deps = [
         ":fcitx_mozc",
         "//base:init_mozc",
-        "@fcitx//:fcitx",
     ],
     local_defines = [
         'LOCALEDIR=\\"/usr/share/locale\\"',
