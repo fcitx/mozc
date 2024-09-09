@@ -56,18 +56,19 @@ exports_files([
 filegroup(
     name = "base_dictionary_data",
     srcs = [
-        ":dictionary00.txt",
-        ":dictionary01.txt",
-        ":dictionary02.txt",
-        ":dictionary03.txt",
-        ":dictionary04.txt",
-        ":dictionary05.txt",
-        ":dictionary06.txt",
-        ":dictionary07.txt",
-        ":dictionary08.txt",
-        ":dictionary09.txt",
+        "dictionary00.txt",
+        "dictionary01.txt",
+        "dictionary02.txt",
+        "dictionary03.txt",
+        "dictionary04.txt",
+        "dictionary05.txt",
+        "dictionary06.txt",
+        "dictionary07.txt",
+        "dictionary08.txt",
+        "dictionary09.txt",
         "//dictionary:zip_code_data",
     ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -78,52 +79,38 @@ filegroup(
     ],
 )
 
-filegroup(
-    name = "dictionary",
-    srcs = [
-        ":connection_single_column.txt",
-        ":dictionary00.txt",
-        ":dictionary01.txt",
-        ":dictionary02.txt",
-        ":dictionary03.txt",
-        ":dictionary04.txt",
-        ":dictionary05.txt",
-        ":dictionary06.txt",
-        ":dictionary07.txt",
-        ":dictionary08.txt",
-        ":dictionary09.txt",
-        ":suffix.txt",
-    ],
-)
-
 genrule(
     name = "aux_dictionary",
     srcs = [
-        ":aux_dictionary.tsv",
+        "aux_dictionary.tsv",
+        "id.def",
         ":base_dictionary_data",
-        ":id.def",
         "//data/dictionary_manual",
     ],
     outs = ["aux_dictionary.txt"],
-    cmd = ("$(location //dictionary:gen_aux_dictionary) " +
-           "--strict --output $@ " +
-           "--aux_tsv $(location :aux_dictionary.tsv) " +
-           "--id_def $(location :id.def) " +
-           "--words_tsv $(locations //data/dictionary_manual) " +
-           "--dictionary_txts $(locations :base_dictionary_data)"),
+    cmd = """
+        $(location //dictionary:gen_aux_dictionary) \
+        --strict --output $@ \
+        --aux_tsv $(location :aux_dictionary.tsv) \
+        --id_def $(location :id.def) \
+        --words_tsv $(locations //data/dictionary_manual) \
+        --dictionary_txts $(locations :base_dictionary_data)
+    """,
     tools = ["//dictionary:gen_aux_dictionary"],
 )
 
 genrule(
     name = "filtered_dictionary",
     srcs = [
+        "dictionary_filter.tsv",
         ":base_dictionary_data",
-        ":dictionary_filter.tsv",
     ],
     outs = ["dictionary.txt"],
-    cmd = ("$(location //dictionary:gen_filtered_dictionary) --output $@ " +
-           "--filter_tsv $(location :dictionary_filter.tsv) " +
-           "--dictionary_txts $(locations :base_dictionary_data)"),
+    cmd = """
+        $(location //dictionary:gen_filtered_dictionary) --output $@ \
+        --filter_tsv $(location :dictionary_filter.tsv) \
+        --dictionary_txts $(locations :base_dictionary_data)
+    """,
     tools = ["//dictionary:gen_filtered_dictionary"],
 )
 

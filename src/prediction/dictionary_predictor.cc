@@ -461,10 +461,14 @@ bool DictionaryPredictor::AddPredictionToCandidates(
     final_results_ptrs.emplace_back(&result);
   }
 
-  // Runs literal on top on `final_results_ptrs` instead of segments.
-  // segments may contain the history candidate.
-  MaybeSuppressAggressiveTypingCorrection(
-      request, typing_correction_mixing_params, &final_results_ptrs);
+  const auto &params = request.request().decoder_experiment_params();
+  if (params.typing_correction_result_reranker_mode() > 0) {
+    MaybeRerankAggressiveTypingCorrection(request, *segments,
+                                          &final_results_ptrs);
+  } else {
+    MaybeSuppressAggressiveTypingCorrection(
+        request, typing_correction_mixing_params, &final_results_ptrs);
+  }
 
   // Fill segments from final_results_ptrs.
   for (const Result *result : final_results_ptrs) {
@@ -481,6 +485,19 @@ bool DictionaryPredictor::AddPredictionToCandidates(
 
   return !final_results_ptrs.empty();
 #undef MOZC_ADD_DEBUG_CANDIDATE
+}
+
+void DictionaryPredictor::MaybeRerankAggressiveTypingCorrection(
+    const ConversionRequest &request, const Segments &segments,
+    std::vector<absl::Nonnull<const Result *>> *results) const {
+  const auto &params = request.request().decoder_experiment_params();
+  if (params.typing_correction_result_reranker_mode() == 0) return;
+
+  const engine::SupplementalModelInterface *supplemental_model =
+      modules_.GetSupplementalModel();
+  if (supplemental_model == nullptr) return;
+
+  supplemental_model->RerankTypingCorrection(request, segments, results);
 }
 
 // static
@@ -546,6 +563,13 @@ void DictionaryPredictor::MaybeSuppressAggressiveTypingCorrection(
 void DictionaryPredictor::MaybeApplyPostCorrection(
     const ConversionRequest &request, const engine::Modules &modules,
     Segments *segments) {
+  // b/363902660:
+  // Stop applying post correction when typing correction is disabled.
+  // We may want to use other conditions if we want to enable post correction
+  // separately.
+  if (!IsTypingCorrectionEnabled(request)) {
+    return;
+  }
   const engine::SupplementalModelInterface *supplemental_model =
       modules.GetSupplementalModel();
   if (supplemental_model == nullptr) {
@@ -1068,7 +1092,7 @@ void DictionaryPredictor::SetPredictionCostForMixedConversion(
       cost += (kDefaultTransitionCost - kBigramBonus - prev_cost);
       // The bonus can make the cost negative and promotes bigram results
       // too much.
-      // Align the cost here bofore applying other cost modifications.
+      // Align the cost here before applying other cost modifications.
       cost = std::max(1, cost);
       MOZC_WORD_LOG(result, absl::StrCat("Bigram: ", cost));
     }
