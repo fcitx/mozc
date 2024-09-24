@@ -252,6 +252,16 @@ class GoogleJapaneseInputControllerTest : public testing::Test {
     SetUpController();
   }
 
+  void TearDown() override {
+    [controller_ setMozcClient:std::unique_ptr<mozc::client::ClientMock>()];
+    [controller_ setRenderer:std::unique_ptr<MockRenderer>()];
+    mock_renderer_ = nullptr;
+    mock_mozc_client_ = nullptr;
+    mock_server_ = nil;
+    mock_client_ = nil;
+    controller_ = nil;
+  }
+
   void SetUpController() {
     controller_ = [[GoogleJapaneseInputController alloc] initWithServer:mock_server_
                                                                delegate:nil
@@ -554,8 +564,7 @@ TEST_F(GoogleJapaneseInputControllerTest, SwitchDisplayMode) {
   EXPECT_EQ(controller_.mode, commands::DIRECT);
   [controller_ switchDisplayMode];
   EXPECT_EQ([mock_client_ getCounter:"selectInputMode:"], 1);
-  std::string expected = MacUtil::GetLabelForSuffix("Roman");
-  EXPECT_EQ(mock_client_.selectedMode, expected);
+  EXPECT_EQ(mock_client_.selectedMode, "com.apple.inputmethod.Roman");
 
   // Does not change the display mode for MS Word.  See
   // GoogleJapaneseInputController.mm for the detailed information.
@@ -565,8 +574,7 @@ TEST_F(GoogleJapaneseInputControllerTest, SwitchDisplayMode) {
   [controller_ switchDisplayMode];
   // still remains 1 and display mode does not change.
   EXPECT_EQ([mock_client_ getCounter:"selectInputMode:"], 1);
-  expected = MacUtil::GetLabelForSuffix("Roman");
-  EXPECT_EQ(mock_client_.selectedMode, expected);
+  EXPECT_EQ(mock_client_.selectedMode, "com.apple.inputmethod.Roman");
 }
 
 TEST_F(GoogleJapaneseInputControllerTest, commitText) {
