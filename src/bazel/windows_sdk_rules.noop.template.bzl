@@ -27,61 +27,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Win32 broker
+"""A no-op implementation used on non-Windows platforms."""
 
-load(
-    "//:build_defs.bzl",
-    "MOZC_TAGS",
-    "mozc_cc_binary",
-    "mozc_cc_library",
-    "mozc_win32_resource_from_template",
-)
-
-package(
-    default_visibility = ["//visibility:private"],
-)
-
-mozc_cc_binary(
-    name = "mozc_broker_main",
-    srcs = ["mozc_broker_main.cc"],
-    tags = MOZC_TAGS.WIN_ONLY,
-    target_compatible_with = ["@platforms//os:windows"],
-    visibility = ["//win32/installer:__subpackages__"],
-    deps = [
-        ":prelauncher",
-        "//base:crash_report_handler",
-        "//base:init_mozc",
-        "//base:system_util",
-        "//base/win32:winmain",
-        "//config:stats_config_util",
-        "@com_google_absl//absl/flags:flag",
-    ],
-)
-
-mozc_win32_resource_from_template(
-    name = "mozc_broker_resource",
-    src = "mozc_broker.rc",
-    manifests = [
-        "mozc_broker.exe.manifest",
-    ],
-    resources = [
-        "mozc_broker_resource.h",
-    ],
-    tags = MOZC_TAGS.WIN_ONLY,
-    target_compatible_with = ["@platforms//os:windows"],
-)
-
-mozc_cc_library(
-    name = "prelauncher",
-    srcs = ["prelauncher.cc"],
-    hdrs = ["prelauncher.h"],
-    tags = MOZC_TAGS.WIN_ONLY,
-    target_compatible_with = ["@platforms//os:windows"],
-    deps = [
-        "//base:run_level",
-        "//base:system_util",
-        "//client",
-        "//client:client_interface",
-        "//renderer:renderer_client",
-    ],
-)
+def windows_resource(name, **kwargs):
+    _ignore = name  # @unused
+    _ignore = kwargs  # @unused
+    pass

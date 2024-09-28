@@ -43,6 +43,7 @@ See also: https://bazel.build/rules/bzl-style#rules
 """
 
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application", "macos_bundle", "macos_unit_test")
+load("@windows_sdk//:windows_sdk_rules.bzl", "windows_resource")
 load(
     "//:config.bzl",
     "BAZEL_TOOLS_PREFIX",
@@ -128,6 +129,78 @@ def mozc_cc_test(name, tags = [], deps = [], copts = [], **kwargs):
 
 register_extension_info(
     extension = mozc_cc_test,
+    label_regex_for_dep = "{extension_name}",
+)
+
+def _mozc_gen_win32_resource_file(
+        name,
+        src,
+        utf8 = False):
+    """
+    Generates a resource file from the specified resource file and template.
+    """
+    args = []
+    if utf8:
+        args.append("--utf8")
+    mozc_run_build_tool(
+        name = name,
+        srcs = {
+            "--main": [src],
+            "--template": ["//build_tools:mozc_win32_resource_template.rc"],
+            "--version_file": ["//base:mozc_version_txt"],
+        },
+        outs = {
+            "--output": name,
+        },
+        args = args,
+        tool = "//build_tools:gen_win32_resource_header",
+    )
+
+def mozc_win32_resource_from_template(
+        name,
+        src,
+        manifests = [],
+        resources = [],
+        tags = MOZC_TAGS.WIN_ONLY,
+        target_compatible_with = ["@platforms//os:windows"],
+        **kwargs):
+    """A rule to generate Win32 resource file from a template.
+
+    Args:
+      name: name for the generated resource target.
+      src: a *.rc file to be overlayed to the template.
+      manifests: Win32 manifest files to be embedded.
+      resources: files to be referenced from the resource file.
+      tags: optional tags.
+      target_compatible_with: optional target_compatible_with.
+      **kwargs: other args for resource compiler.
+    """
+    generated_rc_file = name + "_gen.rc"
+    _mozc_gen_win32_resource_file(
+        generated_rc_file,
+        src = src,
+    )
+    _rc_defines = {
+        "Mozc": ["MOZC_BUILD"],
+        "GoogleJapaneseInput": ["GOOGLE_JAPANESE_INPUT_BUILD"],
+    }.get(BRANDING, [])
+
+    # Create main resource
+    win32_resource_files_main = windows_resource
+
+    win32_resource_files_main(
+        name = name,
+        rc_files = [":" + generated_rc_file],
+        manifests = manifests,
+        resources = resources,
+        defines = _rc_defines,
+        tags = tags,
+        target_compatible_with = target_compatible_with,
+        **kwargs
+    )
+
+register_extension_info(
+    extension = mozc_win32_resource_from_template,
     label_regex_for_dep = "{extension_name}",
 )
 
