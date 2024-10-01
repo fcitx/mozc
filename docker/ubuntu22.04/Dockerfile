@@ -38,7 +38,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ## https://docs.docker.com/develop/develop-images/instructions/#apt-get
 RUN apt-get update && apt-get install -y \
     ## Common packages for linux build environment
-    python3 pkg-config git curl bzip2 unzip make ninja-build \
+    python3 pkg-config git curl bzip2 unzip make g++ gcc \
     ## Packages for linux desktop version
     libibus-1.0-dev libglib2.0-dev qt6-base-dev libgl-dev \
     ## Packages for misc tools
@@ -49,27 +49,28 @@ RUN apt-get update && apt-get install -y \
     curl gnupg libncurses5 \
   && rm -rf /var/lib/apt/lists/*
 
-## For Bazel
-## https://bazel.build/install/ubuntu#install-on-ubuntu
-RUN curl -fsSL https://bazel.build/bazel-release.pub.gpg | gpg --dearmor > /usr/share/keyrings/bazel-archive-keyring.gpg
-RUN echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] https://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list
-RUN apt-get update && apt-get install -y bazel && rm -rf /var/lib/apt/lists/*
-
 # Working environemnt
 ENV HOME /home/mozc_builder
 RUN useradd --create-home --shell /bin/bash --base-dir /home mozc_builder
 USER mozc_builder
+RUN mkdir -p /home/mozc_builder/bin
+ENV PATH "${PATH}:/home/mozc_builder/bin"
 RUN mkdir -p /home/mozc_builder/work
 WORKDIR /home/mozc_builder/work
 ## Work around https://bugreports.qt.io/browse/QTBUG-86080 for Ubuntu 22.04
 ENV PKG_CONFIG_PATH="/home/mozc_builder/work/mozc/docker/ubuntu22.04/qt6-core-pkgconfig:${PKG_CONFIG_PATH}"
 
+## Set up bazelisk as bazel
+RUN curl -LO https://github.com/bazelbuild/bazelisk/releases/download/v1.22.0/bazelisk-linux-amd64 \
+  && mv bazelisk-linux-amd64 /home/mozc_builder/bin/bazel \
+  && chmod u+x /home/mozc_builder/bin/bazel
+
 ## Set up Android SDK and NDK
 ENV ANDROID_HOME /home/mozc_builder/Android/Sdk
 RUN mkdir -p ${ANDROID_HOME}
 RUN curl -LO https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip && unzip commandlinetools-linux-10406996_latest.zip -d ${ANDROID_HOME} && rm commandlinetools-linux-10406996_latest.zip
-RUN yes | ${ANDROID_HOME}/cmdline-tools/bin/sdkmanager --sdk_root=${ANDROID_HOME} "cmdline-tools;latest" "platforms;android-33" "build-tools;33.0.2" "platform-tools" "ndk;25.2.9519653"
-ENV ANDROID_NDK_HOME ${ANDROID_HOME}/ndk/25.2.9519653
+RUN yes | ${ANDROID_HOME}/cmdline-tools/bin/sdkmanager --sdk_root=${ANDROID_HOME} "cmdline-tools;latest" "platforms;android-33" "build-tools;33.0.2" "platform-tools" "ndk;27.1.12297006"
+ENV ANDROID_NDK_HOME ${ANDROID_HOME}/ndk/27.1.12297006
 
 # check out Mozc source with submodules
 RUN mkdir /home/mozc_builder/work/mozc

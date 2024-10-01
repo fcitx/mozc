@@ -54,17 +54,17 @@ ENV PATH "${PATH}:/home/mozc_builder/bin"
 RUN mkdir -p /home/mozc_builder/work
 WORKDIR /home/mozc_builder/work
 
-## Set up Bazel
-RUN curl -LO https://github.com/bazelbuild/bazel/releases/download/7.1.1/bazel-7.1.1-installer-linux-x86_64.sh \
-  && bash bazel-7.1.1-installer-linux-x86_64.sh --user \
-  && rm bazel-7.1.1-installer-linux-x86_64.sh
+## Set up bazelisk as bazel
+RUN curl -LO https://github.com/bazelbuild/bazelisk/releases/download/v1.22.0/bazelisk-linux-amd64 \
+  && mv bazelisk-linux-amd64 /home/mozc_builder/bin/bazel \
+  && chmod u+x /home/mozc_builder/bin/bazel
 
 ## Set up Android SDK and NDK
 ENV ANDROID_HOME /home/mozc_builder/Android/Sdk
 RUN mkdir -p ${ANDROID_HOME}
 RUN curl -LO https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip && unzip commandlinetools-linux-10406996_latest.zip -d ${ANDROID_HOME} && rm commandlinetools-linux-10406996_latest.zip
-RUN yes | ${ANDROID_HOME}/cmdline-tools/bin/sdkmanager --sdk_root=${ANDROID_HOME} "cmdline-tools;latest" "platforms;android-33" "build-tools;33.0.2" "platform-tools" "ndk;25.2.9519653"
-ENV ANDROID_NDK_HOME ${ANDROID_HOME}/ndk/25.2.9519653
+RUN yes | ${ANDROID_HOME}/cmdline-tools/bin/sdkmanager --sdk_root=${ANDROID_HOME} "cmdline-tools;latest" "platforms;android-33" "build-tools;33.0.2" "platform-tools" "ndk;27.1.12297006"
+ENV ANDROID_NDK_HOME ${ANDROID_HOME}/ndk/27.1.12297006
 
 # check out Mozc source with submodules
 RUN mkdir /home/mozc_builder/work/mozc
