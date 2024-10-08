@@ -27,7 +27,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#import "mac/GoogleJapaneseInputController.h"
+#import "mac/mozc_imk_input_controller.h"
 
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
@@ -46,9 +46,8 @@
 #include <string>
 #include <utility>
 
-#import "mac/GoogleJapaneseInputControllerInterface.h"
-#import "mac/GoogleJapaneseInputServer.h"
 #import "mac/KeyCodeMap.h"
+#import "mac/renderer_receiver.h"
 
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -77,6 +76,10 @@ using mozc::config::Config;
 using SetOfString = std::set<std::string, std::less<>>;
 
 namespace {
+// Global object used as a singleton used as a proxy to receive messages from
+// the renderer process.
+RendererReceiver *gRendererReceiver = nil;
+
 // TODO(horo): This value should be get from system configuration.
 //  DoubleClickInterval can be get from NSEvent (MacOSX ver >= 10.6)
 constexpr NSTimeInterval kDoubleTapInterval = 0.5;
@@ -175,7 +178,7 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 }
 }  // namespace
 
-@implementation GoogleJapaneseInputController
+@implementation MozcImkInputController
 #pragma mark accessors for testing
 @synthesize keyCodeMap = keyCodeMap_;
 @synthesize yenSignCharacter = yenSignCharacter_;
@@ -215,7 +218,6 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   yenSignCharacter_ = mozc::config::Config::YEN_SIGN;
   mozcRenderer_ = std::make_unique<mozc::renderer::RendererClient>();
   mozcClient_ = mozc::client::ClientFactory::NewClient();
-  imkServer_ = reinterpret_cast<id<ServerCallback>>(server);
   imkClientForTest_ = nil;
   lastKeyDownTime_ = 0;
   lastKeyCode_ = 0;
@@ -280,11 +282,8 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   }
   [self handleConfig];
 
-  // This is a workaroud due to the crash issue on macOS 15.
-  NSOperatingSystemVersion versionInfo = [[NSProcessInfo processInfo] operatingSystemVersion];
-  if (versionInfo.majorVersion < 15) {
-    [imkServer_ setCurrentController:self];
-  }
+  // Sets this controller as the active controller to receive messages from the renderer process.
+  [gRendererReceiver setCurrentController:self];
 
   std::string window_name, window_owner;
   if (mozc::MacUtil::GetFrontmostWindowNameAndOwner(&window_name, &window_owner)) {
@@ -391,10 +390,31 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   }
 }
 
-// change the mode to the new mode and turn-on the IME if necessary.
-- (void)switchModeInternal:(CompositionMode)new_mode {
+- (void)switchMode:(CompositionMode)new_mode client:(id)sender {
+  if (mode_ == new_mode) {
+    return;
+  }
+
+  if (new_mode == mozc::commands::DIRECT) {
+    // Turn off the IME and commit the composing text.
+    DLOG(INFO) << "Mode switch: HIRAGANA, KATAKANA, etc. -> DIRECT";
+    KeyEvent keyEvent;
+    Output output;
+    keyEvent.set_special_key(mozc::commands::KeyEvent::OFF);
+    mozcClient_->SendKey(keyEvent, &output);
+    if (output.has_result()) {
+      [self commitText:output.result().value().c_str() client:sender];
+    }
+    if ([composedString_ length] > 0) {
+      [self updateComposedString:nullptr];
+      [self clearCandidates];
+    }
+    mode_ = mozc::commands::DIRECT;
+    return;
+  }
+
   if (mode_ == mozc::commands::DIRECT) {
-    // Input mode changes from direct to an active mode.
+    // Turn on the IME as the input mode is changed from DIRECT to an active mode.
     DLOG(INFO) << "Mode switch: DIRECT -> HIRAGANA, KATAKANA, etc.";
     KeyEvent keyEvent;
     Output output;
@@ -402,27 +422,14 @@ bool CanSurroundingText(absl::string_view bundle_id) {
     mozcClient_->SendKey(keyEvent, &output);
   }
 
-  if (mode_ != new_mode) {
-    // Switch input mode.
-    DLOG(INFO) << "Switch input mode.";
-    SessionCommand command;
-    command.set_type(mozc::commands::SessionCommand::SWITCH_INPUT_MODE);
-    command.set_composition_mode(new_mode);
-    Output output;
-    mozcClient_->SendCommand(command, &output);
-    mode_ = new_mode;
-  }
-}
-
-- (void)switchMode:(CompositionMode)new_mode client:(id)sender {
-  if (mode_ == new_mode) {
-    return;
-  }
-  if (mode_ != mozc::commands::DIRECT && new_mode == mozc::commands::DIRECT) {
-    [self switchModeToDirect:sender];
-  } else if (new_mode != mozc::commands::DIRECT) {
-    [self switchModeInternal:new_mode];
-  }
+  // Switch input mode.
+  DLOG(INFO) << "Switch input mode.";
+  SessionCommand command;
+  command.set_type(mozc::commands::SessionCommand::SWITCH_INPUT_MODE);
+  command.set_composition_mode(new_mode);
+  Output output;
+  mozcClient_->SendCommand(command, &output);
+  mode_ = new_mode;
 }
 
 - (void)switchDisplayMode {
@@ -614,10 +621,10 @@ bool CanSurroundingText(absl::string_view bundle_id) {
 #pragma mark Mozc Server methods
 
 #pragma mark IMKServerInput Protocol
-// Currently GoogleJapaneseInputController uses handleEvent:client:
+// Currently MozcImkInputController uses handleEvent:client:
 // method to handle key events.  It does not support inputText:client:
 // nor inputText:key:modifiers:client:.
-// Because GoogleJapaneseInputController does not use IMKCandidates,
+// Because MozcImkInputController does not use IMKCandidates,
 // the following methods are not needed to implement:
 //   candidates
 //
@@ -955,4 +962,12 @@ bool CanSurroundingText(absl::string_view bundle_id) {
   }
   [self commitText:output->result().value().c_str() client:[self client]];
 }
+
++ (void)setGlobalRendererReceiver:(RendererReceiver *)rendererReceiver {
+  gRendererReceiver = rendererReceiver;
+}
+@end
+
+// An alias of MozcImkInputController for backward compatibility.
+@implementation GoogleJapaneseInputController
 @end

@@ -27,12 +27,11 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#import "mac/GoogleJapaneseInputController.h"
+#import "mac/mozc_imk_input_controller.h"
 
 #import <Cocoa/Cocoa.h>
 #import <Foundation/Foundation.h>
 
-#import "mac/GoogleJapaneseInputControllerInterface.h"
 #import "mac/KeyCodeMap.h"
 
 #include <objc/objc-class.h>
@@ -238,7 +237,7 @@ class MockRenderer : public renderer::RendererInterface {
   commands::RendererCommand called_command_;
 };
 
-class GoogleJapaneseInputControllerTest : public testing::Test {
+class MozcImkInputControllerTest : public testing::Test {
  protected:
   void SetUp() override {
     mock_server_ = [[MockIMKServer alloc] init];
@@ -262,7 +261,7 @@ class GoogleJapaneseInputControllerTest : public testing::Test {
   }
 
   void SetUpController() {
-    controller_ = [[GoogleJapaneseInputController alloc] initWithServer:mock_server_
+    controller_ = [[MozcImkInputController alloc] initWithServer:mock_server_
                                                                delegate:nil
                                                                  client:mock_client_];
     controller_.imkClientForTest = mock_client_;
@@ -285,7 +284,7 @@ class GoogleJapaneseInputControllerTest : public testing::Test {
   MockClient *mock_client_;
   const MockRenderer *mock_renderer_;
 
-  GoogleJapaneseInputController *controller_;
+  MozcImkInputController *controller_;
 
  private:
   MockIMKServer *mock_server_;
@@ -369,7 +368,7 @@ NSTimeInterval GetDoubleTapInterval() {
   return kDoubleTapInterval;
 }
 
-BOOL SendKeyEvent(unsigned short keyCode, GoogleJapaneseInputController *controller,
+BOOL SendKeyEvent(unsigned short keyCode, MozcImkInputController *controller,
                   MockClient *client) {
   // tap Kana-key
   NSEvent *kanaKeyEvent = [NSEvent keyEventWithType:NSEventTypeKeyDown
@@ -385,7 +384,7 @@ BOOL SendKeyEvent(unsigned short keyCode, GoogleJapaneseInputController *control
   return [controller handleEvent:kanaKeyEvent client:client];
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, UpdateComposedString) {
+TEST_F(MozcImkInputControllerTest, UpdateComposedString) {
   // If preedit is nullptr, it still calls setMarkedText, with an empty string.
   NSMutableAttributedString *expected = [[NSMutableAttributedString alloc] initWithString:@""];
   [controller_ updateComposedString:nullptr];
@@ -424,14 +423,14 @@ TEST_F(GoogleJapaneseInputControllerTest, UpdateComposedString) {
       << [[NSString stringWithFormat:@"expected:%@ actual:%@", expected, actual] UTF8String];
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, ClearCandidates) {
+TEST_F(MozcImkInputControllerTest, ClearCandidates) {
   [controller_ clearCandidates];
   EXPECT_EQ(mock_renderer_->counter_ExecCommand(), 1);
   // After clearing candidates, the candidate window has to be invisible.
   EXPECT_FALSE(mock_renderer_->CalledCommand().visible());
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, UpdateCandidates) {
+TEST_F(MozcImkInputControllerTest, UpdateCandidates) {
   // When output is null, same as ClearCandidate
   [controller_ updateCandidates:nullptr];
   // Run the runloop so "delayedUpdateCandidates" can be called
@@ -491,7 +490,7 @@ TEST_F(GoogleJapaneseInputControllerTest, UpdateCandidates) {
   EXPECT_FALSE(rendererCommand.visible());
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, OpenLink) {
+TEST_F(MozcImkInputControllerTest, OpenLink) {
   EXPECT_EQ(gOpenURLCount, 0);
   [controller_ openLink:[NSURL URLWithString:@"http://www.example.com/"]];
   // openURL is invoked
@@ -505,7 +504,7 @@ TEST_F(GoogleJapaneseInputControllerTest, OpenLink) {
   EXPECT_EQ(gOpenURLCount, 1);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, SwitchModeToDirect) {
+TEST_F(MozcImkInputControllerTest, SwitchModeToDirect) {
   // setup the IME status
   controller_.mode = commands::HIRAGANA;
   commands::Preedit preedit;
@@ -521,7 +520,7 @@ TEST_F(GoogleJapaneseInputControllerTest, SwitchModeToDirect) {
               SendKeyWithContext(HasSpecialKey(commands::KeyEvent::OFF), _, NotNull()))
       .WillOnce(DoAll(SetArgPointee<2>(output), Return(true)));
 
-  [controller_ switchModeToDirect:mock_client_];
+  [controller_ switchMode:commands::DIRECT client:mock_client_];
   EXPECT_EQ(controller_.mode, commands::DIRECT);
   EXPECT_EQ([mock_client_ getCounter:"insertText:replacementRange:"], 1);
   EXPECT_TRUE([@"foo" isEqualToString:mock_client_.insertedText]);
@@ -529,7 +528,7 @@ TEST_F(GoogleJapaneseInputControllerTest, SwitchModeToDirect) {
   EXPECT_FALSE(controller_.rendererCommand.visible());
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, SwitchModeInternal) {
+TEST_F(MozcImkInputControllerTest, SwitchMode) {
   // When a mode changes from DIRECT, it should invoke "ON" command beforehand.
   EXPECT_CALL(*mock_mozc_client_,
               SendKeyWithContext(HasSpecialKey(commands::KeyEvent::ON), _, NotNull()))
@@ -540,25 +539,25 @@ TEST_F(GoogleJapaneseInputControllerTest, SwitchModeInternal) {
       .WillRepeatedly(DoAll(SaveArg<0>(&actual_command), Return(true)));
 
   controller_.mode = commands::DIRECT;
-  [controller_ switchModeInternal:commands::HIRAGANA];
+  [controller_ switchMode:commands::HIRAGANA client:mock_client_];
   EXPECT_EQ(controller_.mode, commands::HIRAGANA);
   EXPECT_THAT(actual_command, Type(commands::SessionCommand::SWITCH_INPUT_MODE));
   EXPECT_THAT(actual_command, CompositionMode(commands::HIRAGANA));
 
   // Switch from HIRAGANA to KATAKANA.  Just sending mode switching command.
   controller_.mode = commands::HIRAGANA;
-  [controller_ switchModeInternal:commands::HALF_KATAKANA];
+  [controller_ switchMode:commands::HALF_KATAKANA client:mock_client_];
   EXPECT_EQ(controller_.mode, commands::HALF_KATAKANA);
   EXPECT_THAT(actual_command, Type(commands::SessionCommand::SWITCH_INPUT_MODE));
   EXPECT_THAT(actual_command, CompositionMode(commands::HALF_KATAKANA));
   Mock::VerifyAndClearExpectations(&mock_mozc_client_);
 
   // going to same mode does not cause sendcommand
-  [controller_ switchModeInternal:commands::HALF_KATAKANA];
+  [controller_ switchMode:commands::HALF_KATAKANA client:mock_client_];
   EXPECT_EQ(controller_.mode, commands::HALF_KATAKANA);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, SwitchDisplayMode) {
+TEST_F(MozcImkInputControllerTest, SwitchDisplayMode) {
   EXPECT_TRUE(mock_client_.selectedMode.empty());
   EXPECT_EQ(controller_.mode, commands::DIRECT);
   [controller_ switchDisplayMode];
@@ -566,7 +565,7 @@ TEST_F(GoogleJapaneseInputControllerTest, SwitchDisplayMode) {
   EXPECT_EQ(mock_client_.selectedMode, "com.apple.inputmethod.Roman");
 
   // Does not change the display mode for MS Word.  See
-  // GoogleJapaneseInputController.mm for the detailed information.
+  // MozcImkInputController.mm for the detailed information.
   ResetClientBundleIdentifier(@"com.microsoft.Word");
   [controller_ switchMode:commands::HIRAGANA client:mock_client_];
   EXPECT_EQ(controller_.mode, commands::HIRAGANA);
@@ -576,7 +575,7 @@ TEST_F(GoogleJapaneseInputControllerTest, SwitchDisplayMode) {
   EXPECT_EQ(mock_client_.selectedMode, "com.apple.inputmethod.Roman");
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, commitText) {
+TEST_F(MozcImkInputControllerTest, commitText) {
   controller_.replacementRange = NSMakeRange(0, 1);
   [controller_ commitText:"foo" client:mock_client_];
 
@@ -586,7 +585,7 @@ TEST_F(GoogleJapaneseInputControllerTest, commitText) {
   EXPECT_EQ([controller_ replacementRange].location, NSNotFound);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, handleConfig) {
+TEST_F(MozcImkInputControllerTest, handleConfig) {
   // Does not support multiple-calculation
   config::Config config;
   config.set_preedit_method(config::Config::KANA);
@@ -603,7 +602,7 @@ TEST_F(GoogleJapaneseInputControllerTest, handleConfig) {
       << [mock_client_.overriddenLayout UTF8String];
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, DoubleTapKanaReconvert) {
+TEST_F(MozcImkInputControllerTest, DoubleTapKanaReconvert) {
   // tap (short) tap -> emit undo command
   controller_.mode = commands::HIRAGANA;
 
@@ -630,7 +629,7 @@ TEST_F(GoogleJapaneseInputControllerTest, DoubleTapKanaReconvert) {
   EXPECT_THAT(actual_command, Text("bcd"));
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, DoubleTapKanaUndo) {
+TEST_F(MozcImkInputControllerTest, DoubleTapKanaUndo) {
   // tap (short) tap -> emit undo command
   controller_.mode = commands::HIRAGANA;
 
@@ -653,7 +652,7 @@ TEST_F(GoogleJapaneseInputControllerTest, DoubleTapKanaUndo) {
   EXPECT_EQ(SendKeyEvent(kVK_JIS_Kana, controller_, mock_client_), YES);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, DoubleTapKanaUndoTimeOver) {
+TEST_F(MozcImkInputControllerTest, DoubleTapKanaUndoTimeOver) {
   // tap (long) tap -> don't emit undo command
   controller_.mode = commands::HIRAGANA;
 
@@ -671,7 +670,7 @@ TEST_F(GoogleJapaneseInputControllerTest, DoubleTapKanaUndoTimeOver) {
   EXPECT_EQ(SendKeyEvent(kVK_JIS_Kana, controller_, mock_client_), YES);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, SingleAndDoubleTapKanaUndo) {
+TEST_F(MozcImkInputControllerTest, SingleAndDoubleTapKanaUndo) {
   // tap (long) tap (short) tap -> emit once
   controller_.mode = commands::HIRAGANA;
 
@@ -700,7 +699,7 @@ TEST_F(GoogleJapaneseInputControllerTest, SingleAndDoubleTapKanaUndo) {
   EXPECT_EQ(SendKeyEvent(kVK_JIS_Kana, controller_, mock_client_), YES);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, TripleTapKanaUndo) {
+TEST_F(MozcImkInputControllerTest, TripleTapKanaUndo) {
   // tap (short) tap (short) tap -> emit twice
   controller_.mode = commands::HIRAGANA;
 
@@ -730,7 +729,7 @@ TEST_F(GoogleJapaneseInputControllerTest, TripleTapKanaUndo) {
   EXPECT_EQ(SendKeyEvent(kVK_JIS_Kana, controller_, mock_client_), YES);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, QuadrupleTapKanaUndo) {
+TEST_F(MozcImkInputControllerTest, QuadrupleTapKanaUndo) {
   // tap (short) tap (short) tap (short) tap -> emit thrice
   controller_.mode = commands::HIRAGANA;
 
@@ -765,7 +764,7 @@ TEST_F(GoogleJapaneseInputControllerTest, QuadrupleTapKanaUndo) {
   EXPECT_EQ(SendKeyEvent(kVK_JIS_Kana, controller_, mock_client_), YES);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, DoubleTapEisuCommitRawText) {
+TEST_F(MozcImkInputControllerTest, DoubleTapEisuCommitRawText) {
   // Send Eisu-key.
   // Because of special hack for Eisu/Kana keys, it returns YES.
   EXPECT_EQ(SendKeyEvent(kVK_JIS_Eisu, controller_, mock_client_), YES);
@@ -781,7 +780,7 @@ TEST_F(GoogleJapaneseInputControllerTest, DoubleTapEisuCommitRawText) {
   EXPECT_EQ(SendKeyEvent(kVK_JIS_Eisu, controller_, mock_client_), YES);
 }
 
-TEST_F(GoogleJapaneseInputControllerTest, fillSurroundingContext) {
+TEST_F(MozcImkInputControllerTest, fillSurroundingContext) {
   [mock_client_ setAttributedString:[[NSAttributedString alloc] initWithString:@"abcde"]];
   mock_client_.expectedRange = NSMakeRange(2, 1);
   commands::Context context;

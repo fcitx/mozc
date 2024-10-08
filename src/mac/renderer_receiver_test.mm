@@ -27,88 +27,74 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#import "mac/GoogleJapaneseInputServer.h"
+#import "mac/renderer_receiver.h"
 
 #include "protocol/commands.pb.h"
-#include "testing/googletest.h"
 #include "testing/gunit.h"
 
-class GoogleJapaneseInputServerTest : public testing::Test {
+class RendererReceiverTest : public testing::Test {
  protected:
   void SetUp() {
-    // Although GoogleJapaneseInputServer is a subclass of IMKServer,
-    // it does not use initWithName:... method to instantiate the
-    // object because we don't test those IMKServer functionality
-    // during this test.
-    server_ = [[GoogleJapaneseInputServer alloc] init];
+    // Initialize RendererReceiver with init rather than initWithName.
+    // This is because the test does not use renderer_connection_.
+    _receiver = [[RendererReceiver alloc] init];
   }
 
- protected:
-  GoogleJapaneseInputServer *server_;
+  RendererReceiver *_receiver;
 };
 
 @interface MockController : NSObject <ControllerCallback> {
-  int numSendData_;
-  mozc::commands::SessionCommand *expectedCommand_;
-  int numOutputResult_;
-  mozc::commands::Output *expectedData_;
+  int _numSendCommand;
+  mozc::commands::SessionCommand _receivedSessionCommand;
+  int _numOutputResult;
+  mozc::commands::Output _receivedOutput;
 }
-@property(readonly) int numSendData;
-@property(readwrite, assign) mozc::commands::SessionCommand *expectedCommand;
+@property(readonly) int numSendCommand;
+@property(readonly) mozc::commands::SessionCommand receivedSessionCommand;
 @property(readonly) int numOutputResult;
-@property(readwrite, assign) mozc::commands::Output *expectedData;
-
-- (void)sendCommand:(mozc::commands::SessionCommand &)command;
-- (void)outputResult:(mozc::commands::Output *)data;
+@property(readonly) mozc::commands::Output receivedOutput;
 @end
 
 @implementation MockController
-@synthesize numSendData = numSendData_;
-@synthesize expectedCommand = expectedCommand_;
-@synthesize numOutputResult = numOutputResult_;
-@synthesize expectedData = expectedData_;
 
-- (void)sendCommand:(mozc::commands::SessionCommand &)command {
-  ASSERT_NE((void *)0, expectedCommand_);
-  EXPECT_EQ(command.DebugString(), expectedCommand_->DebugString());
-  ++numSendData_;
+- (void)sendCommand:(mozc::commands::SessionCommand &)data {
+  _receivedSessionCommand = data;
+  ++_numSendCommand;
 }
 
 - (void)outputResult:(mozc::commands::Output *)data {
-  ASSERT_NE(data, (void *)0);
-  ASSERT_NE(expectedData_, (void *)0);
-  EXPECT_EQ(data->DebugString(), expectedData_->DebugString());
-  ++numOutputResult_;
+  _receivedOutput = *data;
+  ++_numOutputResult;
 }
 @end
 
-TEST_F(GoogleJapaneseInputServerTest, sendData) {
+TEST_F(RendererReceiverTest, sendData) {
   MockController *controller = [[MockController alloc] init];
-  [server_ setCurrentController:controller];
+  [_receiver setCurrentController:controller];
 
   mozc::commands::SessionCommand command;
   command.Clear();
   command.set_type(mozc::commands::SessionCommand::SELECT_CANDIDATE);
   command.set_id(0);
-  controller.expectedCommand = &command;
 
   std::string commandData = command.SerializeAsString();
-  [server_ sendData:[NSData dataWithBytes:commandData.data() length:commandData.size()]];
-  EXPECT_EQ(controller.numSendData, 1);
+  [_receiver sendData:[NSData dataWithBytes:commandData.data() length:commandData.size()]];
+  EXPECT_EQ(controller.numSendCommand, 1);
+  EXPECT_EQ(controller.receivedSessionCommand.DebugString(), command.DebugString());
 }
 
-TEST_F(GoogleJapaneseInputServerTest, outputResult) {
+TEST_F(RendererReceiverTest, outputResult) {
   MockController *controller = [[MockController alloc] init];
-  [server_ setCurrentController:controller];
+  [_receiver setCurrentController:controller];
 
   mozc::commands::Output output;
   output.Clear();
   output.mutable_result()->set_type(mozc::commands::Result::STRING);
   output.mutable_result()->set_key("foobar");
   output.mutable_result()->set_value("baz");
-  controller.expectedData = &output;
 
   std::string outputData = output.SerializeAsString();
-  [server_ outputResult:[NSData dataWithBytes:outputData.data() length:outputData.size()]];
+  [_receiver outputResult:[NSData dataWithBytes:outputData.data() length:outputData.size()]];
   EXPECT_EQ(controller.numOutputResult, 1);
+  EXPECT_EQ(controller.receivedOutput.DebugString(), output.DebugString());
 }

@@ -27,20 +27,22 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#ifndef MOZC_MAC_RENDERER_RECEIVER_H_
+#define MOZC_MAC_RENDERER_RECEIVER_H_
+
 #import <Foundation/Foundation.h>
-#import <InputMethodKit/InputMethodKit.h>
 
 #import "mac/common.h"
 
-// GoogleJapaneseInputServer is a subclass of IMKServer but implements
-// RendererCallback, so it can accept user's click event.
-@interface GoogleJapaneseInputServer : IMKServer <ServerCallback> {
-  // The controller which accepts user's clicks
-  id<ControllerCallback> current_controller_;
-  // NSConnection to communicate with the renderer process
-  NSConnection *renderer_conection_;
-}
+/** RendererReceiver is a class to receive messages from the renderer process. */
+@interface RendererReceiver : NSObject <ServerCallback>
 
-// Register the NSConnection for the renderer process
-- (BOOL)registerRendererConnection;
+/** Initializes the receiver with the given connection name.
+ *
+ * @param name The connection name (e.g. "Mozc_Renderer_Connection").
+ */
+- (id)initWithName:(NSString *)name;
+
 @end
+
+#endif  // MOZC_MAC_RENDERER_RECEIVER_H_

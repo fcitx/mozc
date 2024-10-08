@@ -106,8 +106,8 @@ mozc_objc_library(
     ],
     tags = ["manual"],
     deps = [
-        ":imk_controller",
-        ":imk_server",
+        ":mozc_imk_input_controller",
+        ":renderer_receiver",
         "//base:const",
         "//base:crash_report_handler",
         "//base:init_mozc",
@@ -120,13 +120,9 @@ mozc_objc_library(
 )
 
 mozc_objc_library(
-    name = "imk_controller",
-    srcs = [
-        "GoogleJapaneseInputController.mm",
-    ],
-    hdrs = [
-        "GoogleJapaneseInputController.h",
-    ],
+    name = "mozc_imk_input_controller",
+    srcs = ["mozc_imk_input_controller.mm"],
+    hdrs = ["mozc_imk_input_controller.h"],
     data = [
         "English.lproj/Config.xib",
         "Japanese.lproj/Config.xib",
@@ -138,13 +134,10 @@ mozc_objc_library(
         "InputMethodKit",
     ],
     tags = ["manual"],
-    textual_hdrs = [
-        "GoogleJapaneseInputControllerInterface.h",
-    ],
     deps = [
         ":common",
-        ":imk_server",
         ":keycode_map",
+        ":renderer_receiver",
         "//base:const",
         "//base:process",
         "//base:util",
@@ -164,12 +157,12 @@ mozc_objc_library(
 )
 
 mozc_objc_test(
-    name = "imk_controller_test",
+    name = "mozc_imk_input_controller_test",
     size = "small",
-    srcs = ["GoogleJapaneseInputController_test.mm"],
+    srcs = ["mozc_imk_input_controller_test.mm"],
     deps = [
-        ":imk_controller",
         ":keycode_map",
+        ":mozc_imk_input_controller",
         "//base/mac:mac_util",
         "//client:client_mock",
         "//protocol:candidates_cc_proto",
@@ -182,30 +175,22 @@ mozc_objc_test(
 )
 
 mozc_objc_library(
-    name = "imk_server",
-    srcs = ["GoogleJapaneseInputServer.mm"],
-    hdrs = ["GoogleJapaneseInputServer.h"],
-    sdk_frameworks = [
-        "Foundation",
-        "InputMethodKit",
-    ],
-    tags = ["manual"],
+    name = "renderer_receiver",
+    srcs = ["renderer_receiver.mm"],
+    hdrs = ["renderer_receiver.h"],
+    sdk_frameworks = ["Foundation"],
     deps = [
         ":common",
-        "//base:const",
         "//protocol:commands_cc_proto",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
     ],
 )
 
 mozc_objc_test(
-    name = "imk_server_test",
+    name = "renderer_receiver_test",
     size = "small",
-    srcs = ["GoogleJapaneseInputServer_test.mm"],
-    sdk_frameworks = ["InputMethodKit"],
+    srcs = ["renderer_receiver_test.mm"],
     deps = [
-        ":imk_server",
+        ":renderer_receiver",
         "//protocol:commands_cc_proto",
         "//testing:gunit_main_objc",
     ],

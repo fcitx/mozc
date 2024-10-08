@@ -27,24 +27,36 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#import "mac/GoogleJapaneseInputServer.h"
+#import "mac/renderer_receiver.h"
 
-#include <string>
-
-#include "absl/log/log.h"
-#include "base/const.h"
 #include "protocol/commands.pb.h"
 
-@implementation GoogleJapaneseInputServer
-- (BOOL)registerRendererConnection {
-  NSString *connectionName = @kProductPrefix "_Renderer_Connection";
-  renderer_conection_ = [[NSConnection alloc] init];
-  [renderer_conection_ setRootObject:self];
-  return [renderer_conection_ registerName:connectionName];
+@implementation RendererReceiver {
+  /** The current active controller that handles events from the renderer process. */
+  id<ControllerCallback> _currentController;
+
+  /** NSConnection to communicate with the renderer process. */
+  NSConnection *_rendererConnection;
 }
 
+- (id)initWithName:(NSString *)name {
+  self = [super init];
+  if (self) {
+    // _rendererConnection receives IPC calls from the renderer process.
+    // See: renderer/mac/mac_server_send_command.mm
+    _rendererConnection = [[NSConnection alloc] init];
+    [_rendererConnection setRootObject:self];
+    [_rendererConnection registerName:name];
+  }
+  return self;
+}
+
+#pragma mark ServerCallback
+// Methods inherited from the ServerCallback protocol (see: common.h).
+
+// sendData is a method of the ServerCallback protocol.
 - (void)sendData:(NSData *)data {
-  if (current_controller_ == nil) {
+  if (!_currentController) {
     return;
   }
 
@@ -53,10 +65,10 @@
   if (!command.ParseFromArray([data bytes], length)) {
     return;
   }
-
-  [current_controller_ sendCommand:command];
+  [_currentController sendCommand:command];
 }
 
+// outputResult is a method of the ServerCallback protocol.
 - (void)outputResult:(NSData *)data {
   mozc::commands::Output output;
   int32_t length = static_cast<int32_t>([data length]);
@@ -64,10 +76,11 @@
     return;
   }
 
-  [current_controller_ outputResult:&output];
+  [_currentController outputResult:&output];
 }
 
+// setCurrentController is a method of the ServerCallback protocol.
 - (void)setCurrentController:(id<ControllerCallback>)controller {
-  current_controller_ = controller;
+  _currentController = controller;
 }
 @end
