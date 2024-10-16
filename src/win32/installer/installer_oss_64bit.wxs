@@ -88,6 +88,7 @@
     <Feature Id="MozcInstall" Title="Mozc" Level="1">
       <ComponentRef Id="MozcTIP32" />
       <ComponentRef Id="MozcTIP64" />
+      <ComponentRef Id="MozcTIP64Pdb" />
       <ComponentRef Id="MozcBroker" />
       <ComponentRef Id="MozcConverter" />
       <ComponentRef Id="MozcCacheService" />
@@ -126,6 +127,7 @@
     <CustomAction Id="InitialInstallation" DllEntry="InitialInstallation" Execute="deferred" Impersonate="no" BinaryRef="mozc_installer_helper.dll" />
     <CustomAction Id="InitialInstallationCommit" DllEntry="InitialInstallationCommit" Execute="commit" Impersonate="no" BinaryRef="mozc_installer_helper.dll" />
     <CustomAction Id="EnableTipProfile" DllEntry="EnableTipProfile" Execute="commit" Impersonate="yes" BinaryRef="mozc_installer_helper.dll" />
+    <CustomAction Id="FixupConfigFilePermission" DllEntry="FixupConfigFilePermission" Execute="commit" Impersonate="yes" BinaryRef="mozc_installer_helper.dll" />
     <CustomAction Id="HideCancelButton" DllEntry="HideCancelButton" Return="ignore" BinaryRef="mozc_installer_helper.dll" />
     <CustomAction Id="SaveCustomActionData" DllEntry="SaveCustomActionData" BinaryRef="mozc_installer_helper.dll" />
     <CustomAction Id="RestoreServiceState" DllEntry="RestoreServiceState" Impersonate="no" Execute="deferred" Return="ignore" BinaryRef="mozc_installer_helper.dll" />
@@ -172,7 +174,8 @@
       <Custom Action="RegisterTIPRollback64" Before="RegisterTIP64" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (VersionNT64) AND (NOT UPGRADING)" />
       <Custom Action="RegisterTIP64" Before="EnsureAllApplicationPackagesPermisssions" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (VersionNT64)" />
       <Custom Action="EnsureAllApplicationPackagesPermisssions" Before="InitialInstallationCommit" Condition="(NOT (REMOVE=&quot;ALL&quot;))" />
-      <Custom Action="InitialInstallationCommit" Before="EnableTipProfile" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
+      <Custom Action="InitialInstallationCommit" Before="FixupConfigFilePermission" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
+      <Custom Action="FixupConfigFilePermission" Before="EnableTipProfile" Condition="NOT (REMOVE=&quot;ALL&quot;)" />
       <Custom Action="EnableTipProfile" Before="InstallFinalize" Condition="(NOT (REMOVE=&quot;ALL&quot;)) AND (NOT UPGRADING)" />
       <!-- show reboot dialog to execute pending file opartions -->
       <?if ($(var.VSConfigurationName) = "Release") ?>
@@ -219,6 +222,9 @@
           <File Id="mozc_tip64.dll" Name="mozc_tip64.dll" DiskId="1" Checksum="yes" Source="$(var.MozcTIP64Path)" Vital="yes">
             <Class Context="InprocServer32" ThreadingModel="apartment" Description="Mozc" Id="10A67BC8-22FA-4A59-90DC-2546652C56BF" />
           </File>
+        </Component>
+        <Component Id="MozcTIP64Pdb" Permanent="no" Bitness="always64">
+          <File Id="mozc_tip64.dll.pdb" Name="mozc_tip64.dll.pdb" DiskId="1" Checksum="yes" Source="$(var.MozcTIP64PdbPath)" Vital="yes" />
         </Component>
         <Component Id="MozcBroker" Permanent="no">
           <File Id="mozc_broker.exe" Name="mozc_broker.exe" DiskId="1" Checksum="yes" Source="$(var.MozcBroker64Path)" Vital="yes" />
