@@ -33,19 +33,8 @@
 
 #include <cstdint>
 
-#include "base/port.h"
-
-namespace mozc {
-namespace commands {
-
-class Candidates;
-class Input;
-class Output;
-class Preedit;
-class Result;
-
-}  // namespace commands
-}  // namespace mozc
+#include "protocol/candidates.pb.h"
+#include "protocol/commands.pb.h"
 
 namespace fcitx {
 
@@ -76,7 +65,7 @@ class MozcResponseParser {
                        InputContext *ic) const;
   void ParseResult(const mozc::commands::Result &result,
                    InputContext *ic) const;
-  void ParseCandidates(const mozc::commands::Candidates &candidates,
+  void ParseCandidates(const mozc::commands::CandidateWindow &candidates,
                        InputContext *ic) const;
   void ParsePreedit(const mozc::commands::Preedit &preedit, uint32_t position,
                     InputContext *ic) const;

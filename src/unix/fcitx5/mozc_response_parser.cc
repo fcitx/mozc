@@ -97,7 +97,7 @@ class MozcCandidateWord final : public CandidateWord {
 class MozcCandidateList final : public CandidateList,
                                 public PageableCandidateList {
  public:
-  MozcCandidateList(const mozc::commands::Candidates &candidates,
+  MozcCandidateList(const mozc::commands::CandidateWindow &candidates,
                     InputContext *ic, MozcEngine *engine, bool use_annotation)
       : ic_(ic), engine_(engine) {
     auto *state = engine_->mozcState(ic);
@@ -145,7 +145,7 @@ class MozcCandidateList final : public CandidateList,
     labels_.reserve(candidates.candidate_size());
 
     for (int i = 0; i < candidates.candidate_size(); ++i) {
-      const mozc::commands::Candidates::Candidate &candidate =
+      const mozc::commands::CandidateWindow::Candidate &candidate =
           candidates.candidate(i);
       const uint32_t index = candidate.index();
 
@@ -393,7 +393,7 @@ bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
 
   // Then show the candidate window.
   if (response.has_candidates()) {
-    const mozc::commands::Candidates &candidates = response.candidates();
+    const mozc::commands::CandidateWindow &candidates = response.candidates();
     ParseCandidates(candidates, ic);
   }
 
@@ -423,7 +423,7 @@ void MozcResponseParser::ParseResult(const mozc::commands::Result &result,
 }
 
 void MozcResponseParser::ParseCandidates(
-    const mozc::commands::Candidates &candidates, InputContext *ic) const {
+    const mozc::commands::CandidateWindow &candidates, InputContext *ic) const {
   auto *mozc_state = engine_->mozcState(ic);
   const mozc::commands::Footer &footer = candidates.footer();
   if (candidates.has_footer()) {
