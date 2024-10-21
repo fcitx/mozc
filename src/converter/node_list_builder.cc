@@ -27,49 +27,21 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Protocol messages for session state
-syntax = "proto2";
+#include "converter/node_list_builder.h"
 
-package mozc.protocol;
+#include <atomic>
+#include <cstdint>
 
-import "protocol/candidates.proto";
-import "protocol/commands.proto";
+namespace mozc {
 
-message SessionState {
-  // session id
-  required uint64 id = 1 [jstype = JS_STRING];
-  // session created time
-  optional uint64 created_time = 2 [jstype = JS_STRING];
+std::atomic<int32_t> gTypingCorrectionLegacyExpansionMode = 0;
 
-  // whether session is just after commitment
-  optional bool committed = 3 [default = false];
-
-  reserved 4;
-  reserved "selected_indices";
-  reserved 5;
-  reserved "mode";
-
-  optional uint64 start_preedit_time = 10 [jstype = JS_STRING];
-  optional uint64 start_conversion_window_time = 11 [jstype = JS_STRING];
-  optional uint64 start_prediction_window_time = 12 [jstype = JS_STRING];
-  optional uint64 start_suggestion_window_time = 13 [jstype = JS_STRING];
-  optional uint64 start_infolist_window_time = 14 [jstype = JS_STRING];
-
-  // last preedit state
-  optional mozc.commands.Preedit preedit = 20;
-
-  // last candidates state
-  // TODO(b/372854886): Follow up renaming to candidate_window.
-  optional mozc.commands.CandidateWindow candidates = 21;
-
-  reserved 22;
-  reserved "all_candidate_words";
-
-  // last candidates result
-  optional mozc.commands.Result result = 23;
-
-  // last request
-  optional mozc.commands.Request request = 24;
-
-  optional mozc.commands.Context.InputFieldType input_field_type = 25;
+void SetTypingCorrectionLegacyExpansionMode(int32_t mode) {
+  gTypingCorrectionLegacyExpansionMode.store(mode);
 }
+
+int32_t GetTypingCorrectionLegacyExpansionMode() {
+  return gTypingCorrectionLegacyExpansionMode.load();
+}
+
+}  // namespace mozc
