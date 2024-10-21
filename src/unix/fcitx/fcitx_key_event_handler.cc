@@ -32,7 +32,7 @@
 
 #include <map>
 
-#include "base/logging.h"
+#include "absl/log/check.h"
 #include "base/vlog.h"
 #include "base/singleton.h"
 

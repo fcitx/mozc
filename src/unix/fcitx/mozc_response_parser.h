@@ -39,7 +39,7 @@ namespace mozc
 namespace commands
 {
 
-class Candidates;
+class CandidateWindow;
 class Input;
 class Output;
 class Preedit;
@@ -81,7 +81,7 @@ private:
     void ExecuteCallback(const mozc::commands::Output& response, FcitxMozc* fcitx_mozc) const;
     void ParseResult ( const mozc::commands::Result &result,
                        FcitxMozc *fcitx_mozc ) const;
-    void ParseCandidates ( const mozc::commands::Candidates &candidates,
+    void ParseCandidates ( const mozc::commands::CandidateWindow &candidates,
                            FcitxMozc *fcitx_mozc ) const;
     void ParsePreedit ( const mozc::commands::Preedit &preedit,
                         uint32_t position,

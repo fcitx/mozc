@@ -33,7 +33,7 @@
 #include <string>
 #include <vector>
 
-#include "base/logging.h"
+#include "absl/log/check.h"
 #include "base/vlog.h"
 #include "base/util.h"
 #include "protocol/commands.pb.h"
@@ -203,7 +203,7 @@ bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
 
     // Then show the candidate window.
     if (response.has_candidates()) {
-        const mozc::commands::Candidates &candidates = response.candidates();
+        const mozc::commands::CandidateWindow &candidates = response.candidates();
         ParseCandidates(candidates, fcitx_mozc);
     }
 
@@ -242,7 +242,7 @@ static boolean FcitxMozcPaging(void* arg, boolean prev)
 }
 
 void MozcResponseParser::ParseCandidates(
-    const mozc::commands::Candidates &candidates, FcitxMozc *fcitx_mozc) const {
+    const mozc::commands::CandidateWindow &candidates, FcitxMozc *fcitx_mozc) const {
     const commands::Footer &footer = candidates.footer();
     bool hasPrev = false;
     bool hasNext = false;
@@ -287,7 +287,7 @@ void MozcResponseParser::ParseCandidates(
     FcitxCandidateWordReset(candList);
     FcitxCandidateWordSetPageSize(candList, 9);
     if (candidates.has_direction() &&
-        candidates.direction() == commands::Candidates::HORIZONTAL) {
+        candidates.direction() == commands::CandidateWindow::HORIZONTAL) {
         FcitxCandidateWordSetLayoutHint(candList, CLH_Horizontal);
     } else {
         FcitxCandidateWordSetLayoutHint(candList, CLH_Vertical);
@@ -314,7 +314,7 @@ void MozcResponseParser::ParseCandidates(
         focused_index = candidates.focused_index();
     }
     for (int i = 0; i < candidates.candidate_size(); ++i) {
-        const commands::Candidates::Candidate& candidate = candidates.candidate(i);
+        const commands::CandidateWindow::Candidate& candidate = candidates.candidate(i);
         const uint32_t index = candidate.index();
         FcitxMessageType type;
         if (focused_index != -1 && index == focused_index) {
