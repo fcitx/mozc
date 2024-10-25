@@ -200,14 +200,17 @@ pkg_config_repository(
 
 # Fcitx
 pkg_config_repository(
-  name = "fcitx",
-  packages = ["fcitx"],
+    name = "fcitx",
+    packages = ["fcitx"],
 )
 
 # Fcitx 5
 pkg_config_repository(
-  name = "fcitx5",
-  packages = ["Fcitx5Module", "Fcitx5Core"],
+    name = "fcitx5",
+    packages = [
+        "Fcitx5Core",
+        "Fcitx5Module",
+    ],
 )
 
 # Japanese Usage Dictionary

@@ -16,60 +16,35 @@ mozc_cc_library(
         "//base:port",
         "//base:util",
         "//base:vlog",
-        "//client:client",
+        "//client",
         "//protocol:commands_cc_proto",
-    ]
-)
-
-mozc_cc_library(
-    name = "mozc_client_pool",
-    srcs = ["mozc_client_pool.cc"],
-    hdrs = ["mozc_client_pool.h"],
-    deps = [
-        ":mozc_connection",
-        "//client:client_interface",
-        "@fcitx5//:fcitx5",
-    ]
-)
-
-mozc_cc_library(
-    name = "i18nwrapper",
-    hdrs = [
-        "i18nwrapper.h"
+        "@com_google_absl//absl/log:check",
+        "@fcitx",
     ],
-    deps = [
-        "@fcitx5//:fcitx5"
-    ]
 )
 
 mozc_cc_library(
-    name = "mozc_engine",
+    name = "fcitx_mozc",
     srcs = [
-        "mozc_engine.cc",
+        "fcitx_mozc.cc",
         "mozc_response_parser.cc",
-        "mozc_state.cc"
     ],
     hdrs = [
-        "mozc_engine.h",
+        "fcitx_mozc.h",
         "mozc_response_parser.h",
-        "mozc_state.h"
     ],
     deps = [
-        ":i18nwrapper",
-        ":mozc_connection",
-        ":mozc_client_pool",
         ":fcitx_key_util",
+        ":mozc_connection",
         ":surrounding_text_util",
-        "//base:init_mozc",
         "//base:port",
         "//base:process",
         "//base:run_level",
         "//base:util",
         "//base:vlog",
-        "//protocol:candidates_cc_proto",
-        "//protocol:commands_cc_proto",
         "//client:client_interface",
-        "@fcitx5//:fcitx5",
+        "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -85,12 +60,12 @@ mozc_cc_library(
     ],
     deps = [
         "//base:port",
-        "//base:vlog",
         "//base:singleton",
-        "//protocol:config_cc_proto",
+        "//base:vlog",
         "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
         "@com_google_absl//absl/log:check",
-        "@fcitx5//:fcitx5",
+        "@fcitx",
     ],
 )
 
@@ -103,23 +78,25 @@ mozc_cc_library(
         "surrounding_text_util.h",
     ],
     deps = [
-        "//base:util",
         "//base:port",
+        "//base:util",
         "//base:vlog",
         "@com_google_absl//absl/log:check",
-        "@fcitx5//:fcitx5",
+        "@fcitx",
     ],
 )
 
 mozc_cc_binary(
-    name = "fcitx5-mozc.so",
-    srcs = [
-        "mozc_engine_factory.cc"
+    name = "fcitx-mozc.so",
+    srcs = ["eim.cc"],
+    linkshared = 1,
+    linkstatic = 1,
+    local_defines = [
+        'LOCALEDIR=\\"/usr/share/locale\\"',
     ],
     deps = [
-        ":mozc_engine",
+        ":fcitx_mozc",
+        "//base:init_mozc",
+        "@fcitx",
     ],
-    linkstatic = 1,
-    linkshared = 1,
 )
-

@@ -51,7 +51,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "base/vlog.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 #include "unix/fcitx5/i18nwrapper.h"
 #include "unix/fcitx5/mozc_engine.h"
@@ -392,8 +392,9 @@ bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
   }
 
   // Then show the candidate window.
-  if (response.has_candidates()) {
-    const mozc::commands::CandidateWindow &candidates = response.candidates();
+  if (response.has_candidate_window()) {
+    const mozc::commands::CandidateWindow &candidates =
+        response.candidate_window();
     ParseCandidates(candidates, ic);
   }
 

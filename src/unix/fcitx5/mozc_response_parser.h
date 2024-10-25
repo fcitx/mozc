@@ -33,7 +33,7 @@
 
 #include <cstdint>
 
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 
 namespace fcitx {

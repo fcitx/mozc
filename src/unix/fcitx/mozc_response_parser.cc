@@ -202,8 +202,8 @@ bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
     }
 
     // Then show the candidate window.
-    if (response.has_candidates()) {
-        const mozc::commands::CandidateWindow &candidates = response.candidates();
+    if (response.has_candidate_window()) {
+        const mozc::commands::CandidateWindow &candidates = response.candidate_window();
         ParseCandidates(candidates, fcitx_mozc);
     }
 
