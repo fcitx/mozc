@@ -1,0 +1,41 @@
+name: cmake
+
+on:
+  push:
+    branches:
+      - cmake
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Setup User
+        run: |
+          useradd -m builduser
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm base-devel bazel
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build mozc_data.inc
+        run: |
+          cd src
+          chown -R builduser:builduser .
+          sudo -u builduser bazel build --config oss_linux --host_cxxopt=-Wno-uninitialized //data_manager/oss:mozc_data.inc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mozc_data.inc
+          path: |
+            bazel-bin/data_manager/oss/mozc_data.inc
+
+      - name: Setup tmate session
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
