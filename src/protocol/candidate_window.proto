@@ -29,7 +29,6 @@
 
 // Protocol messages of candidate window to be used for mozc client/server
 // communication and client/renderer communication.
-// TODO(b/372854886): Rename file to candidate_window.proto.
 
 syntax = "proto2";
 
@@ -195,8 +194,7 @@ message CandidateWindow {
   required uint32 position = 6;
 
   // Nested candidates aka cascading window.
-  // TODO(b/372854886): Follow up renaming to sub_candidate_window.
-  optional CandidateWindow subcandidates = 8;
+  optional CandidateWindow sub_candidate_window = 8;
 
   // Usages of candidates.
   optional InformationList usages = 10;

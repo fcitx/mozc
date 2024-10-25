@@ -40,7 +40,7 @@
 #include "base/init_mozc.h"
 #include "base/strings/unicode.h"
 #include "ios/ios_engine.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
     } else {
       std::cout << "----- preedit -----\n"
                 << absl::StrCat(command.output().preedit()) << std::endl;
-      const auto &cands = command.output().candidates();
+      const auto &cands = command.output().candidate_window();
       const int size =
           std::min(absl::GetFlag(FLAGS_candsize), cands.candidate_size());
       for (int i = 0; i < size; ++i) {

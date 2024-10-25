@@ -39,7 +39,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 #include "protocol/renderer_command.pb.h"
 #include "renderer/renderer_interface.h"
@@ -165,8 +165,8 @@ void CandidateWindowHandler::Update(IbusEngineWrapper *engine,
 
 void CandidateWindowHandler::UpdateCursorRect(IbusEngineWrapper *engine) {
   const bool has_candidates =
-      last_update_output_->has_candidates() &&
-      last_update_output_->candidates().candidate_size() > 0;
+      last_update_output_->has_candidate_window() &&
+      last_update_output_->candidate_window().candidate_size() > 0;
   SendUpdateCommand(engine, *last_update_output_, has_candidates);
 }
 

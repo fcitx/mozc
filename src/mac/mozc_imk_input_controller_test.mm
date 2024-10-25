@@ -46,7 +46,7 @@
 #include "absl/time/time.h"
 #include "base/mac/mac_util.h"
 #include "client/client_mock.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "renderer/renderer_interface.h"
 #include "testing/gmock.h"
 #include "testing/googletest.h"
@@ -442,7 +442,7 @@ TEST_F(MozcImkInputControllerTest, UpdateCandidates) {
   // create an output
   commands::Output output;
   // a candidate has to have at least a candidate
-  commands::CandidateWindow *candidate_window = output.mutable_candidates();
+  commands::CandidateWindow *candidate_window = output.mutable_candidate_window();
   candidate_window->set_focused_index(0);
   candidate_window->set_size(1);
   commands::CandidateWindow::Candidate *candidate = candidate_window->add_candidate();

@@ -44,7 +44,7 @@
 #include "base/win32/com.h"
 #include "base/win32/wide_char.h"
 #include "client/client_interface.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 #include "win32/base/conversion_mode_util.h"
 #include "win32/base/deleter.h"
@@ -434,10 +434,10 @@ bool UndoCommint(TipTextService *text_service, ITfContext *context) {
 }
 
 bool IsCandidateFocused(const Output &output, uint32_t candidate_id) {
-  if (!output.has_candidates()) {
+  if (!output.has_candidate_window()) {
     return false;
   }
-  const CandidateWindow &candidate_window = output.candidates();
+  const CandidateWindow &candidate_window = output.candidate_window();
 
   if (!candidate_window.has_focused_index()) {
     return false;

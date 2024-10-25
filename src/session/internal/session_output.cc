@@ -50,7 +50,7 @@
 #include "base/version.h"
 #include "composer/composer.h"
 #include "converter/segments.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 #include "session/internal/candidate_list.h"
 
@@ -192,7 +192,7 @@ void SessionOutput::FillCandidate(
 }
 
 // static
-void SessionOutput::FillCandidates(
+void SessionOutput::FillCandidateWindow(
     const Segment &segment, const CandidateList &candidate_list,
     const size_t position, commands::CandidateWindow *candidate_window_proto) {
   if (candidate_list.focused()) {
@@ -221,12 +221,12 @@ void SessionOutput::FillCandidates(
     FillCandidate(segment, candidate, candidate_proto);
   }
 
-  // Store subcandidates.
+  // Store sub_candidate_window.
   if (candidate_list.focused_candidate().HasSubcandidateList()) {
-    FillCandidates(segment,
-                   candidate_list.focused_candidate().subcandidate_list(),
-                   candidate_list.focused_index(),
-                   candidate_window_proto->mutable_subcandidates());
+    FillCandidateWindow(segment,
+                        candidate_list.focused_candidate().subcandidate_list(),
+                        candidate_list.focused_index(),
+                        candidate_window_proto->mutable_sub_candidate_window());
   }
 
   // Store usages.

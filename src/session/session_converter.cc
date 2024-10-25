@@ -51,7 +51,7 @@
 #include "composer/composer.h"
 #include "converter/converter_interface.h"
 #include "converter/segments.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "request/conversion_request.h"
@@ -1170,7 +1170,7 @@ void SessionConverter::FillOutput(const composer::Composer &composer,
   // Candidate list
   if (CheckState(SUGGESTION | PREDICTION | CONVERSION) &&
       candidate_list_visible_) {
-    FillCandidates(output->mutable_candidates());
+    FillCandidateWindow(output->mutable_candidate_window());
   }
 
   // All candidate words
@@ -1551,7 +1551,7 @@ void SessionConverter::FillResult(commands::Result *result) const {
   *result = result_;
 }
 
-void SessionConverter::FillCandidates(
+void SessionConverter::FillCandidateWindow(
     commands::CandidateWindow *candidate_window) const {
   DCHECK(CheckState(SUGGESTION | PREDICTION | CONVERSION));
   if (!candidate_list_visible_) {
@@ -1577,8 +1577,8 @@ void SessionConverter::FillCandidates(
   }
 
   const Segment &segment = segments_.conversion_segment(segment_index_);
-  SessionOutput::FillCandidates(segment, candidate_list_, position,
-                                candidate_window);
+  SessionOutput::FillCandidateWindow(segment, candidate_list_, position,
+                                     candidate_window);
 
   // Shortcut keys
   if (CheckState(PREDICTION | CONVERSION)) {
@@ -1613,10 +1613,10 @@ void SessionConverter::FillCandidates(
   if (candidate_window->has_usages()) {
     candidate_window->mutable_usages()->set_category(commands::USAGE);
   }
-  if (candidate_window->has_subcandidates()) {
+  if (candidate_window->has_sub_candidate_window()) {
     // TODO(komatsu): Subcandidate is not always for transliterations.
-    // The category of the subcandidates should be checked.
-    candidate_window->mutable_subcandidates()->set_category(
+    // The category of the sub candidate window should be checked.
+    candidate_window->mutable_sub_candidate_window()->set_category(
         commands::TRANSLITERATION);
   }
 
@@ -1625,10 +1625,10 @@ void SessionConverter::FillCandidates(
   if (candidate_window->has_usages()) {
     candidate_window->mutable_usages()->set_display_type(commands::CASCADE);
   }
-  if (candidate_window->has_subcandidates()) {
-    // TODO(komatsu): Subcandidate is not always for transliterations.
-    // The category of the subcandidates should be checked.
-    candidate_window->mutable_subcandidates()->set_display_type(
+  if (candidate_window->has_sub_candidate_window()) {
+    // TODO(komatsu): Sub candidate window is not always for transliterations.
+    // The category of the sub candidate window should be checked.
+    candidate_window->mutable_sub_candidate_window()->set_display_type(
         commands::CASCADE);
   }
 

@@ -37,7 +37,7 @@ syntax = "proto2";
 
 package mozc.commands;
 
-import "protocol/candidates.proto";
+import "protocol/candidate_window.proto";
 import "protocol/config.proto";
 import "protocol/engine_builder.proto";
 import "protocol/user_dictionary_storage.proto";
@@ -657,16 +657,6 @@ message DecoderExperimentParams {
   // Offset to promote Katakana candidates in rewriter.
   // The promotion will be disabled if the value is negative.
   optional int32 katakana_promotion_offset = 83 [default = 5];
-
-  // Modestly promote Katakana next to the literal-best candidate
-  // if literal candidate is not confident, i.e., per-character-cost
-  // is larger than `katakana_promotion_min_per_char_cost`.
-  optional int32 katakana_promotion_min_per_char_cost = 90 [default = 0];
-
-  // Aggressively promote Katakana to the literal-best candidate position.
-  // This mode is valid when katakana_promotion_min_per_char_cost
-  // <= katakana_override_min_per_char_cost
-  optional int32 katakana_override_min_per_char_cost = 91 [default = 0];
 
   // Parameters for realtime conversion
   // (go/mozc-src/converter/immutable_converter.cc for details)
@@ -1339,8 +1329,7 @@ message Output {
   optional bool consumed = 3;
   optional Result result = 4;
   optional Preedit preedit = 5;
-  // TODO(b/372854886): Follow up renaming to candidate_window.
-  optional CandidateWindow candidates = 6;
+  optional CandidateWindow candidate_window = 6;
   optional KeyEvent key = 7;
 
   // when URL is non empty, UI can open the page with a browser,

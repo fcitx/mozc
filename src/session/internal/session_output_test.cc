@@ -38,7 +38,7 @@
 #include "base/text_normalizer.h"
 #include "base/util.h"
 #include "converter/segments.h"
-#include "protocol/candidates.pb.h"
+#include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
 #include "session/internal/candidate_list.h"
 #include "testing/gunit.h"
@@ -120,7 +120,7 @@ TEST(SessionOutputTest, FillCandidate) {
   EXPECT_FALSE(candidate_proto.has_annotation());
 }
 
-TEST(SessionOutputTest, FillCandidates) {
+TEST(SessionOutputTest, FillCandidateWindow) {
   Segment segment;
   CandidateList candidate_list(true);
   CandidateList subcandidate_list(true);
@@ -146,8 +146,8 @@ TEST(SessionOutputTest, FillCandidates) {
   subcandidate_list.AddCandidate(4, "4");
 
   // Focused index = 0. page_size = 9.
-  SessionOutput::FillCandidates(segment, candidate_list, 0,
-                                &candidate_window_proto);
+  SessionOutput::FillCandidateWindow(segment, candidate_list, 0,
+                                     &candidate_window_proto);
   EXPECT_EQ(candidate_window_proto.page_size(), 9);
   EXPECT_EQ(candidate_window_proto.candidate_size(), 3);
   EXPECT_EQ(candidate_window_proto.position(), 0);
@@ -156,14 +156,14 @@ TEST(SessionOutputTest, FillCandidates) {
   EXPECT_EQ(candidate_window_proto.candidate(0).value(), kValues[0]);
   EXPECT_EQ(candidate_window_proto.candidate(1).value(), kValues[1]);
   EXPECT_EQ(candidate_window_proto.candidate(2).value(), kSubcandidateList);
-  EXPECT_FALSE(candidate_window_proto.has_subcandidates());
+  EXPECT_FALSE(candidate_window_proto.has_sub_candidate_window());
 
   // Focused index = 2 with a subcandidate list. page_size = 5.
   candidate_window_proto.Clear();
   candidate_list.MoveToId(3);
   candidate_list.set_page_size(5);
-  SessionOutput::FillCandidates(segment, candidate_list, 1,
-                                &candidate_window_proto);
+  SessionOutput::FillCandidateWindow(segment, candidate_list, 1,
+                                     &candidate_window_proto);
   EXPECT_EQ(candidate_window_proto.page_size(), 5);
   EXPECT_EQ(candidate_window_proto.candidate_size(), 3);
   EXPECT_EQ(candidate_window_proto.position(), 1);
@@ -177,42 +177,46 @@ TEST(SessionOutputTest, FillCandidates) {
   EXPECT_EQ(candidate_window_proto.candidate(2).index(), 2);
 
   // Check the values of the subcandidate list.
-  EXPECT_TRUE(candidate_window_proto.has_subcandidates());
-  EXPECT_EQ(candidate_window_proto.subcandidates().candidate_size(), 3);
-  EXPECT_EQ(candidate_window_proto.subcandidates().position(), 2);
-  EXPECT_TRUE(candidate_window_proto.subcandidates().has_focused_index());
-  EXPECT_EQ(candidate_window_proto.subcandidates().focused_index(), 1);
-  EXPECT_EQ(candidate_window_proto.subcandidates().candidate(0).value(),
+  EXPECT_TRUE(candidate_window_proto.has_sub_candidate_window());
+  EXPECT_EQ(candidate_window_proto.sub_candidate_window().candidate_size(), 3);
+  EXPECT_EQ(candidate_window_proto.sub_candidate_window().position(), 2);
+  EXPECT_TRUE(
+      candidate_window_proto.sub_candidate_window().has_focused_index());
+  EXPECT_EQ(candidate_window_proto.sub_candidate_window().focused_index(), 1);
+  EXPECT_EQ(candidate_window_proto.sub_candidate_window().candidate(0).value(),
             kValues[2]);
-  EXPECT_EQ(candidate_window_proto.subcandidates().candidate(1).value(),
+  EXPECT_EQ(candidate_window_proto.sub_candidate_window().candidate(1).value(),
             kValues[3]);
-  EXPECT_EQ(candidate_window_proto.subcandidates().candidate(2).value(),
+  EXPECT_EQ(candidate_window_proto.sub_candidate_window().candidate(2).value(),
             kValues[4]);
 
   // Check focused_index.
   candidate_window_proto.Clear();
   candidate_list.set_focused(false);
   subcandidate_list.set_focused(true);
-  SessionOutput::FillCandidates(segment, candidate_list, 0,
-                                &candidate_window_proto);
+  SessionOutput::FillCandidateWindow(segment, candidate_list, 0,
+                                     &candidate_window_proto);
   EXPECT_FALSE(candidate_window_proto.has_focused_index());
-  EXPECT_TRUE(candidate_window_proto.subcandidates().has_focused_index());
+  EXPECT_TRUE(
+      candidate_window_proto.sub_candidate_window().has_focused_index());
 
   candidate_window_proto.Clear();
   candidate_list.set_focused(false);
   subcandidate_list.set_focused(false);
-  SessionOutput::FillCandidates(segment, candidate_list, 0,
-                                &candidate_window_proto);
+  SessionOutput::FillCandidateWindow(segment, candidate_list, 0,
+                                     &candidate_window_proto);
   EXPECT_FALSE(candidate_window_proto.has_focused_index());
-  EXPECT_FALSE(candidate_window_proto.subcandidates().has_focused_index());
+  EXPECT_FALSE(
+      candidate_window_proto.sub_candidate_window().has_focused_index());
 
   candidate_window_proto.Clear();
   candidate_list.set_focused(true);
   subcandidate_list.set_focused(false);
-  SessionOutput::FillCandidates(segment, candidate_list, 0,
-                                &candidate_window_proto);
+  SessionOutput::FillCandidateWindow(segment, candidate_list, 0,
+                                     &candidate_window_proto);
   EXPECT_TRUE(candidate_window_proto.has_focused_index());
-  EXPECT_FALSE(candidate_window_proto.subcandidates().has_focused_index());
+  EXPECT_FALSE(
+      candidate_window_proto.sub_candidate_window().has_focused_index());
 }
 
 TEST(SessionOutputTest, FillAllCandidateWords) {
@@ -272,7 +276,7 @@ TEST(SessionOutputTest, FillAllCandidateWords) {
   subsub1.AddCandidate(5, kValues[5]);
   subsub1.AddCandidate(6, kValues[6]);
 
-  // Set forcus to ID:5 / Index:1
+  // Set focus to ID:5 / Index:1
   main_list.set_focused(true);
   sub1.set_focused(true);
   subsub1.set_focused(true);
@@ -283,7 +287,7 @@ TEST(SessionOutputTest, FillAllCandidateWords) {
   EXPECT_EQ(subsub1.focused_index(), 0);
   // End of Initialization
 
-  // Exexcute FillAllCandidateWords
+  // Execute FillAllCandidateWords
   const commands::Category kCategory = commands::PREDICTION;
   SessionOutput::FillAllCandidateWords(segment, main_list, kCategory,
                                        &candidates_proto);
@@ -381,7 +385,7 @@ TEST(SessionOutputTest, FillAllCandidateWords_Attributes) {
   EXPECT_EQ(candidate_list.focused_index(), 0);
   // End of Initialization
 
-  // Exexcute FillAllCandidateWords
+  // Execute FillAllCandidateWords
   const commands::Category kCategory = commands::PREDICTION;
   SessionOutput::FillAllCandidateWords(segment, candidate_list, kCategory,
                                        &candidates_proto);
@@ -877,7 +881,7 @@ TEST(SessionOutputTest, FillAllCandidateWords_NonFocused) {
   candidate->value = "value";
 
   {
-    // Exexcute FillAllCandidateWords
+    // Execute FillAllCandidateWords
     const commands::Category kCategory = commands::SUGGESTION;
     SessionOutput::FillAllCandidateWords(segment, main_list, kCategory,
                                          &candidates_proto);
@@ -887,15 +891,15 @@ TEST(SessionOutputTest, FillAllCandidateWords_NonFocused) {
   }
   {
     main_list.set_focused(true);
-    // Exexcute FillAllCandidateWords
+    // Execute FillAllCandidateWords
     // When the category is SUGGESTION, has_focused_index never return true in
-    // real usage. This is just a testcase.
+    // real usage. This is just a test case.
     const commands::Category kCategory = commands::SUGGESTION;
     SessionOutput::FillAllCandidateWords(segment, main_list, kCategory,
                                          &candidates_proto);
 
-    // Varidation
-    // If a candidate is forcused, true is expected.
+    // Validation
+    // If a candidate is focused, true is expected.
     EXPECT_TRUE(candidates_proto.has_focused_index());
   }
 }
@@ -913,7 +917,7 @@ TEST(SessionOutputTest, FillRemovedCandidateWords) {
   candidate.value = "value";
   segment.removed_candidates_for_debug_.push_back(candidate);
 
-  // Exexcute FillAllCandidateWords
+  // Execute FillAllCandidateWords
   SessionOutput::FillRemovedCandidates(segment, &candidates_proto);
 }
 
