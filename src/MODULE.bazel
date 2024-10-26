@@ -128,9 +128,11 @@ pkg_config_repository(
 )
 
 # Fcitx
-pkg_config_repository(
+new_local_repository(
     name = "fcitx",
-    packages = ["fcitx"],
+    build_file = "BUILD.fcitx.bazel",
+    # This path should be updated per the environment.
+    path = "/usr",  # For Debian
 )
 
 # Fcitx 5
