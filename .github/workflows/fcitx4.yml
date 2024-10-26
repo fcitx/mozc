@@ -39,5 +39,5 @@ jobs:
         run: |
           cd mozc/src/
           chown -R builduser:builduser .
-          sudo -u builduser env _BUILD_TARGETS=unix/fcitx:fcitx-mozc.so ../scripts/build_fcitx5_bazel --cxxopt=-Wno-uninitialized --host_cxxopt=-Wno-uninitialized
+          sudo -u builduser env _BUILD_TARGETS=unix/fcitx:fcitx-mozc.so ../scripts/build_fcitx_bazel --cxxopt=-Wno-uninitialized --host_cxxopt=-Wno-uninitialized
           chown -R root:root .
