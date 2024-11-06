@@ -573,7 +573,7 @@ message Capability {
       [default = NO_TEXT_DELETION_CAPABILITY];
 }
 
-// Next ID: 102
+// Next ID: 103
 // Bundles together some Android experiment flags so that they can be easily
 // retrieved throughout the native code.  These flags are generally specific to
 // the decoder, and are made available when the decoder is initialized.
@@ -666,6 +666,11 @@ message DecoderExperimentParams {
   // default_value: 500*log(500)
   optional int32 realtime_conversion_candidate_checker_cost_max_diff = 99
       [default = 3107];
+
+  // Cost offset for handwriting conversion candidate.
+  // default_value: 10*log(500)
+  optional int32 handwriting_conversion_candidate_cost_offset = 102
+      [default = 1151];
 }
 
 // Clients' request to the server.
@@ -919,7 +924,8 @@ message Request {
   // WARNING: Although cases are mutually exclusive now, they are not
   // necessarily mutually exclusive. However, the current implementation in
   // NormalizationRewriter assumes they are mutually exclusive.
-  // Next ID: 13
+  // LINT.IfChange
+  // Next ID: 14
   enum AdditionalRenderableCharacterGroup {
     // Do not use this case. This case is reserved for future usage.
     // Because 0th element in enum is used as default value, in order to prevend
@@ -956,6 +962,8 @@ message Request {
     EMOJI_15_0 = 9;
     // Emoji 15.1, released September 2023
     EMOJI_15_1 = 12;
+    // Emoji 16.0, released September 2024
+    EMOJI_16_0 = 13;
 
     // Additional Hieroglyphs (U+13000 ~ U+1342E)
     // Unicode 5.2, released October 2009
@@ -964,6 +972,7 @@ message Request {
     // IVS characters in Adobe-Japan1 (U+E0100 ~ U+E010E)
     IVS_CHARACTER = 11;
   }
+  // LINT.ThenChange(rewriter/environmental_filter_rewriter.cc)
 
   // Characters in the union of this list of groups can be contained in
   // candidates.
