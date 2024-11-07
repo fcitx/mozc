@@ -132,7 +132,7 @@ new_local_repository(
     name = "fcitx",
     build_file = "BUILD.fcitx.bazel",
     # This path should be updated per the environment.
-    path = "/usr",  # For Debian
+    path = "/home/csslayer/Develop/build/fcitx",  # For Debian
 )
 
 # Fcitx 5
