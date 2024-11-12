@@ -35,12 +35,10 @@ build for OSS Mozc.
 """
 
 import argparse
-from collections.abc import Iterator
 import dataclasses
 import hashlib
 import os
 import pathlib
-import shutil
 import stat
 import subprocess
 import sys
@@ -81,9 +79,9 @@ class ArchiveInfo:
 
 
 QT6 = ArchiveInfo(
-    url='https://download.qt.io/archive/qt/6.7/6.7.3/submodules/qtbase-everywhere-src-6.7.3.tar.xz',
-    size=49426156,
-    sha256='8ccbb9ab055205ac76632c9eeddd1ed6fc66936fc56afc2ed0fd5d9e23da3097',
+    url='https://download.qt.io/archive/qt/6.8/6.8.0/submodules/qtbase-everywhere-src-6.8.0.tar.xz',
+    size=49819628,
+    sha256='1bad481710aa27f872de6c9f72651f89a6107f0077003d0ebfcc9fd15cba3c75',
 )
 
 NINJA_MAC = ArchiveInfo(
@@ -280,11 +278,12 @@ def update_submodules(dryrun: bool = False) -> None:
     subprocess.run(command, shell=True, check=True)
 
 
-def exec_command(args: list[str], cwd: os.PathLike) -> None:
+def exec_command(args: list[str], cwd: os.PathLike[str]) -> None:
   """Runs the given command then returns the output.
 
   Args:
     args: The command to be executed.
+    cwd: The working directory to execute the command.
 
   Raises:
     ChildProcessError: When the given command cannot be executed.
