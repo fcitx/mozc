@@ -43,6 +43,7 @@
 
 #include "base/init_mozc.h"
 #include "base/process.h"
+#include "engine/engine_factory.h"
 #include "protocol/commands.pb.h"
 #include "unix/fcitx5/i18nwrapper.h"
 #include "unix/fcitx5/mozc_client_pool.h"
@@ -141,10 +142,11 @@ Instance *Init(Instance *instance) {
 MozcEngine::MozcEngine(Instance *instance)
     : instance_(Init(instance)),
       parser_(std::make_unique<MozcResponseParser>(this)),
-      connection_(std::make_unique<MozcConnection>()),
-      client_(connection_->CreateClient()),
+      session_handler_(std::make_unique<mozc::SessionHandler>(
+          mozc::EngineFactory::Create().value())),
+      client_(std::make_unique<MozcClient>(session_handler_.get())),
       factory_([this](InputContext &ic) { return new MozcState(&ic, this); }) {
-  pool_ = std::make_unique<MozcClientPool>(connection_.get(),
+  pool_ = std::make_unique<MozcClientPool>(session_handler_.get(),
                                            GetSharedStatePolicy());
   for (auto command :
        {mozc::commands::DIRECT, mozc::commands::HIRAGANA,
@@ -242,9 +244,6 @@ void MozcEngine::reloadConfig() {
 }
 void MozcEngine::activate(const fcitx::InputMethodEntry & /*entry*/,
                           fcitx::InputContextEvent &event) {
-  if (client_) {
-    client_->EnsureConnection();
-  }
   auto *ic = event.inputContext();
   auto *mozc_state = mozcState(ic);
   mozc_state->FocusIn();

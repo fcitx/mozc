@@ -46,12 +46,12 @@
 #include "client/client_interface.h"
 #include "protocol/commands.pb.h"
 #include "unix/fcitx5/i18nwrapper.h"
+#include "unix/fcitx5/mozc_client.h"
 #include "unix/fcitx5/mozc_client_pool.h"
 #include "unix/fcitx5/mozc_state.h"
 
 namespace fcitx {
 
-class MozcConnection;
 class MozcResponseParser;
 class MozcEngine;
 
@@ -152,6 +152,7 @@ class MozcEngine final : public InputMethodEngineV2 {
   bool deactivating() const { return deactivating_; }
   auto *parser() const { return parser_.get(); }
   auto *pool() const { return pool_.get(); }
+  auto *sessionHandler() const { return session_handler_.get(); }
 
  private:
   void ResetClientPool();
@@ -159,8 +160,8 @@ class MozcEngine final : public InputMethodEngineV2 {
 
   Instance *instance_;
   const std::unique_ptr<MozcResponseParser> parser_;
-  std::unique_ptr<MozcConnection> connection_;
-  std::unique_ptr<mozc::client::ClientInterface> client_;
+  std::unique_ptr<mozc::SessionHandler> session_handler_;
+  std::unique_ptr<MozcClient> client_;
   std::unique_ptr<MozcClientPool> pool_;
   FactoryFor<MozcState> factory_;
   SimpleAction toolAction_;
