@@ -1,5 +1,11 @@
+#include "unix/fcitx5/mozc_client.h"
+
+#include "base/const.h"
+#include "base/process.h"
 #include "base/vlog.h"
+#include "engine/engine_factory.h"
 #include "session/key_info_util.h"
+#include "session/session_handler.h"
 #include "unix/fcitx5/mozc_client_pool.h"
 
 #ifdef _WIN32
@@ -13,10 +19,9 @@
 
 namespace fcitx {
 
-MozcClient::MozcClient(mozc::SessionHandler *session_handler)
-    : id_(0),
-      session_handler_(session_handler),
-      server_status_(SERVER_INVALID_SESSION) {
+static std::unique_ptr<mozc::SessionHandler> session_handler;
+
+MozcClient::MozcClient() : id_(0), server_status_(SERVER_INVALID_SESSION) {
   // Initialize direct_mode_keys_
   mozc::config::Config config;
   mozc::config::ConfigHandler::GetConfig(&config);
@@ -24,12 +29,7 @@ MozcClient::MozcClient(mozc::SessionHandler *session_handler)
   InitRequestForSvsJapanese(true);
 }
 
-MozcClient::~MozcClient() {
-  if (pool_) {
-    pool_->unregisterClient(key_);
-  }
-  DeleteSession();
-}
+MozcClient::~MozcClient() { DeleteSession(); }
 
 void MozcClient::InitRequestForSvsJapanese(bool use_svs) {
   request_ = std::make_unique<mozc::commands::Request>();
@@ -196,7 +196,11 @@ bool MozcClient::Call(const mozc::commands::Input &input,
                       mozc::commands::Output *output) {
   mozc::commands::Command command;
   *command.mutable_input() = input;
-  if (!session_handler_->EvalCommand(&command)) {
+  if (!session_handler) {
+    session_handler = std::make_unique<mozc::SessionHandler>(
+        mozc::EngineFactory::Create().value());
+  }
+  if (!session_handler->EvalCommand(&command)) {
     return false;
   }
   *output = command.output();
@@ -266,12 +270,17 @@ bool MozcClient::LaunchTool(const std::string &mode,
   if (!extra_arg.empty()) {
     absl::StrAppend(&arg, " ", extra_arg);
   }
-  if (!mozc::Process::SpawnMozcProcess(kMozcTool, arg)) {
-    LOG(ERROR) << "Cannot execute: " << kMozcTool << " " << arg;
+  if (!mozc::Process::SpawnMozcProcess(mozc::kMozcTool, arg)) {
+    LOG(ERROR) << "Cannot execute: " << mozc::kMozcTool << " " << arg;
     return false;
   }
 #endif  // _WIN32 || __linux__
 
   return true;
 }
+
+std::unique_ptr<MozcClientInterface> createClient() {
+  return std::make_unique<MozcClient>();
+}
+
 }  // namespace fcitx

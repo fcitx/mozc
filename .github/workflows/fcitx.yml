@@ -50,8 +50,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: 'fcitx5/**/*.tar.*'
-          key: ${{ runner.os }}-${{ hashFiles('fcitx5/src/modules/spell/CMakeLists.txt')
-            }}
+          key: ${{ runner.os }}-${{ hashFiles('fcitx5/src/modules/spell/CMakeLists.txt')}}
       - name: Build and Install fcitx5
         uses: fcitx/github-actions@cmake
         with:
