@@ -41,9 +41,8 @@
 
 namespace fcitx {
 
-MozcClientPool::MozcClientPool(mozc::SessionHandler *session_handler,
-                               PropertyPropagatePolicy initialPolicy)
-    : session_handler_(session_handler), policy_(initialPolicy) {}
+MozcClientPool::MozcClientPool(PropertyPropagatePolicy initialPolicy)
+    : policy_(initialPolicy) {}
 
 void MozcClientPool::setPolicy(PropertyPropagatePolicy policy) {
   if (policy_ == policy) {
@@ -65,7 +64,8 @@ std::string uuidKey(InputContext *ic) {
   return key;
 }
 
-std::shared_ptr<MozcClient> MozcClientPool::requestClient(InputContext *ic) {
+std::shared_ptr<MozcClientInterface> MozcClientPool::requestClient(
+    InputContext *ic) {
   std::string key;
   switch (policy_) {
     case PropertyPropagatePolicy::No:
@@ -86,7 +86,7 @@ std::shared_ptr<MozcClient> MozcClientPool::requestClient(InputContext *ic) {
   if (iter != clients_.end()) {
     return iter->second.lock();
   }
-  auto newclient = std::make_shared<MozcClient>(session_handler_);
+  std::shared_ptr<MozcClientInterface> newclient = createClient();
   // Currently client capability is fixed.
   mozc::commands::Capability capability;
   capability.set_text_deletion(
@@ -96,8 +96,8 @@ std::shared_ptr<MozcClient> MozcClientPool::requestClient(InputContext *ic) {
   return newclient;
 }
 
-void MozcClientPool::registerClient(const std::string &key,
-                                    std::shared_ptr<MozcClient> client) {
+void MozcClientPool::registerClient(
+    const std::string &key, std::shared_ptr<MozcClientInterface> client) {
   assert(!key.empty());
   client->pool_ = this;
   client->key_ = key;

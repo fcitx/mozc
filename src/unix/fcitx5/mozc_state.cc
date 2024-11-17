@@ -66,7 +66,9 @@ MozcState::MozcState(InputContext* ic, MozcEngine* engine)
   // mozc::Logging::SetVerboseLevel(1);
   MOZC_VLOG(1) << "MozcState created.";
 
-  UpdatePreeditMethod();
+  if (GetClient()->EnsureConnection()) {
+    UpdatePreeditMethod();
+  }
 
   std::string error;
   mozc::commands::Output raw_response;
@@ -114,7 +116,14 @@ bool MozcState::TrySendKeyEvent(InputContext* ic,
   DCHECK(out);
   DCHECK(out_error);
 
+  // Call EnsureConnection just in case MozcState::MozcConnection() fails
+  // to establish the server connection.
   auto* client = GetClient();
+  if (!client->EnsureConnection()) {
+    *out_error = "EnsureConnection failed";
+    MOZC_VLOG(1) << "EnsureConnection failed";
+    return false;
+  }
 
   if ((composition_mode_ == mozc::commands::DIRECT) &&
       !client->IsDirectModeCommand(event)) {
@@ -454,7 +463,7 @@ void MozcState::DisplayUsage() {
   ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
 }
 
-MozcClient* MozcState::GetClient() const {
+MozcClientInterface* MozcState::GetClient() const {
   if (!client_) {
     client_ = engine_->pool()->requestClient(ic_);
   }

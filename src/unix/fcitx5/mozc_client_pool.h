@@ -37,29 +37,27 @@
 #include <string>
 #include <unordered_map>
 
-#include "unix/fcitx5/mozc_client.h"
+#include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 
 class MozcClientPool {
-  friend class MozcClient;
+  friend class MozcClientInterface;
 
  public:
-  MozcClientPool(mozc::SessionHandler *session_handler,
-                 PropertyPropagatePolicy initialPolicy);
+  MozcClientPool(PropertyPropagatePolicy initialPolicy);
 
   void setPolicy(PropertyPropagatePolicy policy);
   PropertyPropagatePolicy policy() const { return policy_; }
 
-  std::shared_ptr<MozcClient> requestClient(InputContext *ic);
+  std::shared_ptr<MozcClientInterface> requestClient(InputContext *ic);
 
  private:
   void registerClient(const std::string &key,
-                      std::shared_ptr<MozcClient> client);
+                      std::shared_ptr<MozcClientInterface> client);
   void unregisterClient(const std::string &key);
-  mozc::SessionHandler *session_handler_;
   PropertyPropagatePolicy policy_;
-  std::unordered_map<std::string, std::weak_ptr<MozcClient>> clients_;
+  std::unordered_map<std::string, std::weak_ptr<MozcClientInterface>> clients_;
 };
 
 }  // namespace fcitx

@@ -6,30 +6,62 @@ load(
 
 package(default_visibility = ["//:__subpackages__"])
 
-mozc_cc_library(
-    name = "mozc_connection",
-    srcs = ["mozc_connection.cc"],
-    hdrs = ["mozc_connection.h"],
-    deps = [
-        ":fcitx_key_util",
-        ":surrounding_text_util",
-        "//base:port",
-        "//base:util",
-        "//base:vlog",
-        "//client",
-        "//protocol:commands_cc_proto",
-    ],
+config_setting(
+    name = "with_server",
+    values = {"define": "server=1"},
+)
+
+config_setting(
+    name = "without_server",
+    values = {"define": "server=0"},
 )
 
 mozc_cc_library(
     name = "mozc_client_pool",
-    srcs = ["mozc_client_pool.cc"],
-    hdrs = ["mozc_client_pool.h"],
+    srcs = [
+        "mozc_client_pool.cc",
+        "mozc_client_interface.cc",
+    ],
+    hdrs = [
+        "mozc_client_pool.h",
+        "mozc_client_interface.h",
+    ],
     deps = [
-        ":mozc_connection",
         "//client:client_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
         "@fcitx5",
     ],
+)
+
+mozc_cc_library(
+    name = "mozc_client_impl",
+    srcs = select({
+        ":with_server": ["mozc_client_holder.cc"],
+        ":without_server": ["mozc_client.cc"],
+    }),
+    hdrs = select({
+        ":with_server": ["mozc_client_holder.h"],
+        ":without_server": ["mozc_client.h"],
+    }),
+    deps = [
+        ":mozc_client_pool"
+    ] + select({
+        ":with_server": [
+            "//client",
+            "//ipc:ipc",
+        ],
+        ":without_server": [
+            "//base:const",
+            "//base:run_level",
+            "//base:process",
+            "//base:vlog",
+            "//composer:key_event_util",
+            "//engine:engine_factory",
+            "//session:key_info_util",
+            "//session:session_handler",
+        ],
+    }),
 )
 
 mozc_cc_library(
@@ -58,7 +90,7 @@ mozc_cc_library(
         ":fcitx_key_util",
         ":i18nwrapper",
         ":mozc_client_pool",
-        ":mozc_connection",
+        ":mozc_client_impl",
         ":surrounding_text_util",
         "//base:init_mozc",
         "//base:port",

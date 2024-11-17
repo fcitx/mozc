@@ -41,7 +41,7 @@
 
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
-#include "unix/fcitx5/mozc_client.h"
+#include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 inline const int32_t kBadCandidateId = -12345;
@@ -95,7 +95,7 @@ class MozcState : public InputContextProperty {
     return composition_mode_;
   }
 
-  MozcClient *GetClient() const;
+  MozcClientInterface *GetClient() const;
   void ReleaseClient();
 
   bool SendCommand(const mozc::commands::SessionCommand &session_command,
@@ -146,7 +146,7 @@ class MozcState : public InputContextProperty {
 
   InputContext *ic_;
   MozcEngine *engine_;
-  mutable std::shared_ptr<MozcClient> client_;
+  mutable std::shared_ptr<MozcClientInterface> client_;
 
   mozc::commands::CompositionMode composition_mode_ = mozc::commands::HIRAGANA;
   mozc::config::Config::PreeditMethod preedit_method_ =
