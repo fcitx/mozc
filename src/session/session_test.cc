@@ -563,7 +563,7 @@ class SessionTest : public testing::TestWithTempUserProfile {
 
   ConversionRequest CreateConversionRequest(const Session &session) {
     const ImeContext &context = session.context();
-    const ConversionRequest request(&context.composer(), &context.GetRequest(),
+    const ConversionRequest request(context.composer(), &context.GetRequest(),
                                     &context.client_context(),
                                     &context.GetConfig());
     return request;
@@ -1244,8 +1244,8 @@ TEST_F(SessionTest, ResetFocusedSegmentAfterCommit) {
   candidate->value = "中野です";
   candidate = segment->add_candidate();
   candidate->value = "なかのです";
-  ConversionRequest request = CreateConversionRequest(session);
-  FillT13Ns(request, &segments);
+  const ConversionRequest request1 = CreateConversionRequest(session);
+  FillT13Ns(request1, &segments);
   EXPECT_CALL(converter, StartConversion(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
 
@@ -1296,8 +1296,8 @@ TEST_F(SessionTest, ResetFocusedSegmentAfterCommit) {
   candidate = segment->add_candidate();
   candidate->value = "亜";
 
-  request = CreateConversionRequest(session);
-  FillT13Ns(request, &segments);
+  const ConversionRequest request2 = CreateConversionRequest(session);
+  FillT13Ns(request2, &segments);
   EXPECT_CALL(converter, StartConversion(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
 
@@ -3941,7 +3941,8 @@ TEST_F(SessionTest, Shortcut) {
     Segments segments;
     SetAiueo(&segments);
     const ImeContext &context = session.context();
-    const ConversionRequest request(&context.composer(), &context.GetRequest(),
+    const ConversionRequest request(context.composer(), &context.GetRequest(),
+                                    &context.client_context(),
                                     &context.GetConfig());
     FillT13Ns(request, &segments);
     EXPECT_CALL(converter, StartConversion(_, _))

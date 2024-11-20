@@ -31,9 +31,7 @@
 #define MOZC_REQUEST_CONVERSION_REQUEST_H_
 
 #include <cstddef>
-#include <type_traits>
 
-#include "absl/base/attributes.h"
 #include "absl/log/check.h"
 #include "composer/composer.h"
 #include "config/config_handler.h"
@@ -76,41 +74,38 @@ class ConversionRequest {
   };
 
   ConversionRequest()
-      : ConversionRequest(nullptr, &commands::Request::default_instance(),
-                          &commands::Context::default_instance(),
-                          &config::ConfigHandler::DefaultConfig()) {}
-  // TODO: b/329532981 - Replace with the another constructor and remove this.
-  ABSL_DEPRECATED("Use the constructor with Context")
-  ConversionRequest(const composer::Composer *c,
-                    const commands::Request *request,
-                    const config::Config *config)
-      : ConversionRequest(c, request, &commands::Context::default_instance(),
-                          config) {}
-  ConversionRequest(const composer::Composer *c,
+      : request_(&commands::Request::default_instance()),
+        context_(&commands::Context::default_instance()),
+        config_(&config::ConfigHandler::DefaultConfig()) {}
+
+  ConversionRequest(const composer::Composer &composer,
                     const commands::Request *request,
                     const commands::Context *context,
                     const config::Config *config)
-      : request_type_(ConversionRequest::CONVERSION),
-        composer_(c),
+      : has_composer_(true),
+        composer_(composer.CreateComposerData()),
         request_(request),
         context_(context),
         config_(config) {}
 
-  // Copyable.
+  // Copyable and movable.
   ConversionRequest(const ConversionRequest &) = default;
   ConversionRequest &operator=(const ConversionRequest &) = default;
+  ConversionRequest(ConversionRequest &&) = default;
+  ConversionRequest &operator=(ConversionRequest &&) = default;
 
   RequestType request_type() const { return request_type_; }
   void set_request_type(RequestType request_type) {
     request_type_ = request_type;
   }
 
-  bool has_composer() const { return composer_ != nullptr; }
-  const composer::Composer &composer() const {
-    DCHECK(composer_);
-    return *composer_;
+  bool has_composer() const { return has_composer_; }
+  const composer::ComposerData &composer() const {
+    DCHECK(has_composer_);
+    return composer_;
   }
-  void reset_composer() { composer_ = nullptr; }
+
+  void reset_composer() { has_composer_ = false; }
 
   bool use_actual_converter_for_realtime_conversion() const {
     return use_actual_converter_for_realtime_conversion_;
@@ -212,7 +207,8 @@ class ConversionRequest {
 
   // Required fields
   // Input composer to generate a key for conversion, suggestion, etc.
-  const composer::Composer *composer_;
+  bool has_composer_ = false;
+  composer::ComposerData composer_;
 
   // Input request.
   const commands::Request *request_;
@@ -262,12 +258,6 @@ class ConversionRequest {
   // this structure, e.g., Segments::request_type_.
   // Also, a key for conversion is eligible to live in this class.
 };
-
-// ConversionRequest is currently trivially copyable and destructible.
-// Make it movable if appropriate when you add non-trivial data members.
-static_assert(std::is_trivially_copyable_v<ConversionRequest>);
-static_assert(std::is_trivially_destructible_v<ConversionRequest>);
-
 }  // namespace mozc
 
 #endif  // MOZC_REQUEST_CONVERSION_REQUEST_H_
