@@ -115,21 +115,21 @@ class ConversionRequest {
 
   ConversionRequest()
       : ConversionRequest(false, composer::Composer::CreateEmptyComposerData(),
-                          &commands::Request::default_instance(),
-                          &commands::Context::default_instance(),
+                          commands::Request::default_instance(),
+                          commands::Context::default_instance(),
                           &config::ConfigHandler::DefaultConfig(), Params()) {}
 
   ConversionRequest(const composer::Composer &composer,
-                    const commands::Request *request,
-                    const commands::Context *context,
+                    const commands::Request &request,
+                    const commands::Context &context,
                     const config::Config *config)
-      : ConversionRequest(true, composer.CreateComposerData(), request, context,
-                          config, Params()) {}
+      : ConversionRequest(true, composer.CreateComposerData(),
+                          request, context, config, Params()) {}
 
   ConversionRequest(bool has_composer,
                     const composer::ComposerData &composer,
-                    const commands::Request *request,
-                    const commands::Context *context,
+                    const commands::Request &request,
+                    const commands::Context &context,
                     const config::Config *config,
                     Params params)
       : has_composer_(has_composer),
@@ -188,13 +188,11 @@ class ConversionRequest {
   }
 
   const commands::Request &request() const {
-    DCHECK(request_);
-    return *request_;
+    return request_;
   }
 
   const commands::Context &context() const {
-    DCHECK(context_);
-    return *context_;
+    return context_;
   }
 
   const config::Config &config() const {
@@ -212,7 +210,7 @@ class ConversionRequest {
   }
 
   bool IsKanaModifierInsensitiveConversion() const {
-    return request_->kana_modifier_insensitive_conversion() &&
+    return request_.kana_modifier_insensitive_conversion() &&
            config_->use_kana_modifier_insensitive_conversion() &&
            params_.kana_modifier_insensitive_conversion_;
   }
@@ -264,10 +262,10 @@ class ConversionRequest {
   const composer::ComposerData composer_;
 
   // Input request.
-  const commands::Request *request_;
+  const commands::Request request_;
 
   // Input context.
-  const commands::Context *context_;
+  const commands::Context context_;
 
   // Input config.
   const config::Config *config_;
@@ -284,23 +282,20 @@ class ConversionRequestBuilder {
 
     // TODO(b/365909808): Remove using default_instance() when the variables are
     // set copied constat values instead of pointers.
-    const commands::Request *request =
-        request_ != nullptr ? request_ : &commands::Request::default_instance();
-    const commands::Context *context =
-        context_ != nullptr ? context_ : &commands::Context::default_instance();
     const config::Config *config =
         config_ != nullptr ? config_ : &config::ConfigHandler::DefaultConfig();
 
-    return ConversionRequest(has_composer_, std::move(composer_data_), request,
-                             context, config, std::move(params_));
+    return ConversionRequest(has_composer_, std::move(composer_data_),
+                             std::move(request_), std::move(context_), config,
+                             std::move(params_));
   }
 
   ConversionRequestBuilder &SetConversionRequest(
       const ConversionRequest &base_convreq) {
     has_composer_ = base_convreq.has_composer();
     composer_data_ = base_convreq.composer();
-    request_ = &base_convreq.request();
-    context_ = &base_convreq.context();
+    request_ = base_convreq.request();
+    context_ = base_convreq.context();
     config_ = &base_convreq.config();
     params_ = base_convreq.params();
     return *this;
@@ -318,11 +313,11 @@ class ConversionRequestBuilder {
     return *this;
   }
   ConversionRequestBuilder &SetRequest(const commands::Request &request) {
-    request_ = &request;
+    request_ = request;
     return *this;
   }
   ConversionRequestBuilder &SetContext(const commands::Context &context) {
-    context_ = &context;
+    context_ = context;
     return *this;
   }
   ConversionRequestBuilder &SetConfig(const config::Config &config) {
@@ -338,8 +333,8 @@ class ConversionRequestBuilder {
   bool buildable_ = true;
   bool has_composer_ = false;
   composer::ComposerData composer_data_;
-  const commands::Request *request_ = nullptr;
-  const commands::Context *context_ = nullptr;
+  commands::Request request_;
+  commands::Context context_;
   const config::Config *config_ = nullptr;
   ConversionRequest::Params params_;
 };
