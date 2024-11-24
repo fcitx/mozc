@@ -39,7 +39,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
@@ -61,10 +60,6 @@
 #include "session/session_usage_stats_util.h"
 #include "transliteration/transliteration.h"
 #include "usage_stats/usage_stats.h"
-
-ABSL_FLAG(bool, use_actual_converter_for_realtime_conversion, true,
-          "If true, use the actual (non-immutable) converter for real "
-          "time conversion.");
 
 namespace mozc {
 namespace session {
@@ -115,12 +110,6 @@ int32_t CalculateCursorOffset(absl::string_view committed_text) {
   return Util::IsBracketPairText(committed_text) ? -1 : 0;
 }
 
-void SetUseActualConverterForRealtimeConversion(
-    const Request &request, ConversionRequest *conversion_request) {
-  conversion_request->set_use_actual_converter_for_realtime_conversion(
-      absl::GetFlag(FLAGS_use_actual_converter_for_realtime_conversion));
-}
-
 // Make a segment having one candidate. The value of candidate is the
 // same as the preedit.  This function can be used for error handling.
 // When the converter fails, we can call this function to make a
@@ -138,6 +127,12 @@ void InitSegmentsFromString(std::string key, std::string preedit,
   c->content_key = std::move(key);
 }
 
+void SetConversionPreferences(
+    const ConversionPreferences &preferences, Segments &segments,
+    ConversionRequest::Options &request) {
+  segments.set_max_history_segments_size(preferences.max_history_size);
+  request.enable_user_history_for_conversion = preferences.use_history;
+}
 }  // namespace
 
 SessionConverter::SessionConverter(const ConverterInterface *converter,
@@ -185,9 +180,12 @@ bool SessionConverter::ConvertWithPreferences(
 
   const commands::Context context;
   DCHECK(request_);
-  ConversionRequest conversion_request(composer, *request_, context, config_);
-  SetConversionPreferences(preferences, &segments_, &conversion_request);
-  SetRequestType(ConversionRequest::CONVERSION, &conversion_request);
+  DCHECK(config_);
+  ConversionRequest::Options options;
+  SetConversionPreferences(preferences, segments_, options);
+  SetRequestType(ConversionRequest::CONVERSION, options);
+  const ConversionRequest conversion_request(composer, *request_, context,
+                                             *config_, std::move(options));
 
   if (!converter_->StartConversion(conversion_request, &segments_)) {
     LOG(WARNING) << "StartConversion() failed";
@@ -378,8 +376,9 @@ bool SessionConverter::SwitchKanaType(const composer::Composer &composer) {
       GetPreedit(0, segments_.conversion_segments_size(), &composition);
       const commands::Context context;
       DCHECK(request_);
+      DCHECK(config_);
       const ConversionRequest conversion_request(composer, *request_, context,
-                                                 config_);
+                                                 *config_);
       if (!converter_->ResizeSegment(&segments_, conversion_request, 0,
                                      Util::CharsLen(composition))) {
         LOG(WARNING) << "ResizeSegment failed for segments.";
@@ -461,11 +460,9 @@ bool SessionConverter::SuggestWithPreferences(
     return false;
   }
 
-  DCHECK(request_);
-  ConversionRequest conversion_request(composer, *request_, context, config_);
   // Initialize the conversion request and segments for suggestion.
-  SetConversionPreferences(preferences, &segments_, &conversion_request);
-
+  ConversionRequest::Options options;
+  SetConversionPreferences(preferences, segments_, options);
   segments_.clear_conversion_segments();
 
   const size_t cursor = composer.GetCursor();
@@ -482,21 +479,25 @@ bool SessionConverter::SuggestWithPreferences(
   bool use_partial_composition = (cursor != composer.GetLength() &&
                                   cursor != 0 && request_->mixed_conversion());
   // Setup request based on the above two flags.
-  SetUseActualConverterForRealtimeConversion(*request_, &conversion_request);
+  options.use_actual_converter_for_realtime_conversion = true;
   if (use_partial_composition) {
     // Auto partial suggestion should be activated only when we use all the
     // composition.
     // Note: For now, use_partial_composition is only for mobile typing.
-    SetRequestType(ConversionRequest::PARTIAL_PREDICTION, &conversion_request);
+    SetRequestType(ConversionRequest::PARTIAL_PREDICTION, options);
   } else {
-    conversion_request.set_create_partial_candidates(
-        request_->auto_partial_suggestion());
+    options.create_partial_candidates = request_->auto_partial_suggestion();
     if (use_prediction_candidate) {
-      SetRequestType(ConversionRequest::PREDICTION, &conversion_request);
+      SetRequestType(ConversionRequest::PREDICTION, options);
     } else {
-      SetRequestType(ConversionRequest::SUGGESTION, &conversion_request);
+      SetRequestType(ConversionRequest::SUGGESTION, options);
     }
   }
+
+  DCHECK(config_);
+  const ConversionRequest conversion_request(composer, *request_, context,
+                                             *config_, std::move(options));
+
   // Start actual suggestion/prediction.
   bool result;
   if (use_partial_composition) {
@@ -575,12 +576,15 @@ bool SessionConverter::PredictWithPreferences(
   ResetResult();
 
   // Initialize the segments and conversion_request for prediction
+  ConversionRequest::Options options;
+  SetConversionPreferences(preferences, segments_, options);
   const commands::Context context;
   DCHECK(request_);
-  ConversionRequest conversion_request(composer, *request_, context, config_);
-  SetConversionPreferences(preferences, &segments_, &conversion_request);
-  SetRequestType(ConversionRequest::PREDICTION, &conversion_request);
-  SetUseActualConverterForRealtimeConversion(*request_, &conversion_request);
+  DCHECK(config_);
+  SetRequestType(ConversionRequest::PREDICTION, options);
+  options.use_actual_converter_for_realtime_conversion = true;
+  const ConversionRequest conversion_request(composer, *request_, context,
+                                             *config_, std::move(options));
 
   const bool predict_first =
       !CheckState(PREDICTION) && IsEmptySegment(previous_suggestions_);
@@ -687,7 +691,9 @@ void SessionConverter::Commit(const composer::Composer &composer,
   }
   CommitUsageStats(state_, context);
   DCHECK(request_);
-  ConversionRequest conversion_request(composer, *request_, context, config_);
+  DCHECK(config_);
+  const ConversionRequest conversion_request(composer, *request_, context,
+                                             *config_);
   converter_->FinishConversion(conversion_request, &segments_);
   ResetState();
 }
@@ -736,7 +742,9 @@ bool SessionConverter::CommitSuggestionInternal(
       return false;
     }
     CommitUsageStats(SessionConverterInterface::SUGGESTION, context);
-    ConversionRequest conversion_request(composer, *request_, context, config_);
+    DCHECK(config_);
+    const ConversionRequest conversion_request(composer, *request_, context,
+                                               *config_);
     converter_->FinishConversion(conversion_request, &segments_);
     DCHECK_EQ(0, segments_.conversion_segments_size());
     ResetState();
@@ -860,11 +868,14 @@ void SessionConverter::CommitPreedit(const composer::Composer &composer,
                          &segments_);
   CommitUsageStats(SessionConverterInterface::COMPOSITION, context);
   DCHECK(request_);
-  ConversionRequest conversion_request(composer, *request_, context, config_);
+  DCHECK(config_);
   // the request mode is CONVERSION, as the user experience
   // is similar to conversion. UserHistoryPredictor distinguishes
   // CONVERSION from SUGGESTION now.
-  SetRequestType(ConversionRequest::CONVERSION, &conversion_request);
+  ConversionRequest::Options options;
+  SetRequestType(ConversionRequest::CONVERSION, options);
+  const ConversionRequest conversion_request(composer, *request_, context,
+                                             *config_, std::move(options));
   converter_->FinishConversion(conversion_request, &segments_);
   ResetState();
 }
@@ -963,8 +974,9 @@ void SessionConverter::ResizeSegmentWidth(const composer::Composer &composer,
 
   const commands::Context context;
   DCHECK(request_);
+  DCHECK(config_);
   const ConversionRequest conversion_request(composer, *request_, context,
-                                             config_);
+                                             *config_);
   if (!converter_->ResizeSegment(&segments_, conversion_request, segment_index_,
                                  delta)) {
     return;
@@ -1200,14 +1212,6 @@ void SessionConverter::FillOutput(const composer::Composer &composer,
         segments_.conversion_segment(segment_index_),
         output->mutable_removed_candidate_words_for_debug());
   }
-}
-
-// static
-void SessionConverter::SetConversionPreferences(
-    const ConversionPreferences &preferences, Segments *segments,
-    ConversionRequest *request) {
-  segments->set_max_history_segments_size(preferences.max_history_size);
-  request->set_enable_user_history_for_conversion(preferences.use_history);
 }
 
 SessionConverter *SessionConverter::Clone() const {
@@ -1883,9 +1887,9 @@ void SessionConverter::CommitUsageStatsWithSegmentsSize(
 // Sets request type and update the session_converter's state
 void SessionConverter::SetRequestType(
     ConversionRequest::RequestType request_type,
-    ConversionRequest *conversion_request) {
+    ConversionRequest::Options &options) {
   request_type_ = request_type;
-  conversion_request->set_request_type(request_type);
+  options.request_type = request_type;
 }
 
 Config SessionConverter::CreateIncognitoConfig() {

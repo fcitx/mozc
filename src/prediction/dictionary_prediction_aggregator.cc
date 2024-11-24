@@ -206,9 +206,12 @@ size_t GetDefaultSizeForRealtimeCandidates(bool is_long_key) {
 
 ConversionRequest GetConversionRequestForRealtimeCandidates(
     const ConversionRequest &request, size_t realtime_candidates_size) {
-  ConversionRequest ret = request;
-  ret.set_max_conversion_candidates_size(realtime_candidates_size);
-  return ret;
+  ConversionRequest::Options options = request.options();
+  options.max_conversion_candidates_size = realtime_candidates_size;
+  return ConversionRequestBuilder()
+      .SetConversionRequest(request)
+      .SetOptions(std::move(options))
+      .Build();
 }
 
 Segments GetSegmentsForRealtimeCandidatesGeneration(
@@ -818,15 +821,19 @@ bool DictionaryPredictionAggregator::PushBackTopConversionResult(
   DCHECK_EQ(1, segments.conversion_segments_size());
 
   Segments tmp_segments = GetSegmentsForRealtimeCandidatesGeneration(segments);
-  ConversionRequest tmp_request = request;
-  tmp_request.set_max_conversion_candidates_size(20);
-  tmp_request.set_composer_key_selection(ConversionRequest::PREDICTION_KEY);
+  ConversionRequest::Options options;
+  options.max_conversion_candidates_size = 20;
+  options.composer_key_selection = ConversionRequest::PREDICTION_KEY;
   // Some rewriters cause significant performance loss. So we skip them.
-  tmp_request.set_skip_slow_rewriters(true);
+  options.skip_slow_rewriters = true;
   // This method emulates usual converter's behavior so here disable
   // partial candidates.
-  tmp_request.set_create_partial_candidates(false);
-  tmp_request.set_request_type(ConversionRequest::CONVERSION);
+  options.create_partial_candidates = false;
+  options.request_type = ConversionRequest::CONVERSION;
+  const ConversionRequest tmp_request = ConversionRequestBuilder()
+                                            .SetConversionRequest(request)
+                                            .SetOptions(std::move(options))
+                                            .Build();
   if (!converter_->StartConversion(tmp_request, &tmp_segments)) {
     return false;
   }
