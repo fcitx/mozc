@@ -207,11 +207,11 @@ TEST_F(TransliterationRewriterTest, KeyOfT13nFromComposerTest) {
 
   commands::Request input;
   input.set_mixed_conversion(true);
-  ConversionRequest request = ConversionRequestBuilder()
+  const ConversionRequest request = ConversionRequestBuilder()
                                   .SetComposer(composer)
                                   .SetRequest(input)
+                                  .SetRequestType(ConversionRequest::SUGGESTION)
                                   .Build();
-  request.set_request_type(ConversionRequest::SUGGESTION);
   {
     // Although the segment key is "っ" as a partial string of the full
     // composition, the transliteration key should be "っsh" as the
@@ -448,9 +448,8 @@ TEST_F(TransliterationRewriterTest, NoKeyWithComposerTest) {
   Segment *segment = segments.add_segment();
   CHECK(segment);
 
-  const commands::Context context;
-  const ConversionRequest request(composer, default_request(), context,
-                                  default_config());
+  const ConversionRequest request =
+      ConversionRequestBuilder().SetComposer(composer).Build();
 
   segment->set_key("あ");
   segment = segments.add_segment();
@@ -518,7 +517,7 @@ TEST_F(TransliterationRewriterTest, MobileT13nTestWith12KeysHiragana) {
   segment->set_key("い、");
   const commands::Context context;
   const ConversionRequest rewrite_request(composer, request, context,
-                                          default_config());
+                                          default_config(), {});
   EXPECT_TRUE(t13n_rewriter->Rewrite(rewrite_request, &segments));
 
   // Do not want to show raw keys for implementation
@@ -849,11 +848,12 @@ TEST_F(TransliterationRewriterTest, T13nOnSuggestion) {
     Segments segments;
     Segment *segment = segments.add_segment();
     segment->set_key(kXtsu);
-    ConversionRequest request = ConversionRequestBuilder()
-                                    .SetComposer(composer)
-                                    .SetRequest(client_request)
-                                    .Build();
-    request.set_request_type(ConversionRequest::SUGGESTION);
+    const ConversionRequest request =
+        ConversionRequestBuilder()
+            .SetComposer(composer)
+            .SetRequest(client_request)
+            .SetRequestType(ConversionRequest::SUGGESTION)
+            .Build();
     EXPECT_TRUE(t13n_rewriter->Rewrite(request, &segments));
 
     const Segment &seg = segments.conversion_segment(0);
@@ -883,11 +883,12 @@ TEST_F(TransliterationRewriterTest, T13nOnPartialSuggestion) {
     Segments segments;
     Segment *segment = segments.add_segment();
     segment->set_key(kXtsu);
-    ConversionRequest request = ConversionRequestBuilder()
-                                    .SetComposer(composer)
-                                    .SetRequest(client_request)
-                                    .Build();
-    request.set_request_type(ConversionRequest::PARTIAL_SUGGESTION);
+    const ConversionRequest request =
+        ConversionRequestBuilder()
+            .SetComposer(composer)
+            .SetRequest(client_request)
+            .SetRequestType(ConversionRequest::SUGGESTION)
+            .Build();
     EXPECT_TRUE(t13n_rewriter->Rewrite(request, &segments));
 
     const Segment &seg = segments.conversion_segment(0);

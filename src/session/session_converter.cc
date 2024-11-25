@@ -126,13 +126,6 @@ void InitSegmentsFromString(std::string key, std::string preedit,
   c->key = key;
   c->content_key = std::move(key);
 }
-
-void SetConversionPreferences(
-    const ConversionPreferences &preferences, Segments &segments,
-    ConversionRequest::Options &request) {
-  segments.set_max_history_segments_size(preferences.max_history_size);
-  request.enable_user_history_for_conversion = preferences.use_history;
-}
 }  // namespace
 
 SessionConverter::SessionConverter(const ConverterInterface *converter,
@@ -150,7 +143,6 @@ SessionConverter::SessionConverter(const ConverterInterface *converter,
       client_revision_(0),
       candidate_list_visible_(false) {
   conversion_preferences_.use_history = true;
-  conversion_preferences_.max_history_size = kDefaultMaxHistorySize;
   conversion_preferences_.request_suggestion = true;
   candidate_list_.set_page_size(request->candidate_page_size());
   SetConfig(config);
@@ -182,7 +174,7 @@ bool SessionConverter::ConvertWithPreferences(
   DCHECK(request_);
   DCHECK(config_);
   ConversionRequest::Options options;
-  SetConversionPreferences(preferences, segments_, options);
+  options.enable_user_history_for_conversion = preferences.use_history;
   SetRequestType(ConversionRequest::CONVERSION, options);
   const ConversionRequest conversion_request(composer, *request_, context,
                                              *config_, std::move(options));
@@ -378,7 +370,7 @@ bool SessionConverter::SwitchKanaType(const composer::Composer &composer) {
       DCHECK(request_);
       DCHECK(config_);
       const ConversionRequest conversion_request(composer, *request_, context,
-                                                 *config_);
+                                                 *config_, {});
       if (!converter_->ResizeSegment(&segments_, conversion_request, 0,
                                      Util::CharsLen(composition))) {
         LOG(WARNING) << "ResizeSegment failed for segments.";
@@ -462,7 +454,7 @@ bool SessionConverter::SuggestWithPreferences(
 
   // Initialize the conversion request and segments for suggestion.
   ConversionRequest::Options options;
-  SetConversionPreferences(preferences, segments_, options);
+  options.enable_user_history_for_conversion = preferences.use_history;
   segments_.clear_conversion_segments();
 
   const size_t cursor = composer.GetCursor();
@@ -475,9 +467,11 @@ bool SessionConverter::SuggestWithPreferences(
   //                  prediction API.
   // - (true, true): Mobile suggestion with richer candidates through
   //                  prediction API, using partial composition text.
-  bool use_prediction_candidate = request_->mixed_conversion();
-  bool use_partial_composition = (cursor != composer.GetLength() &&
-                                  cursor != 0 && request_->mixed_conversion());
+  const bool use_prediction_candidate = request_->mixed_conversion();
+  const bool use_partial_composition =
+      (cursor != composer.GetLength() && cursor != 0 &&
+       request_->mixed_conversion());
+
   // Setup request based on the above two flags.
   options.use_actual_converter_for_realtime_conversion = true;
   if (use_partial_composition) {
@@ -499,16 +493,7 @@ bool SessionConverter::SuggestWithPreferences(
                                              *config_, std::move(options));
 
   // Start actual suggestion/prediction.
-  bool result;
-  if (use_partial_composition) {
-    result = converter_->StartPartialPrediction(conversion_request, &segments_);
-  } else {
-    if (use_prediction_candidate) {
-      result = converter_->StartPrediction(conversion_request, &segments_);
-    } else {
-      result = converter_->StartSuggestion(conversion_request, &segments_);
-    }
-  }
+  bool result = converter_->StartPrediction(conversion_request, &segments_);
   if (!result) {
     MOZC_VLOG(1)
         << "Start(Partial?)(Suggestion|Prediction)ForRequest() returns no "
@@ -517,21 +502,26 @@ bool SessionConverter::SuggestWithPreferences(
     converter_->CancelConversion(&segments_);
     return false;
   }
+
   // Fill incognito candidates if required.
   // The candidates are always from suggestion API
   // as richer results are not needed.
   if (request_->fill_incognito_candidate_words()) {
     const Config incognito_config = CreateIncognitoConfig();
+    ConversionRequest::Options incognito_options = conversion_request.options();
+    incognito_options.enable_user_history_for_conversion = false;
+    incognito_options.request_type = use_partial_composition
+                                         ? ConversionRequest::PARTIAL_SUGGESTION
+                                         : ConversionRequest::SUGGESTION;
     const ConversionRequest incognito_conversion_request =
-        CreateIncognitoConversionRequest(conversion_request, incognito_config);
+        ConversionRequestBuilder()
+            .SetConversionRequest(conversion_request)
+            .SetConfig(incognito_config)
+            .SetOptions(std::move(incognito_options))
+            .Build();
     incognito_segments_.Clear();
-    if (use_partial_composition) {
-      result = converter_->StartPartialSuggestion(incognito_conversion_request,
-                                                  &incognito_segments_);
-    } else {
-      result = converter_->StartSuggestion(incognito_conversion_request,
-                                           &incognito_segments_);
-    }
+    result = converter_->StartPrediction(incognito_conversion_request,
+                                         &incognito_segments_);
     if (!result) {
       MOZC_VLOG(1)
           << "Start(Partial?)SuggestionForRequest() for incognito request "
@@ -539,7 +529,7 @@ bool SessionConverter::SuggestWithPreferences(
       // TODO(noriyukit): Check if fall through here is ok.
     }
   }
-  DCHECK_EQ(1, segments_.conversion_segments_size());
+  DCHECK_EQ(segments_.conversion_segments_size(), 1);
 
   // Copy current suggestions so that we can merge
   // prediction/suggestions later
@@ -577,7 +567,7 @@ bool SessionConverter::PredictWithPreferences(
 
   // Initialize the segments and conversion_request for prediction
   ConversionRequest::Options options;
-  SetConversionPreferences(preferences, segments_, options);
+  options.enable_user_history_for_conversion = preferences.use_history;
   const commands::Context context;
   DCHECK(request_);
   DCHECK(config_);
@@ -693,7 +683,7 @@ void SessionConverter::Commit(const composer::Composer &composer,
   DCHECK(request_);
   DCHECK(config_);
   const ConversionRequest conversion_request(composer, *request_, context,
-                                             *config_);
+                                             *config_, {});
   converter_->FinishConversion(conversion_request, &segments_);
   ResetState();
 }
@@ -744,7 +734,7 @@ bool SessionConverter::CommitSuggestionInternal(
     CommitUsageStats(SessionConverterInterface::SUGGESTION, context);
     DCHECK(config_);
     const ConversionRequest conversion_request(composer, *request_, context,
-                                               *config_);
+                                               *config_, {});
     converter_->FinishConversion(conversion_request, &segments_);
     DCHECK_EQ(0, segments_.conversion_segments_size());
     ResetState();
@@ -976,7 +966,7 @@ void SessionConverter::ResizeSegmentWidth(const composer::Composer &composer,
   DCHECK(request_);
   DCHECK(config_);
   const ConversionRequest conversion_request(composer, *request_, context,
-                                             *config_);
+                                             *config_, {});
   if (!converter_->ResizeSegment(&segments_, conversion_request, segment_index_,
                                  delta)) {
     return;

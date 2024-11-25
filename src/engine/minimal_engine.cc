@@ -67,6 +67,9 @@ class UserDataManagerStub : public UserDataManagerInterface {
 };
 
 bool AddAsIsCandidate(const absl::string_view key, Segments *segments) {
+  if (key.empty()) {
+    return false;
+  }
   if (segments == nullptr) {
     return false;
   }
@@ -90,9 +93,6 @@ bool AddAsIsCandidate(const absl::string_view key, Segments *segments) {
 }
 
 bool AddAsIsCandidate(const ConversionRequest &request, Segments *segments) {
-  if (!request.has_composer()) {
-    return false;
-  }
   const std::string key = request.composer().GetQueryForConversion();
   return AddAsIsCandidate(key, segments);
 }
@@ -106,11 +106,6 @@ class MinimalConverter : public ConverterInterface {
     return AddAsIsCandidate(request, segments);
   }
 
-  bool StartConversionWithKey(Segments *segments,
-                              const absl::string_view key) const override {
-    return AddAsIsCandidate(key, segments);
-  }
-
   bool StartReverseConversion(Segments *segments,
                               const absl::string_view key) const override {
     return false;
@@ -119,41 +114,6 @@ class MinimalConverter : public ConverterInterface {
   bool StartPrediction(const ConversionRequest &request,
                        Segments *segments) const override {
     return AddAsIsCandidate(request, segments);
-  }
-
-  bool StartPredictionWithKey(Segments *segments,
-                              const absl::string_view key) const override {
-    return AddAsIsCandidate(key, segments);
-  }
-
-  bool StartSuggestion(const ConversionRequest &request,
-                       Segments *segments) const override {
-    return AddAsIsCandidate(request, segments);
-  }
-
-  bool StartSuggestionWithKey(Segments *segments,
-                              const absl::string_view key) const override {
-    return AddAsIsCandidate(key, segments);
-  }
-
-  bool StartPartialPrediction(const ConversionRequest &request,
-                              Segments *segments) const override {
-    return false;
-  }
-
-  bool StartPartialPredictionWithKey(
-      Segments *segments, const absl::string_view key) const override {
-    return false;
-  }
-
-  bool StartPartialSuggestion(const ConversionRequest &request,
-                              Segments *segments) const override {
-    return false;
-  }
-
-  bool StartPartialSuggestionWithKey(
-      Segments *segments, const absl::string_view key) const override {
-    return false;
   }
 
   void FinishConversion(const ConversionRequest &request,

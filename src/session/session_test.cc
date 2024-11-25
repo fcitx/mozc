@@ -564,7 +564,7 @@ class SessionTest : public testing::TestWithTempUserProfile {
   ConversionRequest CreateConversionRequest(const Session &session) {
     const ImeContext &context = session.context();
     return ConversionRequest(context.composer(), context.GetRequest(),
-                             context.client_context(), context.GetConfig());
+                             context.client_context(), context.GetConfig(), {});
   }
 
   void SetupMockForReverseConversion(const absl::string_view kanji,
@@ -636,7 +636,7 @@ class SessionTest : public testing::TestWithTempUserProfile {
       segment->set_key("");
       AddCandidate("search", "search", segment);
       AddCandidate("input", "input", segment);
-      EXPECT_CALL(*mock_converter, StartSuggestion(_, _))
+      EXPECT_CALL(*mock_converter, StartPrediction(_, _))
           .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
     }
 
@@ -970,7 +970,7 @@ TEST_F(SessionTest, SwitchInputModeWithCandidateList) {
       segment = segments.add_segment();
       segment->set_key("");
       segment->add_candidate()->value = "google";
-      EXPECT_CALL(converter, StartSuggestion(_, _))
+      EXPECT_CALL(converter, StartPrediction(_, _))
           .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
     }
     // Type "g".
@@ -2390,7 +2390,7 @@ TEST_F(SessionTest, UndoForComposition) {
 
   {  // Undo for CommitFirstSuggestion
     SetAiueo(&segments);
-    EXPECT_CALL(converter, StartSuggestion(_, _))
+    EXPECT_CALL(converter, StartPrediction(_, _))
         .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
     InsertCharacterChars("ai", &session, &command);
     EXPECT_EQ(GetComposition(command), "あい");
@@ -3941,7 +3941,7 @@ TEST_F(SessionTest, Shortcut) {
     const ImeContext &context = session.context();
     const ConversionRequest request(context.composer(), context.GetRequest(),
                                     context.client_context(),
-                                    context.GetConfig());
+                                    context.GetConfig(), {});
     FillT13Ns(request, &segments);
     EXPECT_CALL(converter, StartConversion(_, _))
         .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
@@ -4237,118 +4237,128 @@ TEST_F(SessionTest, InsertCharacterWithShiftKey) {
   }
 }
 
-TEST_F(SessionTest, ExitTemporaryAlphanumModeAfterCommittingSugesstion) {
+TEST_F(SessionTest, ExitTemporaryAlphanumModeAfterCommittingSugesstion1) {
   // This is a unittest against http://b/2977131.
   MockConverter converter;
   MockEngine engine;
   EXPECT_CALL(engine, GetConverter()).WillRepeatedly(Return(&converter));
 
-  {
-    Session session(&engine);
-    InitSessionToPrecomposition(&session);
-    commands::Command command;
-    EXPECT_TRUE(SendKey("N", &session, &command));
-    EXPECT_EQ(command.output().mode(), commands::HALF_ASCII);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HALF_ASCII);
-    // Global mode should be kept as HIRAGANA
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+  Session session(&engine);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+  EXPECT_TRUE(SendKey("N", &session, &command));
+  EXPECT_EQ(command.output().mode(), commands::HALF_ASCII);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HALF_ASCII);
+  // Global mode should be kept as HIRAGANA
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
 
-    Segments segments;
-    Segment *segment = segments.add_segment();
-    segment->set_key("NFL");
-    segment->add_candidate()->value = "NFL";
-    const ConversionRequest request = CreateConversionRequest(session);
-    FillT13Ns(request, &segments);
-    EXPECT_CALL(converter, StartConversion(_, _))
-        .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
+  Segments segments;
+  Segment *segment = segments.add_segment();
+  segment->set_key("NFL");
+  segment->add_candidate()->value = "NFL";
+  const ConversionRequest request = CreateConversionRequest(session);
+  FillT13Ns(request, &segments);
+  EXPECT_CALL(converter, StartConversion(_, _))
+      .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
 
-    EXPECT_TRUE(session.Convert(&command));
-    EXPECT_FALSE(command.output().has_candidate_window());
-    EXPECT_FALSE(command.output().candidate_window().has_focused_index());
-    EXPECT_EQ(command.output().candidate_window().focused_index(), 0);
-    EXPECT_FALSE(command.output().has_result());
-    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+  EXPECT_TRUE(session.Convert(&command));
+  EXPECT_FALSE(command.output().has_candidate_window());
+  EXPECT_FALSE(command.output().candidate_window().has_focused_index());
+  EXPECT_EQ(command.output().candidate_window().focused_index(), 0);
+  EXPECT_FALSE(command.output().has_result());
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
 
-    EXPECT_TRUE(SendKey("a", &session, &command));
-    EXPECT_FALSE(command.output().has_candidate_window());
-    EXPECT_RESULT("NFL", command);
-    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
-  }
+  EXPECT_TRUE(SendKey("a", &session, &command));
+  EXPECT_FALSE(command.output().has_candidate_window());
+  EXPECT_RESULT("NFL", command);
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+}
 
-  {
-    Session session(&engine);
-    InitSessionToPrecomposition(&session);
-    commands::Command command;
-    EXPECT_TRUE(SendKey("N", &session, &command));
-    EXPECT_EQ(command.output().mode(), commands::HALF_ASCII);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HALF_ASCII);
-    // Global mode should be kept as HIRAGANA
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+TEST_F(SessionTest, ExitTemporaryAlphanumModeAfterCommittingSugesstion2) {
+  // This is a unittest against http://b/2977131.
+  MockConverter converter;
+  MockEngine engine;
+  EXPECT_CALL(engine, GetConverter()).WillRepeatedly(Return(&converter));
 
-    Segments segments;
-    Segment *segment = segments.add_segment();
-    segment->set_key("NFL");
-    segment->add_candidate()->value = "NFL";
-    EXPECT_CALL(converter, StartPrediction(_, _))
-        .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
+  Session session(&engine);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+  EXPECT_TRUE(SendKey("N", &session, &command));
+  EXPECT_EQ(command.output().mode(), commands::HALF_ASCII);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HALF_ASCII);
+  // Global mode should be kept as HIRAGANA
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
 
-    EXPECT_TRUE(session.PredictAndConvert(&command));
-    ASSERT_TRUE(command.output().has_candidate_window());
-    EXPECT_TRUE(command.output().candidate_window().has_focused_index());
-    EXPECT_EQ(command.output().candidate_window().focused_index(), 0);
-    EXPECT_FALSE(command.output().has_result());
-    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+  Segments segments;
+  Segment *segment = segments.add_segment();
+  segment->set_key("NFL");
+  segment->add_candidate()->value = "NFL";
+  EXPECT_CALL(converter, StartPrediction(_, _))
+      .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
 
-    EXPECT_TRUE(SendKey("a", &session, &command));
-    EXPECT_FALSE(command.output().has_candidate_window());
-    EXPECT_RESULT("NFL", command);
+  EXPECT_TRUE(session.PredictAndConvert(&command));
+  ASSERT_TRUE(command.output().has_candidate_window());
+  EXPECT_TRUE(command.output().candidate_window().has_focused_index());
+  EXPECT_EQ(command.output().candidate_window().focused_index(), 0);
+  EXPECT_FALSE(command.output().has_result());
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
 
-    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
-  }
+  EXPECT_CALL(converter, StartPrediction(_, _))
+      .WillOnce(DoAll(SetArgPointee<1>(segments), Return(false)));
+  EXPECT_TRUE(SendKey("a", &session, &command));
+  EXPECT_FALSE(command.output().has_candidate_window());
+  EXPECT_RESULT("NFL", command);
 
-  {
-    Session session(&engine);
-    InitSessionToPrecomposition(&session);
-    commands::Command command;
-    EXPECT_TRUE(SendKey("N", &session, &command));
-    EXPECT_EQ(command.output().mode(), commands::HALF_ASCII);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HALF_ASCII);
-    // Global mode should be kept as HIRAGANA
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+}
 
-    Segments segments;
-    Segment *segment = segments.add_segment();
-    segment->set_key("NFL");
-    segment->add_candidate()->value = "NFL";
-    const ConversionRequest request = CreateConversionRequest(session);
-    FillT13Ns(request, &segments);
-    EXPECT_CALL(converter, StartConversion(_, _))
-        .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
+TEST_F(SessionTest, ExitTemporaryAlphanumModeAfterCommittingSugesstion3) {
+  // This is a unittest against http://b/2977131.
+  MockConverter converter;
+  MockEngine engine;
+  EXPECT_CALL(engine, GetConverter()).WillRepeatedly(Return(&converter));
 
-    EXPECT_TRUE(session.ConvertToHalfASCII(&command));
-    EXPECT_FALSE(command.output().has_candidate_window());
-    EXPECT_FALSE(command.output().candidate_window().has_focused_index());
-    EXPECT_EQ(command.output().candidate_window().focused_index(), 0);
-    EXPECT_FALSE(command.output().has_result());
-    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+  Session session(&engine);
+  InitSessionToPrecomposition(&session);
+  commands::Command command;
+  EXPECT_TRUE(SendKey("N", &session, &command));
+  EXPECT_EQ(command.output().mode(), commands::HALF_ASCII);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HALF_ASCII);
+  // Global mode should be kept as HIRAGANA
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
 
-    EXPECT_TRUE(SendKey("a", &session, &command));
-    EXPECT_FALSE(command.output().has_candidate_window());
-    EXPECT_RESULT("NFL", command);
-    EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
-    EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
-    EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
-  }
+  Segments segments;
+  Segment *segment = segments.add_segment();
+  segment->set_key("NFL");
+  segment->add_candidate()->value = "NFL";
+  const ConversionRequest request = CreateConversionRequest(session);
+  FillT13Ns(request, &segments);
+  EXPECT_CALL(converter, StartConversion(_, _))
+      .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
+
+  EXPECT_TRUE(session.ConvertToHalfASCII(&command));
+  EXPECT_FALSE(command.output().has_candidate_window());
+  EXPECT_FALSE(command.output().candidate_window().has_focused_index());
+  EXPECT_EQ(command.output().candidate_window().focused_index(), 0);
+  EXPECT_FALSE(command.output().has_result());
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
+
+  EXPECT_TRUE(SendKey("a", &session, &command));
+  EXPECT_FALSE(command.output().has_candidate_window());
+  EXPECT_RESULT("NFL", command);
+  EXPECT_EQ(command.output().mode(), commands::HIRAGANA);  // obsolete
+  EXPECT_EQ(command.output().status().mode(), commands::HIRAGANA);
+  EXPECT_EQ(command.output().status().comeback_mode(), commands::HIRAGANA);
 }
 
 TEST_F(SessionTest, StatusOutput) {
@@ -4490,7 +4500,7 @@ TEST_F(SessionTest, Suggest) {
   commands::Command command;
   SendKey("M", &session, &command);
 
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
   SendKey("O", &session, &command);
   ASSERT_TRUE(command.output().has_candidate_window());
@@ -4498,7 +4508,7 @@ TEST_F(SessionTest, Suggest) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "MOCHA");
 
   // moz|
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_moz), Return(true)));
   SendKey("Z", &session, &command);
   ASSERT_TRUE(command.output().has_candidate_window());
@@ -4506,7 +4516,7 @@ TEST_F(SessionTest, Suggest) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "MOZUKU");
 
   // mo|
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
   SendKey("Backspace", &session, &command);
   ASSERT_TRUE(command.output().has_candidate_window());
@@ -4514,7 +4524,7 @@ TEST_F(SessionTest, Suggest) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "MOCHA");
 
   // m|o
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
   command.Clear();
   EXPECT_TRUE(session.MoveCursorLeft(&command));
@@ -4523,7 +4533,7 @@ TEST_F(SessionTest, Suggest) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "MOCHA");
 
   // mo|
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
   command.Clear();
   EXPECT_TRUE(session.MoveCursorToEnd(&command));
@@ -4532,7 +4542,7 @@ TEST_F(SessionTest, Suggest) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "MOCHA");
 
   // |mo
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
   command.Clear();
   EXPECT_TRUE(session.MoveCursorToBeginning(&command));
@@ -4541,7 +4551,7 @@ TEST_F(SessionTest, Suggest) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "MOCHA");
 
   // m|o
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
   command.Clear();
   EXPECT_TRUE(session.MoveCursorRight(&command));
@@ -4550,7 +4560,7 @@ TEST_F(SessionTest, Suggest) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "MOCHA");
 
   // m|
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_m), Return(true)));
   command.Clear();
   EXPECT_TRUE(session.Delete(&command));
@@ -4573,7 +4583,7 @@ TEST_F(SessionTest, Suggest) {
   command.Clear();
   EXPECT_TRUE(session.Convert(&command));
 
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_m), Return(true)));
   command.Clear();
   EXPECT_TRUE(session.ConvertCancel(&command));
@@ -4699,7 +4709,7 @@ TEST_F(SessionTest, MobilePartialPrediction) {
   EXPECT_EQ(command.output().candidate_window().candidate(0).value(), "私の");
 
   // partial suggestion for "わた|しの"
-  EXPECT_CALL(converter, StartPartialPrediction(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillRepeatedly(DoAll(SetArgPointee<1>(segments_wata), Return(true)));
   command.Clear();
   EXPECT_TRUE(session.MoveCursorLeft(&command));
@@ -5894,7 +5904,7 @@ TEST_F(SessionTest, Issue1975771) {
   // Trigger suggest by pressing "a".
   Segments segments;
   SetAiueo(&segments);
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
 
   commands::Command command;
@@ -5946,6 +5956,8 @@ TEST_F(SessionTest, Issue2029466) {
   // FinishConversion is expected to return empty Segments.
   EXPECT_CALL(converter, FinishConversion(_, _))
       .WillOnce(SetArgPointee<1>(segments));
+  EXPECT_CALL(converter, StartPrediction(_, _))
+      .WillOnce(DoAll(SetArgPointee<1>(segments), Return(false)));
   command.Clear();
   EXPECT_TRUE(session.CommitSegment(&command));
 
@@ -6052,7 +6064,7 @@ TEST_F(SessionTest, Issue2066906) {
   EXPECT_TRUE(session.Commit(&command));
   EXPECT_RESULT("abc", command);
 
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
   InsertCharacterChars("a", &session, &command);
   EXPECT_FALSE(command.output().has_result());
@@ -6980,7 +6992,7 @@ TEST_F(SessionTest, ResetContext) {
 
   Segments segments;
   segments.add_segment()->add_candidate();  // Stub candidate.
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
   EXPECT_TRUE(SendKey("A", &session, &command));
   command.Clear();
@@ -7096,7 +7108,7 @@ TEST_F(SessionTest, Issue3428520) {
   Segments segments;
   SetAiueo(&segments);
 
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
   InsertCharacterChars("aiueo", &session, &command);
   const ConversionRequest request = CreateConversionRequest(session);
@@ -8299,7 +8311,7 @@ TEST_F(SessionTest, NotZeroQuerySuggest) {
   segment->add_candidate()->value = "input";
 
   // Commit composition and zero query suggest should not be invoked.
-  EXPECT_CALL(converter, StartSuggestion(_, _)).Times(0);
+  EXPECT_CALL(converter, StartPrediction(_, _)).Times(0);
   command.Clear();
   session.Commit(&command);
   EXPECT_EQ(command.output().result().value(), "google");
@@ -8394,7 +8406,7 @@ TEST_F(SessionTest, ZeroQuerySuggest) {
       segment = segments.add_segment();
       segment->set_key("");
       segment->add_candidate()->value = "google";
-      EXPECT_CALL(converter, StartSuggestion(_, _))
+      EXPECT_CALL(converter, StartPrediction(_, _))
           .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
     }
 
@@ -8409,7 +8421,7 @@ TEST_F(SessionTest, ZeroQuerySuggest) {
       segment->set_key("");
       segment->add_candidate()->value = "search";
       segment->add_candidate()->value = "input";
-      EXPECT_CALL(converter, StartSuggestion(_, _))
+      EXPECT_CALL(converter, StartPrediction(_, _))
           .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
     }
 
@@ -9368,7 +9380,7 @@ TEST_F(SessionTest, EditCancel) {
     commands::Command command;
     SendKey("M", &session, &command);
 
-    EXPECT_CALL(converter, StartSuggestion(_, _))
+    EXPECT_CALL(converter, StartPrediction(_, _))
         .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
     SendKey("O", &session, &command);
     ASSERT_TRUE(command.output().has_candidate_window());
@@ -9393,7 +9405,7 @@ TEST_F(SessionTest, EditCancel) {
     EXPECT_TRUE(session.SendCommand(&command));
 
     command.Clear();
-    EXPECT_CALL(converter, StartSuggestion(_, _))
+    EXPECT_CALL(converter, StartPrediction(_, _))
         .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
     session.ConvertCancel(&command);
     ASSERT_TRUE(command.output().has_candidate_window());
@@ -9500,7 +9512,7 @@ TEST_F(SessionTest, EditCancelAndIMEOff) {
     commands::Command command;
     SendKey("M", &session, &command);
 
-    EXPECT_CALL(converter, StartSuggestion(_, _))
+    EXPECT_CALL(converter, StartPrediction(_, _))
         .WillRepeatedly(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
     SendKey("O", &session, &command);
     ASSERT_TRUE(command.output().has_candidate_window());
@@ -9556,7 +9568,7 @@ TEST_F(SessionTest, EditCancelAndIMEOff) {
     EXPECT_TRUE(session.SendCommand(&command));
 
     command.Clear();
-    EXPECT_CALL(converter, StartSuggestion(_, _))
+    EXPECT_CALL(converter, StartPrediction(_, _))
         .WillRepeatedly(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
     session.ConvertCancel(&command);
     ASSERT_TRUE(command.output().has_candidate_window());
@@ -9859,7 +9871,7 @@ TEST_F(SessionTest, DoNothingOnCompositionKeepingSuggestWindow) {
     segment->add_candidate()->value = "MOCHA";
     segment->add_candidate()->value = "MOZUKU";
   }
-  EXPECT_CALL(converter, StartSuggestion(_, _))
+  EXPECT_CALL(converter, StartPrediction(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments_mo), Return(true)));
 
   commands::Command command;
@@ -9954,7 +9966,7 @@ TEST_F(SessionTest, DeleteHistory) {
   segment->set_key("delete");
   segment->add_candidate()->value = "DeleteHistory";
   EXPECT_CALL(converter, StartPrediction(_, _))
-      .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
+      .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
 
   // Type "del". Preedit = "でｌ".
   commands::Command command;

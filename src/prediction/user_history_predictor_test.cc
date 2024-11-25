@@ -112,12 +112,21 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
     mozc::usage_stats::UsageStats::ClearAllStatsForTest();
   }
 
+  ConversionRequest CreateConversionRequestWithOptions(
+      const composer::Composer &composer,
+      ConversionRequest::Options &&options) const {
+    return ConversionRequest(composer, request_, context_, config_,
+                             std::move(options));
+  }
+
   ConversionRequest CreateConversionRequest(
       const composer::Composer &composer) const {
-    ConversionRequest convreq(composer, request_, context_, config_);
-    convreq.set_max_user_history_prediction_candidates_size(10);
-    convreq.set_max_user_history_prediction_candidates_size_for_zero_query(10);
-    return convreq;
+    ConversionRequest::Options options = {
+        .max_user_history_prediction_candidates_size = 10,
+        .max_user_history_prediction_candidates_size_for_zero_query = 10,
+    };
+    return ConversionRequest(composer, request_, context_, config_,
+                             std::move(options));
   }
 
   UserHistoryPredictor *GetUserHistoryPredictor() {
@@ -142,20 +151,30 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
 
   bool IsSuggested(UserHistoryPredictor *predictor, const absl::string_view key,
                    const absl::string_view value) {
-    ConversionRequest conversion_request;
+    composer::Composer composer;
+    composer.SetPreeditTextForTestOnly(key);
+    const ConversionRequest conversion_request =
+        ConversionRequestBuilder()
+            .SetComposer(composer)
+            .SetRequestType(ConversionRequest::SUGGESTION)
+            .Build();
     Segments segments;
     MakeSegments(key, &segments);
-    conversion_request.set_request_type(ConversionRequest::SUGGESTION);
     return predictor->PredictForRequest(conversion_request, &segments) &&
            FindCandidateByValue(value, segments);
   }
 
   bool IsPredicted(UserHistoryPredictor *predictor, const absl::string_view key,
                    const absl::string_view value) {
-    ConversionRequest conversion_request;
+    composer::Composer composer;
+    composer.SetPreeditTextForTestOnly(key);
+    const ConversionRequest conversion_request =
+        ConversionRequestBuilder()
+            .SetComposer(composer)
+            .SetRequestType(ConversionRequest::PREDICTION)
+            .Build();
     Segments segments;
     MakeSegments(key, &segments);
-    conversion_request.set_request_type(ConversionRequest::PREDICTION);
     return predictor->PredictForRequest(conversion_request, &segments) &&
            FindCandidateByValue(value, segments);
   }
@@ -273,15 +292,20 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
     AddSegment(key, segments);
   }
 
-  ConversionRequest SetUpInputForSuggestion(absl::string_view key,
-                                            composer::Composer *composer,
-                                            Segments *segments) const {
+  void SetUpInput(absl::string_view key, composer::Composer *composer,
+                  Segments *segments) const {
     composer->Reset();
     composer->SetPreeditTextForTestOnly(key);
     MakeSegments(key, segments);
-    ConversionRequest convreq = CreateConversionRequest(*composer);
-    convreq.set_request_type(ConversionRequest::SUGGESTION);
-    return convreq;
+  }
+
+  ConversionRequest SetUpInputForSuggestion(absl::string_view key,
+                                            composer::Composer *composer,
+                                            Segments *segments) const {
+    SetUpInput(key, composer, segments);
+    ConversionRequest::Options options = {.request_type =
+                                              ConversionRequest::SUGGESTION};
+    return CreateConversionRequestWithOptions(*composer, std::move(options));
   }
 
   static void PrependHistorySegments(absl::string_view key,
@@ -310,12 +334,10 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
   ConversionRequest SetUpInputForPrediction(absl::string_view key,
                                             composer::Composer *composer,
                                             Segments *segments) const {
-    composer->Reset();
-    composer->SetPreeditTextForTestOnly(key);
-    MakeSegments(key, segments);
-    ConversionRequest convreq = CreateConversionRequest(*composer);
-    convreq.set_request_type(ConversionRequest::PREDICTION);
-    return convreq;
+    SetUpInput(key, composer, segments);
+    ConversionRequest::Options options = {.request_type =
+                                              ConversionRequest::PREDICTION};
+    return CreateConversionRequestWithOptions(*composer, std::move(options));
   }
 
   ConversionRequest SetUpInputForPredictionWithHistory(
@@ -331,12 +353,10 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
   ConversionRequest SetUpInputForConversion(absl::string_view key,
                                             composer::Composer *composer,
                                             Segments *segments) const {
-    composer->Reset();
-    composer->SetPreeditTextForTestOnly(key);
-    MakeSegments(key, segments);
-    ConversionRequest convreq = CreateConversionRequest(*composer);
-    convreq.set_request_type(ConversionRequest::CONVERSION);
-    return convreq;
+    SetUpInput(key, composer, segments);
+    ConversionRequest::Options options = {.request_type =
+                                              ConversionRequest::CONVERSION};
+    return CreateConversionRequestWithOptions(*composer, std::move(options));
   }
 
   ConversionRequest SetUpInputForConversionWithHistory(
@@ -366,13 +386,14 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
       composer->InsertCharacterKeyEvent(key);
     }
 
-    ConversionRequest convreq = CreateConversionRequest(*composer);
-    convreq.set_request_type(ConversionRequest::PREDICTION);
     Segment *segment = segments->add_segment();
     CHECK(segment);
     std::string query = composer->GetQueryForPrediction();
     segment->set_key(query);
-    return convreq;
+
+    ConversionRequest::Options options = {.request_type =
+                                              ConversionRequest::PREDICTION};
+    return CreateConversionRequestWithOptions(*composer, std::move(options));
   }
 
   static void AddCandidate(size_t index, absl::string_view value,
@@ -642,7 +663,7 @@ TEST_F(UserHistoryPredictorTest, UserHistoryPredictorTest) {
     Segments segments;
 
     // reproduced
-    const ConversionRequest convreq1=
+    const ConversionRequest convreq1 =
         SetUpInputForSuggestion("わたしの", &composer_, &segments);
     EXPECT_FALSE(predictor->PredictForRequest(convreq1, &segments));
 
@@ -1350,7 +1371,7 @@ TEST_F(UserHistoryPredictorTest, ZeroQuerySuggestionTest) {
                                        &segments);
     // convreq5 is not zero query suggestion unlike other convreqs.
     const ConversionRequest convreq5(composer_, non_zero_query_request, context,
-                                     config_);
+                                     config_, {});
     EXPECT_FALSE(predictor->PredictForRequest(convreq5, &segments));
 
     const ConversionRequest convreq6 = SetUpInputForSuggestionWithHistory(
@@ -1385,14 +1406,13 @@ TEST_F(UserHistoryPredictorTest, ZeroQuerySuggestionTest) {
 
     segments.Clear();
     ConversionRequest convreq2 =
-        SetUpInputForConversion("たろうは", &composer_, &segments);
+        SetUpInputForSuggestion("たろうは", &composer_, &segments);
     AddCandidate(0, "太郎は", &segments);
     segments.mutable_segment(0)->set_segment_type(Segment::HISTORY);
-    convreq2.set_request_type(ConversionRequest::SUGGESTION);
 
     // Zero query suggestion is disabled.
     const ConversionRequest non_zero_query_convreq(
-        composer_, non_zero_query_request, context, config_);
+        composer_, non_zero_query_request, context, config_, {});
     AddSegment("", &segments);  // empty request
     EXPECT_FALSE(
         predictor->PredictForRequest(non_zero_query_convreq, &segments));
@@ -4423,32 +4443,48 @@ TEST_F(UserHistoryPredictorTest, MaxPredictionCandidatesSize) {
     predictor->Finish(convreq, &segments);
   }
   {
-    ConversionRequest convreq = CreateConversionRequest(composer_);
-    convreq.set_max_user_history_prediction_candidates_size(2);
-    convreq.set_request_type(ConversionRequest::SUGGESTION);
+    ConversionRequest::Options options1 = {
+        .request_type = ConversionRequest::SUGGESTION,
+        .max_user_history_prediction_candidates_size = 2,
+    };
+    const ConversionRequest convreq1 =
+        CreateConversionRequestWithOptions(composer_, std::move(options1));
     MakeSegments("てすと", &segments);
 
-    EXPECT_TRUE(predictor->PredictForRequest(convreq, &segments));
+    EXPECT_TRUE(predictor->PredictForRequest(convreq1, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 2);
 
-    convreq.set_request_type(ConversionRequest::PREDICTION);
+    ConversionRequest::Options options2 = {
+        .request_type = ConversionRequest::PREDICTION,
+        .max_user_history_prediction_candidates_size = 2,
+    };
+    const ConversionRequest convreq2 =
+        CreateConversionRequestWithOptions(composer_, std::move(options2));
     MakeSegments("てすと", &segments);
-    EXPECT_TRUE(predictor->PredictForRequest(convreq, &segments));
+    EXPECT_TRUE(predictor->PredictForRequest(convreq2, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 2);
   }
   {
-    ConversionRequest convreq1 =
-        SetUpInputForSuggestion("てすと", &composer_, &segments);
-    convreq1.set_max_user_history_prediction_candidates_size(3);
+    SetUpInput("てすと", &composer_, &segments);
+    ConversionRequest::Options options1 = {
+        .request_type = ConversionRequest::SUGGESTION,
+        .max_user_history_prediction_candidates_size = 3,
+    };
+    const ConversionRequest convreq1 =
+        CreateConversionRequestWithOptions(composer_, std::move(options1));
     EXPECT_TRUE(predictor->PredictForRequest(convreq1, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 3);
 
-    ConversionRequest convreq2 =
-        SetUpInputForPrediction("てすと", &composer_, &segments);
-    convreq2.set_max_user_history_prediction_candidates_size(3);
+    SetUpInput("てすと", &composer_, &segments);
+    ConversionRequest::Options options2 = {
+        .request_type = ConversionRequest::PREDICTION,
+        .max_user_history_prediction_candidates_size = 3,
+    };
+    const ConversionRequest convreq2 =
+        CreateConversionRequestWithOptions(composer_, std::move(options2));
     EXPECT_TRUE(predictor->PredictForRequest(convreq2, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 3);
@@ -4456,16 +4492,24 @@ TEST_F(UserHistoryPredictorTest, MaxPredictionCandidatesSize) {
 
   {
     // Only 3 candidates in user history
-    ConversionRequest convreq1 =
-        SetUpInputForSuggestion("てすと", &composer_, &segments);
-    convreq1.set_max_user_history_prediction_candidates_size(4);
+    SetUpInput("てすと", &composer_, &segments);
+    ConversionRequest::Options options1 = {
+        .request_type = ConversionRequest::SUGGESTION,
+        .max_user_history_prediction_candidates_size = 4,
+    };
+    const ConversionRequest convreq1 =
+        CreateConversionRequestWithOptions(composer_, std::move(options1));
     EXPECT_TRUE(predictor->PredictForRequest(convreq1, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 3);
 
-    ConversionRequest convreq2 =
-        SetUpInputForPrediction("てすと", &composer_, &segments);
-    convreq2.set_max_user_history_prediction_candidates_size(4);
+    SetUpInput("てすと", &composer_, &segments);
+    ConversionRequest::Options options2 = {
+        .request_type = ConversionRequest::PREDICTION,
+        .max_user_history_prediction_candidates_size = 4,
+    };
+    const ConversionRequest convreq2 =
+        CreateConversionRequestWithOptions(composer_, std::move(options2));
     EXPECT_TRUE(predictor->PredictForRequest(convreq2, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 3);
@@ -4506,18 +4550,26 @@ TEST_F(UserHistoryPredictorTest, MaxPredictionCandidatesSizeForZeroQuery) {
 
   // normal prediction candidates size
   {
-    ConversionRequest convreq1 =
-        SetUpInputForSuggestion("かお", &composer_, &segments);
-    convreq1.set_max_user_history_prediction_candidates_size(2);
-    convreq1.set_max_user_history_prediction_candidates_size_for_zero_query(3);
+    SetUpInput("かお", &composer_, &segments);
+    ConversionRequest::Options options1 = {
+        .request_type = ConversionRequest::SUGGESTION,
+        .max_user_history_prediction_candidates_size = 2,
+        .max_user_history_prediction_candidates_size_for_zero_query = 3,
+    };
+    const ConversionRequest convreq1 =
+        CreateConversionRequestWithOptions(composer_, std::move(options1));
     EXPECT_TRUE(predictor->PredictForRequest(convreq1, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 2);
 
-    ConversionRequest convreq2 =
-        SetUpInputForPrediction("かお", &composer_, &segments);
-    convreq2.set_max_user_history_prediction_candidates_size(2);
-    convreq2.set_max_user_history_prediction_candidates_size_for_zero_query(3);
+    SetUpInput("かお", &composer_, &segments);
+    ConversionRequest::Options options2 = {
+        .request_type = ConversionRequest::PREDICTION,
+        .max_user_history_prediction_candidates_size = 2,
+        .max_user_history_prediction_candidates_size_for_zero_query = 3,
+    };
+    const ConversionRequest convreq2 =
+        CreateConversionRequestWithOptions(composer_, std::move(options2));
     EXPECT_TRUE(predictor->PredictForRequest(convreq2, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     EXPECT_EQ(segments.segment(0).candidates_size(), 2);
@@ -4525,18 +4577,28 @@ TEST_F(UserHistoryPredictorTest, MaxPredictionCandidatesSizeForZeroQuery) {
 
   // prediction candidates for zero query
   {
-    ConversionRequest convreq1 = SetUpInputForSuggestionWithHistory(
-        "", "てすと", "てすと", &composer_, &segments);
-    convreq1.set_max_user_history_prediction_candidates_size(2);
-    convreq1.set_max_user_history_prediction_candidates_size_for_zero_query(3);
+    SetUpInput("", &composer_, &segments);
+    PrependHistorySegments("てすと", "てすと", &segments);
+    ConversionRequest::Options options1 = {
+        .request_type = ConversionRequest::SUGGESTION,
+        .max_user_history_prediction_candidates_size = 2,
+        .max_user_history_prediction_candidates_size_for_zero_query = 3,
+    };
+    const ConversionRequest convreq1 =
+        CreateConversionRequestWithOptions(composer_, std::move(options1));
     EXPECT_TRUE(predictor->PredictForRequest(convreq1, &segments));
     EXPECT_EQ(segments.conversion_segments_size(), 1);
     EXPECT_EQ(segments.conversion_segment(0).candidates_size(), 3);
 
-    ConversionRequest convreq2 = SetUpInputForPredictionWithHistory(
-        "", "てすと", "てすと", &composer_, &segments);
-    convreq2.set_max_user_history_prediction_candidates_size(2);
-    convreq2.set_max_user_history_prediction_candidates_size_for_zero_query(3);
+    SetUpInput("", &composer_, &segments);
+    PrependHistorySegments("てすと", "てすと", &segments);
+    ConversionRequest::Options options2 = {
+        .request_type = ConversionRequest::PREDICTION,
+        .max_user_history_prediction_candidates_size = 2,
+        .max_user_history_prediction_candidates_size_for_zero_query = 3,
+    };
+    const ConversionRequest convreq2 =
+        CreateConversionRequestWithOptions(composer_, std::move(options2));
     EXPECT_TRUE(predictor->PredictForRequest(convreq2, &segments));
     EXPECT_EQ(segments.conversion_segments_size(), 1);
     EXPECT_EQ(segments.conversion_segment(0).candidates_size(), 3);
@@ -4665,8 +4727,10 @@ TEST_F(UserHistoryPredictorTest, MaxCharCoverage) {
     request_.mutable_decoder_experiment_params()
         ->set_user_history_prediction_max_char_coverage(coverage);
     MakeSegments("てすと", &segments);
-    ConversionRequest convreq = CreateConversionRequest(composer_);
-    convreq.set_request_type(ConversionRequest::SUGGESTION);
+    ConversionRequest::Options options = {.request_type =
+                                              ConversionRequest::SUGGESTION};
+    const ConversionRequest convreq =
+        CreateConversionRequestWithOptions(composer_, std::move(options));
 
     EXPECT_TRUE(predictor->PredictForRequest(convreq, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
@@ -4695,9 +4759,12 @@ TEST_F(UserHistoryPredictorTest, RemoveRedundantCandidates) {
         ->set_user_history_prediction_filter_redundant_candidates_mode(
             filter_mode);
     MakeSegments("とうき", &segments);
-    ConversionRequest convreq = CreateConversionRequest(composer_);
-    convreq.set_request_type(ConversionRequest::SUGGESTION);
-    convreq.set_max_user_history_prediction_candidates_size(10);
+    ConversionRequest::Options options = {
+        .request_type = ConversionRequest::SUGGESTION,
+        .max_user_history_prediction_candidates_size = 10,
+    };
+    const ConversionRequest convreq =
+        CreateConversionRequestWithOptions(composer_, std::move(options));
     EXPECT_TRUE(predictor->PredictForRequest(convreq, &segments));
     EXPECT_EQ(segments.segments_size(), 1);
     ASSERT_EQ(expected.size(), segments.segment(0).candidates_size());

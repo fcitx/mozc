@@ -33,7 +33,6 @@
 #include <cstddef>
 #include <utility>
 
-#include "absl/base/attributes.h"
 #include "absl/log/check.h"
 #include "composer/composer.h"
 #include "config/config_handler.h"
@@ -107,35 +106,26 @@ class ConversionRequest {
     // Please refer to session/internal/keymap.h
     bool enable_user_history_for_conversion = true;
 
-    // If true, set conversion key to output segments in prediction.
-    bool should_call_set_key_in_prediction = false;
-
     // If true, enable kana modifier insensitive conversion.
     bool kana_modifier_insensitive_conversion = true;
+
+    // If true, use conversion_segment(0).key() instead of ComposerData.
+    // TODO(b/365909808): Create a new string field to store the key.
+    bool use_conversion_segment_key_as_typing_corrected_key = false;
   };
 
   ConversionRequest()
-      : ConversionRequest(false, composer::Composer::CreateEmptyComposerData(),
+      : ConversionRequest(composer::Composer::CreateEmptyComposerData(),
                           commands::Request::default_instance(),
                           commands::Context::default_instance(),
                           config::ConfigHandler::DefaultConfig(), Options()) {}
-
-  // TODO(b/365909808): Remove this constructor after migrating to the
-  // constructor with Options.
-  ABSL_DEPRECATED("Use the constructor with Options instead.")
-  ConversionRequest(const composer::Composer &composer,
-                    const commands::Request &request,
-                    const commands::Context &context,
-                    const config::Config &config)
-      : ConversionRequest(true, composer.CreateComposerData(), request, context,
-                          config, Options()) {}
 
   ConversionRequest(const composer::Composer &composer,
                     const commands::Request &request,
                     const commands::Context &context,
                     const config::Config &config,
                     Options &&options)
-      : ConversionRequest(true, composer.CreateComposerData(), request, context,
+      : ConversionRequest(composer.CreateComposerData(), request, context,
                           config, std::move(options)) {}
 
   // Remove unnecessary but potentially large options for ConversionRequest from
@@ -149,12 +139,11 @@ class ConversionRequest {
     return config;
   }
 
-  ConversionRequest(bool has_composer, const composer::ComposerData &composer,
+  ConversionRequest(const composer::ComposerData &composer,
                     const commands::Request &request,
                     const commands::Context &context,
                     const config::Config &config, Options &&options)
-      : has_composer_(has_composer),
-        composer_(composer),
+      : composer_(composer),
         request_(request),
         context_(context),
         config_(TrimConfig(config)),
@@ -168,14 +157,8 @@ class ConversionRequest {
   ConversionRequest &operator=(ConversionRequest &&) = delete;
 
   RequestType request_type() const { return options_.request_type; }
-  void set_request_type(RequestType request_type) {
-    options_.request_type = request_type;
-  }
 
-  bool has_composer() const { return has_composer_; }
   const composer::ComposerData &composer() const { return composer_; }
-
-  void reset_composer() { has_composer_ = false; }
 
   bool use_actual_converter_for_realtime_conversion() const {
     return options_.use_actual_converter_for_realtime_conversion;
@@ -215,41 +198,22 @@ class ConversionRequest {
   size_t max_user_history_prediction_candidates_size() const {
     return options_.max_user_history_prediction_candidates_size;
   }
-  void set_max_user_history_prediction_candidates_size(size_t value) {
-    options_.max_user_history_prediction_candidates_size = value;
-  }
 
   size_t max_user_history_prediction_candidates_size_for_zero_query() const {
     return options_.max_user_history_prediction_candidates_size_for_zero_query;
-  }
-  void set_max_user_history_prediction_candidates_size_for_zero_query(
-      size_t value) {
-    options_.max_user_history_prediction_candidates_size_for_zero_query =
-        value;
   }
 
   size_t max_dictionary_prediction_candidates_size() const {
     return options_.max_dictionary_prediction_candidates_size;
   }
-  void set_max_dictionary_prediction_candidates_size(size_t value) {
-    options_.max_dictionary_prediction_candidates_size = value;
-  }
 
-  bool should_call_set_key_in_prediction() const {
-    return options_.should_call_set_key_in_prediction;
-  }
-  void set_should_call_set_key_in_prediction(bool value) {
-    options_.should_call_set_key_in_prediction = value;
-  }
-
-  void set_kana_modifier_insensitive_conversion(bool value) {
-    options_.kana_modifier_insensitive_conversion = value;
+  bool use_conversion_segment_key_as_typing_corrected_key() const {
+    return options_.use_conversion_segment_key_as_typing_corrected_key;
   }
 
  private:
   // Required options
   // Input composer to generate a key for conversion, suggestion, etc.
-  bool has_composer_ = false;
   const composer::ComposerData composer_;
 
   // Input request.
@@ -270,14 +234,13 @@ class ConversionRequestBuilder {
   ConversionRequest Build() {
     DCHECK(buildable_);
     buildable_ = false;
-    return ConversionRequest(has_composer_, std::move(composer_data_),
-                             std::move(request_), std::move(context_),
-                             std::move(config_), std::move(options_));
+    return ConversionRequest(std::move(composer_data_), std::move(request_),
+                             std::move(context_), std::move(config_),
+                             std::move(options_));
   }
 
   ConversionRequestBuilder &SetConversionRequest(
       const ConversionRequest &base_convreq) {
-    has_composer_ = base_convreq.has_composer();
     composer_data_ = base_convreq.composer();
     request_ = base_convreq.request();
     context_ = base_convreq.context();
@@ -288,12 +251,10 @@ class ConversionRequestBuilder {
 
   ConversionRequestBuilder &SetComposerData(
       composer::ComposerData &&composer_data) {
-    has_composer_ = true;
     composer_data_ = std::move(composer_data);
     return *this;
   }
   ConversionRequestBuilder &SetComposer(const composer::Composer &composer) {
-    has_composer_ = true;
     composer_data_ = composer.CreateComposerData();
     return *this;
   }
@@ -313,10 +274,14 @@ class ConversionRequestBuilder {
     options_ = std::move(options);
     return *this;
   }
+  ConversionRequestBuilder &SetRequestType(
+      ConversionRequest::RequestType request_type) {
+    options_.request_type = request_type;
+    return *this;
+  }
 
  private:
   bool buildable_ = true;
-  bool has_composer_ = false;
   composer::ComposerData composer_data_;
   commands::Request request_;
   commands::Context context_;

@@ -1174,8 +1174,10 @@ bool UserHistoryPredictor::LookupEntry(RequestType request_type,
 }
 
 bool UserHistoryPredictor::Predict(Segments *segments) const {
-  ConversionRequest default_request;
-  default_request.set_request_type(ConversionRequest::PREDICTION);
+  const ConversionRequest default_request =
+      ConversionRequestBuilder()
+          .SetRequestType(ConversionRequest::PREDICTION)
+          .Build();
   return PredictForRequest(default_request, segments);
 }
 
@@ -1448,12 +1450,6 @@ void UserHistoryPredictor::GetInputKeyFromSegments(
     std::unique_ptr<Trie<std::string>> *expanded) {
   DCHECK(input_key);
   DCHECK(base);
-
-  if (!request.has_composer()) {
-    *input_key = segments.conversion_segment(0).key();
-    *base = segments.conversion_segment(0).key();
-    return;
-  }
 
   *input_key = request.composer().GetStringForPreedit();
   // auto = std::pair<std::string, absl::btree_set<std::string>>
