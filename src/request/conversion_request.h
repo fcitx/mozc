@@ -31,9 +31,13 @@
 #define MOZC_REQUEST_CONVERSION_REQUEST_H_
 
 #include <cstddef>
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
+#include "base/strings/assign.h"
+#include "base/util.h"
 #include "composer/composer.h"
 #include "config/config_handler.h"
 #include "protocol/commands.pb.h"
@@ -81,6 +85,10 @@ class ConversionRequest {
     // the definition of ComposerKeySelection above.
     ComposerKeySelection composer_key_selection = CONVERSION_KEY;
 
+    // Key used for conversion.
+    // This is typically a Hiragana text to be converted to Kanji words.
+    std::string key;
+
     int max_conversion_candidates_size = kMaxConversionCandidatesSize;
     int max_user_history_prediction_candidates_size = 3;
     int max_user_history_prediction_candidates_size_for_zero_query = 4;
@@ -111,7 +119,7 @@ class ConversionRequest {
 
     // If true, use conversion_segment(0).key() instead of ComposerData.
     // TODO(b/365909808): Create a new string field to store the key.
-    bool use_conversion_segment_key_as_typing_corrected_key = false;
+    bool use_already_typing_corrected_key = false;
   };
 
   ConversionRequest()
@@ -123,8 +131,7 @@ class ConversionRequest {
   ConversionRequest(const composer::Composer &composer,
                     const commands::Request &request,
                     const commands::Context &context,
-                    const config::Config &config,
-                    Options &&options)
+                    const config::Config &config, Options &&options)
       : ConversionRequest(composer.CreateComposerData(), request, context,
                           config, std::move(options)) {}
 
@@ -139,6 +146,26 @@ class ConversionRequest {
     return config;
   }
 
+  static std::string GetKey(const composer::ComposerData &composer,
+                            const RequestType type,
+                            const ComposerKeySelection selection) {
+    if (type == CONVERSION && selection == CONVERSION_KEY) {
+      return composer.GetQueryForConversion();
+    }
+
+    if ((type == CONVERSION && selection == PREDICTION_KEY) ||
+        type == PREDICTION || type == SUGGESTION) {
+      return composer.GetQueryForPrediction();
+    }
+
+    if (type == PARTIAL_PREDICTION || type == PARTIAL_SUGGESTION) {
+      const std::string prediction_key = composer.GetQueryForConversion();
+      return std::string(
+          Util::Utf8SubString(prediction_key, 0, composer.GetCursor()));
+    }
+    return "";
+  }
+
   ConversionRequest(const composer::ComposerData &composer,
                     const commands::Request &request,
                     const commands::Context &context,
@@ -147,7 +174,14 @@ class ConversionRequest {
         request_(request),
         context_(context),
         config_(TrimConfig(config)),
-        options_(options) {}
+        options_(options) {
+    // If the key is specified, use it. Otherwise, generate it.
+    // NOTE: Specifying Composer is preferred over specifying key directly.
+    if (options_.key.empty()) {
+      options_.key = GetKey(composer_, options_.request_type,
+                            options_.composer_key_selection);
+    }
+  }
 
   ConversionRequest(const ConversionRequest &) = default;
   ConversionRequest(ConversionRequest &&) = default;
@@ -207,9 +241,11 @@ class ConversionRequest {
     return options_.max_dictionary_prediction_candidates_size;
   }
 
-  bool use_conversion_segment_key_as_typing_corrected_key() const {
-    return options_.use_conversion_segment_key_as_typing_corrected_key;
+  bool use_already_typing_corrected_key() const {
+    return options_.use_already_typing_corrected_key;
   }
+
+  absl::string_view key() const { return options_.key; }
 
  private:
   // Required options
@@ -232,8 +268,8 @@ class ConversionRequest {
 class ConversionRequestBuilder {
  public:
   ConversionRequest Build() {
-    DCHECK(buildable_);
-    buildable_ = false;
+    DCHECK_LE(stage_, 3);
+    stage_ = 100;
     return ConversionRequest(std::move(composer_data_), std::move(request_),
                              std::move(context_), std::move(config_),
                              std::move(options_));
@@ -241,6 +277,8 @@ class ConversionRequestBuilder {
 
   ConversionRequestBuilder &SetConversionRequest(
       const ConversionRequest &base_convreq) {
+    DCHECK_LE(stage_, 1);
+    stage_ = 1;
     composer_data_ = base_convreq.composer();
     request_ = base_convreq.request();
     context_ = base_convreq.context();
@@ -248,40 +286,65 @@ class ConversionRequestBuilder {
     options_ = base_convreq.options();
     return *this;
   }
-
   ConversionRequestBuilder &SetComposerData(
       composer::ComposerData &&composer_data) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
     composer_data_ = std::move(composer_data);
     return *this;
   }
   ConversionRequestBuilder &SetComposer(const composer::Composer &composer) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
     composer_data_ = composer.CreateComposerData();
     return *this;
   }
   ConversionRequestBuilder &SetRequest(const commands::Request &request) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
     request_ = request;
     return *this;
   }
   ConversionRequestBuilder &SetContext(const commands::Context &context) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
     context_ = context;
     return *this;
   }
   ConversionRequestBuilder &SetConfig(const config::Config &config) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
     config_ = config;
     return *this;
   }
   ConversionRequestBuilder &SetOptions(ConversionRequest::Options &&options) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
     options_ = std::move(options);
     return *this;
   }
   ConversionRequestBuilder &SetRequestType(
       ConversionRequest::RequestType request_type) {
+    DCHECK_LE(stage_, 3);
+    stage_ = 3;
     options_.request_type = request_type;
+    return *this;
+  }
+  ConversionRequestBuilder &SetKey(absl::string_view key) {
+    DCHECK_LE(stage_, 3);
+    stage_ = 3;
+    strings::Assign(options_.key, key);
     return *this;
   }
 
  private:
-  bool buildable_ = true;
+  // The stage of the builder.
+  // 0: No data set
+  // 1: ConversionRequest set.
+  // 2: ComposerData, Request, Context, Config, Options set.
+  // 3: RequestType, Key, as values of Options set.
+  // 100: Build() called.
+  int stage_ = 0;
   composer::ComposerData composer_data_;
   commands::Request request_;
   commands::Context context_;

@@ -30,7 +30,6 @@
 #include "converter/converter.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -42,6 +41,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "base/util.h"
@@ -288,13 +288,15 @@ class ConverterTest : public testing::TestWithTempUserProfile {
     const engine::Modules &modules = converter_and_data->modules;
     converter_and_data->immutable_converter =
         std::make_unique<ImmutableConverter>(modules);
-    converter_and_data->converter = std::make_unique<Converter>();
+    const ImmutableConverterInterface &immutable_converter =
+        *converter_and_data->immutable_converter;
+    converter_and_data->converter =
+        std::make_unique<Converter>(modules, immutable_converter);
 
     auto predictor = CreatePredictor(predictor_type, modules.GetPosMatcher(),
                                      *converter_and_data);
     converter_and_data->converter->Init(
-        modules, std::move(predictor), std::move(rewriter),
-        converter_and_data->immutable_converter.get());
+        std::move(predictor), std::move(rewriter));
   }
 
   std::unique_ptr<ConverterAndData> CreateConverterAndData(
@@ -1232,15 +1234,13 @@ TEST_F(ConverterTest, VariantExpansionForSuggestion) {
   CHECK_OK(modules.Init(std::make_unique<testing::MockDataManager>()));
 
   auto immutable_converter = std::make_unique<ImmutableConverter>(modules);
-  Converter converter;
+  Converter converter(modules, *immutable_converter);
   converter.Init(
-      modules,
       DefaultPredictor::CreateDefaultPredictor(
           std::make_unique<DictionaryPredictor>(modules, &converter,
                                                 immutable_converter.get()),
           std::make_unique<UserHistoryPredictor>(modules, false), &converter),
-      std::make_unique<Rewriter>(modules, converter),
-      immutable_converter.get());
+      std::make_unique<Rewriter>(modules, converter));
 
   Segments segments;
   {
@@ -1378,7 +1378,7 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for multi terms separated by a space.
-    const std::string &kInput = kHonKanji + " " + kMuryouKanji;
+    const std::string kInput = absl::StrCat(kHonKanji, " ", kMuryouKanji);
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInput));
     ASSERT_EQ(segments.segments_size(), 3);
@@ -1392,7 +1392,7 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for multi terms separated by multiple spaces.
-    const std::string &kInput = kHonKanji + "   " + kMuryouKanji;
+    const std::string kInput = kHonKanji + "   " + kMuryouKanji;
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInput));
     ASSERT_EQ(segments.segments_size(), 3);
@@ -1406,7 +1406,7 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for leading white spaces.
-    const std::string &kInput = "  " + kHonKanji;
+    const std::string kInput = "  " + kHonKanji;
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInput));
     ASSERT_EQ(segments.segments_size(), 2);
@@ -1417,7 +1417,7 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for trailing white spaces.
-    const std::string &kInput = kMuryouKanji + "  ";
+    const std::string kInput = kMuryouKanji + "  ";
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInput));
     ASSERT_EQ(segments.segments_size(), 2);
@@ -1429,7 +1429,7 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for multi terms separated by a full-width space.
-    const std::string &kInput = kHonKanji + kFullWidthSpace + kMuryouKanji;
+    const std::string kInput = kHonKanji + kFullWidthSpace + kMuryouKanji;
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInput));
     ASSERT_EQ(segments.segments_size(), 3);
@@ -1444,8 +1444,8 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for multi terms separated by two full-width spaces.
-    const std::string &kFullWidthSpace2 = kFullWidthSpace + kFullWidthSpace;
-    const std::string &kInput = kHonKanji + kFullWidthSpace2 + kMuryouKanji;
+    const std::string kFullWidthSpace2 = kFullWidthSpace + kFullWidthSpace;
+    const std::string kInput = kHonKanji + kFullWidthSpace2 + kMuryouKanji;
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInput));
     ASSERT_EQ(segments.segments_size(), 3);
@@ -1460,8 +1460,8 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for multi terms separated by the mix of full- and half-width spaces.
-    const std::string &kFullWidthSpace2 = kFullWidthSpace + " ";
-    const std::string &kInput = kHonKanji + kFullWidthSpace2 + kMuryouKanji;
+    const std::string kFullWidthSpace2 = kFullWidthSpace + " ";
+    const std::string kInput = kHonKanji + kFullWidthSpace2 + kMuryouKanji;
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInput));
     ASSERT_EQ(segments.segments_size(), 3);
@@ -1476,7 +1476,7 @@ TEST_F(ConverterTest, StartReverseConversion) {
   }
   {
     // Test for math expressions; see b/9398304.
-    const std::string &kInputHalf = "365*24*60*60*1000=";
+    const absl::string_view kInputHalf = "365*24*60*60*1000=";
     Segments segments;
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInputHalf));
     ASSERT_EQ(segments.segments_size(), 1);
@@ -1485,80 +1485,11 @@ TEST_F(ConverterTest, StartReverseConversion) {
 
     // Test for full-width characters.
     segments.Clear();
-    const std::string &kInputFull = "３６５＊２４＊６０＊６０＊１０００＝";
+    const absl::string_view kInputFull = "３６５＊２４＊６０＊６０＊１０００＝";
     EXPECT_TRUE(converter->StartReverseConversion(&segments, kInputFull));
     ASSERT_EQ(segments.segments_size(), 1);
     ASSERT_EQ(segments.conversion_segment(0).candidates_size(), 1);
     EXPECT_EQ(segments.conversion_segment(0).candidate(0).value, kInputHalf);
-  }
-}
-
-TEST_F(ConverterTest, GetLastConnectivePart) {
-  std::unique_ptr<ConverterAndData> converter_and_data(
-      CreateStubbedConverterAndData());
-  Converter *converter = converter_and_data->converter.get();
-
-  {
-    std::string key;
-    std::string value;
-    uint16_t id = 0;
-    EXPECT_FALSE(converter->GetLastConnectivePart("", &key, &value, &id));
-    EXPECT_FALSE(converter->GetLastConnectivePart(" ", &key, &value, &id));
-    EXPECT_FALSE(converter->GetLastConnectivePart("  ", &key, &value, &id));
-  }
-
-  {
-    std::string key;
-    std::string value;
-    uint16_t id = 0;
-    EXPECT_TRUE(converter->GetLastConnectivePart("a", &key, &value, &id));
-    EXPECT_EQ(key, "a");
-    EXPECT_EQ(value, "a");
-    EXPECT_EQ(id,
-              converter_and_data->converter->pos_matcher_->GetUniqueNounId());
-
-    EXPECT_TRUE(converter->GetLastConnectivePart("a ", &key, &value, &id));
-    EXPECT_EQ(key, "a");
-    EXPECT_EQ(value, "a");
-
-    EXPECT_FALSE(converter->GetLastConnectivePart("a  ", &key, &value, &id));
-
-    EXPECT_TRUE(converter->GetLastConnectivePart("a ", &key, &value, &id));
-    EXPECT_EQ(key, "a");
-    EXPECT_EQ(value, "a");
-
-    EXPECT_TRUE(converter->GetLastConnectivePart("a10a", &key, &value, &id));
-    EXPECT_EQ(key, "a");
-    EXPECT_EQ(value, "a");
-
-    EXPECT_TRUE(converter->GetLastConnectivePart("ａ", &key, &value, &id));
-    EXPECT_EQ(key, "a");
-    EXPECT_EQ(value, "ａ");
-  }
-
-  {
-    std::string key;
-    std::string value;
-    uint16_t id = 0;
-    EXPECT_TRUE(converter->GetLastConnectivePart("10", &key, &value, &id));
-    EXPECT_EQ(key, "10");
-    EXPECT_EQ(value, "10");
-    EXPECT_EQ(id, converter_and_data->converter->pos_matcher_->GetNumberId());
-
-    EXPECT_TRUE(converter->GetLastConnectivePart("10a10", &key, &value, &id));
-    EXPECT_EQ(key, "10");
-    EXPECT_EQ(value, "10");
-
-    EXPECT_TRUE(converter->GetLastConnectivePart("１０", &key, &value, &id));
-    EXPECT_EQ(key, "10");
-    EXPECT_EQ(value, "１０");
-  }
-
-  {
-    std::string key;
-    std::string value;
-    uint16_t id = 0;
-    EXPECT_FALSE(converter->GetLastConnectivePart("あ", &key, &value, &id));
   }
 }
 
@@ -2020,11 +1951,13 @@ TEST_F(ConverterTest, RevertConversion) {
 
   converter_and_data->immutable_converter =
       std::make_unique<ImmutableConverter>(modules);
-  converter_and_data->converter = std::make_unique<Converter>();
+  const ImmutableConverterInterface &immutable_converter =
+      *converter_and_data->immutable_converter;
+  converter_and_data->converter =
+      std::make_unique<Converter>(modules, immutable_converter);
 
   converter_and_data->converter->Init(
-      modules, std::move(mock_predictor), std::move(mock_rewriter),
-      converter_and_data->immutable_converter.get());
+      std::move(mock_predictor), std::move(mock_rewriter));
 
   ConverterInterface *converter = converter_and_data->converter.get();
   Segments segments;

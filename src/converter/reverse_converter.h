@@ -27,27 +27,27 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "converter/immutable_converter_interface.h"
+#ifndef MOZC_CONVERTER_REVERSE_CONVERTER_H_
+#define MOZC_CONVERTER_REVERSE_CONVERTER_H_
 
-#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "converter/immutable_converter_interface.h"
 #include "converter/segments.h"
-#include "request/conversion_request.h"
 
 namespace mozc {
 
-// This method is a proxy to the ConvertForRequest to keep the backward
-// compatibility.
-// TODO(hidehiko): Get rid of this method when we deprecate it.
-bool ImmutableConverterInterface::Convert(Segments *segments) const {
-  const ConversionRequest request;
-  return ConvertForRequest(request, segments);
-}
+namespace converter {
+class ReverseConverter {
+ public:
+  explicit ReverseConverter(
+      const ImmutableConverterInterface &immutable_converter);
 
-bool ImmutableConverterInterface::ConvertForRequest(
-    const ConversionRequest &request, Segments *segments) const {
-  // TODO(hidehiko): Get rid of this default implementation.
-  LOG(FATAL) << "Please implement ConvertForRequest method.";
-  return false;
-}
+  bool ReverseConvert(absl::string_view key, Segments *segments) const;
 
+ private:
+  const ImmutableConverterInterface &immutable_converter_;
+};
+}  // namespace converter
 }  // namespace mozc
+
+#endif  // MOZC_CONVERTER_REVERSE_CONVERTER_H_
