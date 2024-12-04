@@ -30,17 +30,19 @@
 #include "rewriter/user_boundary_history_rewriter.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
-#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "base/config_file_stream.h"
 #include "base/file_util.h"
@@ -56,30 +58,15 @@
 namespace mozc {
 namespace {
 
-using ::mozc::storage::LruStorage;
-
 constexpr int kValueSize = 4;
 constexpr uint32_t kLruSize = 5000;
 constexpr uint32_t kSeedValue = 0x761fea81;
 
 constexpr char kFileName[] = "user://boundary.db";
 
-enum { INSERT, RESIZE };
-
 class LengthArray {
  public:
-  void ToUCharArray(uint8_t *array) const {
-    array[0] = length0_;
-    array[1] = length1_;
-    array[2] = length2_;
-    array[3] = length3_;
-    array[4] = length4_;
-    array[5] = length5_;
-    array[6] = length6_;
-    array[7] = length7_;
-  }
-
-  void CopyFromUCharArray(const uint8_t *array) {
+  explicit LengthArray(const std::array<uint8_t, 8> &array) {
     length0_ = array[0];
     length1_ = array[1];
     length2_ = array[2];
@@ -90,14 +77,21 @@ class LengthArray {
     length7_ = array[7];
   }
 
-  bool Equal(const LengthArray &r) const {
-    return (length0_ == r.length0_ && length1_ == r.length1_ &&
-            length2_ == r.length2_ && length3_ == r.length3_ &&
-            length4_ == r.length4_ && length5_ == r.length5_ &&
-            length6_ == r.length6_ && length7_ == r.length7_);
+  std::array<uint8_t, 8> ToUint8Array() const {
+    return {length0_, length1_, length2_, length3_,
+            length4_, length5_, length6_, length7_};
+  }
+
+  bool Equal(const LengthArray &other) const {
+    return length0_ == other.length0_ && length1_ == other.length1_ &&
+           length2_ == other.length2_ && length3_ == other.length3_ &&
+           length4_ == other.length4_ && length5_ == other.length5_ &&
+           length6_ == other.length6_ && length7_ == other.length7_;
   }
 
  private:
+  // Variables are initialized and converted by reinterpret_casts.
+  // Do not remove / add variables until the reinterpret_casts are removed.
   uint8_t length0_ : 4;
   uint8_t length1_ : 4;
   uint8_t length2_ : 4;
@@ -108,12 +102,73 @@ class LengthArray {
   uint8_t length7_ : 4;
 };
 
+class SegmentsKey {
+ public:
+  SegmentsKey() = delete;
+  SegmentsKey(std::string &&whole_key, std::vector<int> &&byte_indexs,
+              std::vector<uint8_t> &&char_sizes)
+      : whole_key_(std::move(whole_key)),
+        byte_indexs_(std::move(byte_indexs)),
+        char_sizes_(std::move(char_sizes)) {}
+
+  static std::optional<const SegmentsKey> Create(const Segments &segments) {
+    std::string whole_key;
+    std::vector<int> byte_indexs;  // indexes in bytes (3 for "あ")
+    std::vector<uint8_t> char_sizes;  // sizes in chars (1 for "あ")
+
+    size_t byte_index = 0;
+    for (const Segment &segment : segments.conversion_segments()) {
+      absl::string_view key = segment.key();
+      absl::StrAppend(&whole_key, key);
+      byte_indexs.push_back(byte_index);
+      byte_index += key.size();
+
+      const size_t key_size = Util::CharsLen(key);
+      if (key_size > 255) {  // too long segment
+        return std::nullopt;
+      }
+      char_sizes.push_back(static_cast<uint8_t>(key_size));
+    }
+    byte_indexs.push_back(byte_index);
+    return SegmentsKey(std::move(whole_key), std::move(byte_indexs),
+                       std::move(char_sizes));
+  }
+
+  // Returns the key of the segments at segment_index with segment_size.
+  absl::string_view GetKey(size_t segment_index, size_t segment_size) const {
+    DCHECK_LT(segment_index + segment_size, byte_indexs_.size());
+    const size_t start_index = byte_indexs_[segment_index];
+    const size_t end_index = byte_indexs_[segment_index + segment_size];
+    const size_t key_size = end_index - start_index;
+    return absl::string_view(whole_key_.data() + start_index, key_size);
+  }
+
+  // Returns the length array of the segments at segment_index with
+  // segment_size.
+  LengthArray GetLengthArray(size_t segment_index, size_t segment_size) const {
+    const size_t size = std::min<size_t>(segment_size, 8);
+    std::array<uint8_t, 8> length_array = {0, 0, 0, 0, 0, 0, 0, 0};
+    for (size_t i = 0; i < size; ++i) {
+      length_array[i] = char_sizes_[segment_index + i];
+    }
+    return LengthArray(length_array);
+  }
+
+ private:
+  // If segments are {"これは", "Mozcの", "こーどです"},
+  // whole_key_: "これはMozcのこーどです" (31 bytes in total)
+  // byte_indexs_: {0, 9, 16, 31}
+  // char_sizes_: {3, 5, 5}
+  const std::string whole_key_;
+  const std::vector<int> byte_indexs_;  // indexes in bytes (3 for "あ")
+  const std::vector<uint8_t> char_sizes_;  // sizes in chars (1 for "あ")
+};
+
 }  // namespace
 
 UserBoundaryHistoryRewriter::UserBoundaryHistoryRewriter(
     const ConverterInterface *parent_converter)
-    : parent_converter_(parent_converter),
-      storage_(std::make_unique<LruStorage>()) {
+    : parent_converter_(parent_converter) {
   DCHECK(parent_converter_);
   Reload();
 }
@@ -140,17 +195,12 @@ void UserBoundaryHistoryRewriter::Finish(const ConversionRequest &request,
     return;
   }
 
-  if (storage_ == nullptr) {
-    MOZC_VLOG(2) << "storage is NULL";
-    return;
-  }
-
   if (segments->resized()) {
-    ResizeOrInsert(segments, request, INSERT);
+    Insert(request, *segments);
 #ifdef __ANDROID__
     // TODO(hidehiko): UsageStats requires some functionalities, e.g. network,
     // which are not needed for mozc's main features.
-    // So, to focus on the main features' developping, we just skip it for now.
+    // So, to focus on the main features' developing, we just skip it for now.
     // Note: we can #ifdef inside SetInteger, but to build it we need to build
     // other methods in usage_stats as well. So we'll exclude the method here
     // for now.
@@ -158,7 +208,7 @@ void UserBoundaryHistoryRewriter::Finish(const ConversionRequest &request,
     // update usage stats here
     usage_stats::UsageStats::SetInteger(
         "UserBoundaryHistoryEntrySize",
-        static_cast<int>(storage_->used_size()));
+        static_cast<int>(storage_.used_size()));
 #endif  // __ANDROID__
   }
 }
@@ -180,35 +230,28 @@ bool UserBoundaryHistoryRewriter::Rewrite(const ConversionRequest &request,
     return false;
   }
 
-  if (storage_ == nullptr) {
-    MOZC_VLOG(2) << "storage is NULL";
-    return false;
-  }
-
   if (request.skip_slow_rewriters()) {
     return false;
   }
 
   if (!segments->resized()) {
-    return ResizeOrInsert(segments, request, RESIZE);
+    return Resize(request, *segments);
   }
 
   return false;
 }
 
 bool UserBoundaryHistoryRewriter::Sync() {
-  if (storage_) {
-    storage_->DeleteElementsUntouchedFor62Days();
-  }
+  storage_.DeleteElementsUntouchedFor62Days();
   return true;
 }
 
 bool UserBoundaryHistoryRewriter::Reload() {
   const std::string filename = ConfigFileStream::GetFileName(kFileName);
-  if (!storage_->OpenOrCreate(filename.c_str(), kValueSize, kLruSize,
-                              kSeedValue)) {
+  if (!storage_.OpenOrCreate(filename.c_str(), kValueSize, kLruSize,
+                             kSeedValue)) {
     LOG(WARNING) << "cannot initialize UserBoundaryHistoryRewriter";
-    storage_.reset();
+    storage_.Clear();
     return false;
   }
 
@@ -217,7 +260,7 @@ bool UserBoundaryHistoryRewriter::Reload() {
 
   // merge pending file does not always exist.
   if (absl::Status s = FileUtil::FileExists(merge_pending_file); s.ok()) {
-    storage_->Merge(merge_pending_file.c_str());
+    storage_.Merge(merge_pending_file.c_str());
     FileUtil::UnlinkOrLogError(merge_pending_file);
   } else if (!absl::IsNotFound(s)) {
     LOG(ERROR) << "Cannot check if " << merge_pending_file << " exists: " << s;
@@ -226,117 +269,105 @@ bool UserBoundaryHistoryRewriter::Reload() {
   return true;
 }
 
-// TODO(taku): split Reize/Insert into different functions
-bool UserBoundaryHistoryRewriter::ResizeOrInsert(
-    Segments *segments, const ConversionRequest &request, int type) const {
-  bool result = false;
-
-  const size_t history_segments_size = segments->history_segments_size();
-
-  // resize segments in [history_segments_size .. target_segments_size - 1]
-  size_t target_segments_size = segments->segments_size();
-
-  // when INSERTING new history,
-  // Get the prefix of segments having FIXED_VALUE state.
-  if (type == INSERT) {
-    target_segments_size = history_segments_size;
-    for (const Segment &segment : segments->all().drop(history_segments_size)) {
-      if (segment.segment_type() == Segment::FIXED_VALUE) {
-        ++target_segments_size;
-      }
-    }
-  }
+bool UserBoundaryHistoryRewriter::Resize(
+    const ConversionRequest &request, Segments &segments) const {
+  const size_t target_segments_size = segments.conversion_segments_size();
 
   // No effective segments found
-  if (target_segments_size <= history_segments_size) {
+  if (target_segments_size == 0) {
     return false;
   }
 
-  std::deque<std::pair<std::string, size_t>> keys(target_segments_size -
-                                                  history_segments_size);
-  for (size_t i = history_segments_size; i < target_segments_size; ++i) {
-    const Segment &segment = segments->segment(i);
-    keys[i - history_segments_size].first = segment.key();
-    const size_t length = Util::CharsLen(segment.key());
-    if (length > 255) {  // too long segment
-      MOZC_VLOG(2) << "too long segment";
-      return false;
-    }
-    keys[i - history_segments_size].second = length;
+  std::optional<const SegmentsKey> segments_key = SegmentsKey::Create(segments);
+  if (!segments_key) {
+    MOZC_VLOG(2) << "too long segment";
+    return false;
   }
 
-  for (size_t i = history_segments_size; i < target_segments_size; ++i) {
-    constexpr size_t kMaxKeysSize = 5;
-    const size_t keys_size = std::min(kMaxKeysSize, keys.size());
-    std::string key;
-    uint8_t length_array[8] = {};
-    for (size_t k = 0; k < keys_size; ++k) {
-      key += keys[k].first;
-      length_array[k] = static_cast<uint8_t>(keys[k].second);
-    }
-    for (int j = static_cast<int>(keys_size) - 1; j >= 0; --j) {
-      if (type == RESIZE) {
-        const LengthArray *value =
-            reinterpret_cast<const LengthArray *>(storage_->Lookup(key));
-        if (value != nullptr) {
-          LengthArray orig_value;
-          orig_value.CopyFromUCharArray(length_array);
-          if (!value->Equal(orig_value)) {
-            value->ToUCharArray(length_array);
-            const int old_segments_size =
-                static_cast<int>(target_segments_size);
-            MOZC_VLOG(2) << "ResizeSegment key: " << key << " segments: ["
-                         << i - history_segments_size << ", " << j + 1
-                         << ") resize: [" << static_cast<int>(length_array[0])
-                         << " " << static_cast<int>(length_array[1]) << " "
-                         << static_cast<int>(length_array[2]) << " "
-                         << static_cast<int>(length_array[3]) << " "
-                         << static_cast<int>(length_array[4]) << " "
-                         << static_cast<int>(length_array[5]) << " "
-                         << static_cast<int>(length_array[6]) << " "
-                         << static_cast<int>(length_array[7]) << "]";
-            if (parent_converter_->ResizeSegment(segments, request,
-                                                 i - history_segments_size,
-                                                 j + 1, length_array)) {
-              result = true;
-            } else {
-              LOG(WARNING) << "ResizeSegment failed for key: " << key;
-            }
-            i += (j + target_segments_size - old_segments_size);
-            break;
-          }
-        }
-      } else if (type == INSERT) {
-        MOZC_VLOG(2) << "InserteSegment key: " << key << " "
-                     << i - history_segments_size << " " << j + 1 << " "
-                     << static_cast<int>(length_array[0]) << " "
-                     << static_cast<int>(length_array[1]) << " "
-                     << static_cast<int>(length_array[2]) << " "
-                     << static_cast<int>(length_array[3]) << " "
-                     << static_cast<int>(length_array[4]) << " "
-                     << static_cast<int>(length_array[5]) << " "
-                     << static_cast<int>(length_array[6]) << " "
-                     << static_cast<int>(length_array[7]);
-        LengthArray inserted_value;
-        inserted_value.CopyFromUCharArray(length_array);
-        storage_->Insert(key, reinterpret_cast<const char *>(&inserted_value));
+  bool result = false;
+  for (size_t seg_idx = 0; seg_idx < target_segments_size; ++seg_idx) {
+    constexpr int kMaxKeysSize = 5;
+    const int keys_size =
+        std::clamp<int>(target_segments_size - seg_idx, 0, kMaxKeysSize);
+    for (size_t seg_size = keys_size; seg_size != 0; --seg_size) {
+      absl::string_view key = segments_key->GetKey(seg_idx, seg_size);
+      const LengthArray *value =
+          reinterpret_cast<const LengthArray *>(storage_.Lookup(key));
+      if (value == nullptr) {
+        // If the key is not in the history, resize is not needed.
+        // Continue to the next step with a smaller segment key.
+        continue;
       }
 
-      length_array[j] = 0;
-      key.erase(key.size() - keys[j].first.size());
-    }
+      const LengthArray length_array =
+          segments_key->GetLengthArray(seg_idx, seg_size);
+      if (value->Equal(length_array)) {
+        // If the segments are already same as the history, resize is not
+        // needed. Skip the checked segments.
+        seg_idx += seg_size - 1;  // -1 as the main loop will add +1.
+        break;
+      }
 
-    keys.pop_front();  // delete first item
+      const std::array<uint8_t, 8> updated_array = value->ToUint8Array();
+      MOZC_VLOG(2) << "ResizeSegment key: " << key << " segments: [" << seg_idx
+                   << ", " << seg_size << "] "
+                   << "resize: [" << absl::StrJoin(updated_array, " ") << "]";
+      if (parent_converter_->ResizeSegment(&segments, request, seg_idx,
+                                           seg_size, updated_array)) {
+        result = true;
+      } else {
+        LOG(WARNING) << "ResizeSegment failed for key: " << key;
+      }
+      seg_idx += seg_size - 1;  // -1 as the main loop will add +1.
+      break;
+    }
   }
 
   return result;
 }
 
-void UserBoundaryHistoryRewriter::Clear() {
-  if (storage_ != nullptr) {
-    MOZC_VLOG(1) << "Clearing user segment data";
-    storage_->Clear();
+bool UserBoundaryHistoryRewriter::Insert(const ConversionRequest &request,
+                                         Segments &segments) {
+  // Get the prefix of segments having FIXED_VALUE state.
+  size_t target_segments_size = 0;
+  for (const Segment &segment : segments.conversion_segments()) {
+    if (segment.segment_type() == Segment::FIXED_VALUE) {
+      ++target_segments_size;
+    }
   }
+
+  // No effective segments found
+  if (target_segments_size == 0) {
+    return false;
+  }
+
+  std::optional<const SegmentsKey> segments_key = SegmentsKey::Create(segments);
+  if (!segments_key) {
+    MOZC_VLOG(2) << "too long segment";
+    return false;
+  }
+
+  for (size_t seg_idx = 0; seg_idx < target_segments_size; ++seg_idx) {
+    constexpr size_t kMaxKeysSize = 5;
+    const int keys_size =
+        std::clamp<int>(target_segments_size - seg_idx, 0, kMaxKeysSize);
+    for (size_t seg_size = keys_size; seg_size != 0; --seg_size) {
+      const absl::string_view key = segments_key->GetKey(seg_idx, seg_size);
+      const LengthArray length_array =
+          segments_key->GetLengthArray(seg_idx, seg_size);
+      MOZC_VLOG(2) << "InserteSegment key: " << key << " " << seg_idx << " "
+                   << seg_size << " "
+                   << absl::StrJoin(length_array.ToUint8Array(), " ");
+      storage_.Insert(key, reinterpret_cast<const char *>(&length_array));
+    }
+  }
+
+  return true;
+}
+
+void UserBoundaryHistoryRewriter::Clear() {
+  MOZC_VLOG(1) << "Clearing user segment data";
+  storage_.Clear();
 }
 
 }  // namespace mozc
