@@ -304,10 +304,10 @@ bool ExecCommand(const ConverterInterface &converter, const std::string &line,
   const std::string &func = fields[0];
   if (func == "startconversion" || func == "start" || func == "s") {
     options.request_type = ConversionRequest::CONVERSION;
-    const ConversionRequest conversion_request = ConversionRequest(
-        composer, request, context, *config, std::move(options));
     CHECK_FIELDS_LENGTH(2);
     composer.SetPreeditTextForTestOnly(fields[1]);
+    const ConversionRequest conversion_request = ConversionRequest(
+        composer, request, context, *config, std::move(options));
     return converter.StartConversion(conversion_request, segments);
   } else if (func == "convertwithnodeinfo" || func == "cn") {
     CHECK_FIELDS_LENGTH(5);
@@ -327,24 +327,20 @@ bool ExecCommand(const ConverterInterface &converter, const std::string &line,
     return converter.StartReverseConversion(segments, fields[1]);
   } else if (func == "startprediction" || func == "predict" || func == "p") {
     options.request_type = ConversionRequest::PREDICTION;
-    const ConversionRequest conversion_request = ConversionRequest(
-        composer, request, context, *config, std::move(options));
     if (fields.size() >= 2) {
       composer.SetPreeditTextForTestOnly(fields[1]);
-      return converter.StartPrediction(conversion_request, segments);
-    } else {
-      return converter.StartPrediction(conversion_request, segments);
     }
+    const ConversionRequest conversion_request = ConversionRequest(
+        composer, request, context, *config, std::move(options));
+    return converter.StartPrediction(conversion_request, segments);
   } else if (func == "startsuggestion" || func == "suggest") {
     options.request_type = ConversionRequest::SUGGESTION;
-    const ConversionRequest conversion_request = ConversionRequest(
-        composer, request, context, *config, std::move(options));
     if (fields.size() >= 2) {
       composer.SetPreeditTextForTestOnly(fields[1]);
-      return converter.StartPrediction(conversion_request, segments);
-    } else {
-      return converter.StartPrediction(conversion_request, segments);
     }
+    const ConversionRequest conversion_request = ConversionRequest(
+        composer, request, context, *config, std::move(options));
+    return converter.StartPrediction(conversion_request, segments);
   } else if (func == "finishconversion" || func == "finish") {
     options.request_type = ConversionRequest::CONVERSION;
     const ConversionRequest conversion_request = ConversionRequest(
@@ -468,8 +464,8 @@ bool IsConsistentEngineNameAndType(const std::string &engine_name,
          kConsistentPairs->end();
 }
 
-void RunLoop(std::unique_ptr<EngineInterface> engine,
-             commands::Request &&request, config::Config &&config) {
+void RunLoop(std::unique_ptr<Engine> engine, commands::Request &&request,
+             config::Config &&config) {
   ConverterInterface *converter = engine->GetConverter();
   CHECK(converter);
 
@@ -531,7 +527,7 @@ int main(int argc, char **argv) {
 
   mozc::config::Config config = mozc::config::ConfigHandler::DefaultConfig();
   mozc::commands::Request request;
-  std::unique_ptr<mozc::EngineInterface> engine;
+  std::unique_ptr<mozc::Engine> engine;
   if (absl::GetFlag(FLAGS_engine_type) == "desktop") {
     engine =
         mozc::Engine::CreateDesktopEngine(*std::move(data_manager)).value();

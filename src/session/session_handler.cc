@@ -53,8 +53,6 @@
 #include "config/config_handler.h"
 #include "dictionary/user_dictionary_session_handler.h"
 #include "engine/engine_interface.h"
-#include "engine/supplemental_model_interface.h"
-#include "engine/user_data_manager_interface.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "protocol/engine_builder.pb.h"
@@ -70,7 +68,6 @@
 #include "base/process.h"
 #include "session/session_watch_dog.h"
 #endif  // MOZC_DISABLE_SESSION_WATCHDOG
-
 
 // TODO(b/275437228): Convert this to use `absl::Duration`. Note that existing
 // clients assume a negative value means we do not timeout at all.
@@ -170,7 +167,6 @@ SessionHandler::SessionHandler(std::unique_ptr<EngineInterface> engine)
     return;
   }
 
-
   // Everything is OK.
   is_available_ = true;
 }
@@ -253,21 +249,21 @@ bool SessionHandler::ReloadAndWait(commands::Command *command) {
 
 bool SessionHandler::ClearUserHistory(commands::Command *command) {
   MOZC_VLOG(1) << "Clearing user history";
-  engine_->GetUserDataManager()->ClearUserHistory();
+  engine_->ClearUserHistory();
   UsageStats::IncrementCount("ClearUserHistory");
   return true;
 }
 
 bool SessionHandler::ClearUserPrediction(commands::Command *command) {
   MOZC_VLOG(1) << "Clearing user prediction";
-  engine_->GetUserDataManager()->ClearUserPrediction();
+  engine_->ClearUserPrediction();
   UsageStats::IncrementCount("ClearUserPrediction");
   return true;
 }
 
 bool SessionHandler::ClearUnusedUserPrediction(commands::Command *command) {
   MOZC_VLOG(1) << "Clearing unused user prediction";
-  engine_->GetUserDataManager()->ClearUnusedUserPrediction();
+  engine_->ClearUnusedUserPrediction();
   UsageStats::IncrementCount("ClearUnusedUserPrediction");
   return true;
 }
@@ -372,9 +368,6 @@ bool SessionHandler::EvalCommand(commands::Command *command) {
       break;
     case commands::Input::NO_OPERATION:
       eval_succeeded = NoOperation(command);
-      break;
-    case commands::Input::CHECK_SPELLING:
-      eval_succeeded = CheckSpelling(command);
       break;
     case commands::Input::RELOAD_SPELL_CHECKER:
       eval_succeeded = ReloadSupplementalModel(command);
@@ -674,29 +667,16 @@ bool SessionHandler::SendEngineReloadRequest(commands::Command *command) {
 
 bool SessionHandler::NoOperation(commands::Command *command) { return true; }
 
-bool SessionHandler::CheckSpelling(commands::Command *command) {
-  if (!command->input().has_check_spelling_request() ||
-      command->input().check_spelling_request().text().empty()) {
-    return true;
-  }
-
-  if (supplemental_model_) {
-    auto response = supplemental_model_->CheckSpelling(
-        command->input().check_spelling_request());
-    auto *stored = command->mutable_output()->mutable_check_spelling_response();
-    if (response.has_value()) {
-      *stored = std::move(*response);
-    }
-  }
-
-  return true;
-}
-
 bool SessionHandler::ReloadSupplementalModel(commands::Command *command) {
-  if (supplemental_model_) {
-    supplemental_model_->LoadAsync(command->input().engine_reload_request());
+  if (!command->input().has_engine_reload_request()) {
     return false;
   }
+  if (!engine_->SendSupplementalModelReloadRequest(
+          command->input().engine_reload_request())) {
+    return false;
+  }
+  command->mutable_output()->mutable_engine_reload_response()->set_status(
+      EngineReloadResponse::ACCEPTED);
   return true;
 }
 

@@ -42,13 +42,11 @@
 #include "converter/converter_interface.h"
 #include "converter/immutable_converter_interface.h"
 #include "data_manager/data_manager_interface.h"
-#include "dictionary/suppression_dictionary.h"
 #include "engine/data_loader.h"
 #include "engine/engine_interface.h"
 #include "engine/minimal_engine.h"
 #include "engine/modules.h"
 #include "engine/supplemental_model_interface.h"
-#include "engine/user_data_manager_interface.h"
 #include "prediction/predictor_interface.h"
 #include "rewriter/rewriter_interface.h"
 
@@ -106,10 +104,6 @@ class Engine : public EngineInterface {
       return minimal_engine_.GetPredictorName();
     }
   }
-  dictionary::SuppressionDictionary *GetSuppressionDictionary() override {
-    return initialized_ ? modules_->GetMutableSuppressionDictionary()
-                        : minimal_engine_.GetSuppressionDictionary();
-  }
 
   // Functions for Reload, Sync, Wait return true if successfully operated
   // or did nothing.
@@ -118,19 +112,18 @@ class Engine : public EngineInterface {
   bool Wait() override;
   bool ReloadAndWait() override;
 
-  absl::Status ReloadModules(std::unique_ptr<engine::Modules> modules,
-                             bool is_mobile) override;
+  bool ClearUserHistory() override;
+  bool ClearUserPrediction() override;
+  bool ClearUnusedUserPrediction() override;
 
-  UserDataManagerInterface *GetUserDataManager() override {
-    return initialized_ ? user_data_manager_.get()
-                        : minimal_engine_.GetUserDataManager();
-  }
+  absl::Status ReloadModules(std::unique_ptr<engine::Modules> modules,
+                             bool is_mobile);
 
   absl::string_view GetDataVersion() const override {
     return GetDataManager()->GetDataVersion();
   }
 
-  const DataManagerInterface *GetDataManager() const override {
+  const DataManagerInterface *GetDataManager() const {
     return initialized_ ? &modules_->GetDataManager()
                         : minimal_engine_.GetDataManager();
   }
@@ -144,21 +137,19 @@ class Engine : public EngineInterface {
                         : minimal_engine_.GetPosList();
   }
 
-  void SetSupplementalModel(
-      const engine::SupplementalModelInterface *supplemental_model) override {
-    modules_->SetSupplementalModel(supplemental_model);
-  }
-
   // For testing only.
   engine::Modules *GetModulesForTesting() const { return modules_.get(); }
 
   // Maybe reload a new data manager. Returns true if reloaded.
   bool MaybeReloadEngine(EngineReloadResponse *response) override;
   bool SendEngineReloadRequest(const EngineReloadRequest &request) override;
-  void SetDataLoaderForTesting(std::unique_ptr<DataLoader> loader) override {
+  bool SendSupplementalModelReloadRequest(
+      const EngineReloadRequest &request) override;
+
+  void SetDataLoaderForTesting(std::unique_ptr<DataLoader> loader) {
     loader_ = std::move(loader);
   }
-  void SetAlwaysWaitForLoaderResponseFutureForTesting(bool value) override {
+  void SetAlwaysWaitForLoaderResponseFutureForTesting(bool value) {
     loader_->SetAlwaysWaitForLoaderResponseFutureForTesting(value);
   }
 
@@ -176,6 +167,7 @@ class Engine : public EngineInterface {
   std::unique_ptr<DataLoader> loader_;
   std::unique_ptr<engine::Modules> modules_;
   std::unique_ptr<ImmutableConverterInterface> immutable_converter_;
+  std::unique_ptr<engine::SupplementalModelInterface> supplemental_model_;
 
   // TODO(noriyukit): Currently predictor and rewriter are created by this class
   // but owned by converter_. Since this class creates these two, it'd be better
@@ -184,7 +176,6 @@ class Engine : public EngineInterface {
   RewriterInterface *rewriter_ = nullptr;
 
   std::unique_ptr<Converter> converter_;
-  std::unique_ptr<UserDataManagerInterface> user_data_manager_;
 };
 
 }  // namespace mozc
