@@ -30,10 +30,13 @@
 #include "converter/converter.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -137,21 +140,23 @@ bool IsValidSegments(const ConversionRequest &request,
 
 }  // namespace
 
-Converter::Converter(const engine::Modules &modules,
-                     const ImmutableConverterInterface &immutable_converter)
-    : modules_(modules),
-      immutable_converter_(immutable_converter),
-      pos_matcher_(*modules.GetPosMatcher()),
-      suppression_dictionary_(*modules.GetSuppressionDictionary()),
-      history_reconstructor_(*modules.GetPosMatcher()),
-      reverse_converter_(immutable_converter),
-      general_noun_id_(pos_matcher_.GetGeneralNounId()) {}
-
-void Converter::Init(std::unique_ptr<PredictorInterface> predictor,
-                     std::unique_ptr<RewriterInterface> rewriter) {
-  // Initializes in order of declaration.
-  predictor_ = std::move(predictor);
-  rewriter_ = std::move(rewriter);
+Converter::Converter(
+    std::unique_ptr<engine::Modules> modules,
+    const ImmutableConverterFactory &immutable_converter_factory,
+    const PredictorFactory &predictor_factory,
+    const RewriterFactory &rewriter_factory)
+    : modules_(std::move(modules)),
+      immutable_converter_(immutable_converter_factory(*modules_)),
+      pos_matcher_(*modules_->GetPosMatcher()),
+      suppression_dictionary_(*modules_->GetSuppressionDictionary()),
+      history_reconstructor_(*modules_->GetPosMatcher()),
+      reverse_converter_(*immutable_converter_),
+      general_noun_id_(pos_matcher_.GetGeneralNounId()) {
+  DCHECK(immutable_converter_);
+  predictor_ = predictor_factory(*modules_, this, immutable_converter_.get());
+  rewriter_ = rewriter_factory(*modules_, this);
+  DCHECK(predictor_);
+  DCHECK(rewriter_);
 }
 
 bool Converter::StartConversion(const ConversionRequest &request,
@@ -439,90 +444,23 @@ bool Converter::ResizeSegment(Segments *segments,
     return false;
   }
 
-  segment_index = GetSegmentIndex(segments, segment_index);
-  if (segment_index == kErrorIndex) {
+  if (segment_index >= segments->conversion_segments_size()) {
     return false;
   }
 
-  // the last segments cannot become longer
-  if (offset_length > 0 && segment_index == segments->segments_size() - 1) {
+  absl::string_view key = segments->conversion_segment(segment_index).key();
+  if (key.empty()) {
     return false;
   }
 
-  const Segment &cur_segment = segments->segment(segment_index);
-  const size_t cur_length = Util::CharsLen(cur_segment.key());
-
-  // length cannot become 0
-  if (cur_length + offset_length == 0) {
+  const int key_len = Util::CharsLen(key);
+  const int new_size = key_len + offset_length;
+  if (new_size <= 0 || new_size > std::numeric_limits<uint8_t>::max()) {
     return false;
   }
-
-  const std::string cur_segment_key = cur_segment.key();
-
-  if (offset_length > 0) {
-    int length = offset_length;
-    std::string last_key;
-    size_t last_clen = 0;
-    {
-      std::string new_key = cur_segment_key;
-      while (segment_index + 1 < segments->segments_size()) {
-        last_key = segments->segment(segment_index + 1).key();
-        segments->erase_segment(segment_index + 1);
-        last_clen = Util::CharsLen(last_key);
-        length -= static_cast<int>(last_clen);
-        if (length <= 0) {
-          std::string tmp;
-          Util::Utf8SubString(last_key, 0, length + last_clen, &tmp);
-          new_key += tmp;
-          break;
-        }
-        new_key += last_key;
-      }
-
-      Segment *segment = segments->mutable_segment(segment_index);
-      segment->Clear();
-      segment->set_segment_type(Segment::FIXED_BOUNDARY);
-      segment->set_key(std::move(new_key));
-    }  // scope out |segment|, |new_key|
-
-    if (length < 0) {  // remaining part
-      Segment *segment = segments->insert_segment(segment_index + 1);
-      segment->set_segment_type(Segment::FREE);
-      segment->set_key(
-          Util::Utf8SubString(last_key, static_cast<size_t>(length + last_clen),
-                              static_cast<size_t>(-length)));
-    }
-  } else if (offset_length < 0) {
-    if (cur_length + offset_length > 0) {
-      Segment *segment1 = segments->mutable_segment(segment_index);
-      segment1->Clear();
-      segment1->set_segment_type(Segment::FIXED_BOUNDARY);
-      segment1->set_key(
-          Util::Utf8SubString(cur_segment_key, 0, cur_length + offset_length));
-    }
-
-    if (segment_index + 1 < segments->segments_size()) {
-      Segment *segment2 = segments->mutable_segment(segment_index + 1);
-      segment2->set_segment_type(Segment::FREE);
-      std::string tmp;
-      Util::Utf8SubString(cur_segment_key,
-                          std::max<size_t>(0, cur_length + offset_length),
-                          cur_length, &tmp);
-      tmp += segment2->key();
-      segment2->set_key(std::move(tmp));
-    } else {
-      Segment *segment2 = segments->add_segment();
-      segment2->set_segment_type(Segment::FREE);
-      segment2->set_key(Util::Utf8SubString(
-          cur_segment_key, std::max<size_t>(0, cur_length + offset_length),
-          cur_length));
-    }
-  }
-
-  segments->set_resized(true);
-
-  ApplyConversion(segments, request);
-  return true;
+  const std::array<uint8_t, 1> new_size_array = {
+      static_cast<uint8_t>(new_size)};
+  return ResizeSegments(segments, request, segment_index, new_size_array);
 }
 
 bool Converter::ResizeSegments(Segments *segments,
@@ -545,33 +483,31 @@ bool Converter::ResizeSegments(Segments *segments,
   }
 
   std::string key;
+  size_t key_len = 0;
   size_t segments_size = 0;
   for (const Segment &segment : segments->all().drop(start_segment_index)) {
     absl::StrAppend(&key, segment.key());
+    key_len += Util::CharsLen(segment.key());
     ++segments_size;
-    if (Util::CharsLen(key) >= total_size) {
+    if (key_len >= total_size) {
       break;
     }
   }
 
-  if (key.empty()) {
+  // If key is empty or less than the total size of new segments, return false.
+  if (key_len == 0 || key_len < total_size) {
     return false;
   }
 
   size_t consumed = 0;
-  const size_t key_len = Util::CharsLen(key);
   std::vector<std::string> new_keys;
-  new_keys.reserve(new_size_array.size() + 1);
+  new_keys.reserve(new_size_array.size());
 
   for (size_t new_size : new_size_array) {
     if (new_size != 0 && consumed < key_len) {
       new_keys.emplace_back(Util::Utf8SubString(key, consumed, new_size));
       consumed += new_size;
     }
-  }
-  if (consumed < key_len) {
-    new_keys.emplace_back(
-        Util::Utf8SubString(key, consumed, key_len - consumed));
   }
 
   segments->erase_segments(start_segment_index, segments_size);
@@ -582,6 +518,22 @@ bool Converter::ResizeSegments(Segments *segments,
     seg->set_key(std::move(new_keys[i]));
   }
 
+  // If there is a remaining key, replace the next segment with the new key
+  // prepending the remaining key to the next segment as a FREE type.
+  if (consumed < key_len) {
+    std::string next_segment_key(
+        Util::Utf8SubString(key, consumed, key_len - consumed));
+    const size_t next_segment_index = start_segment_index + new_keys.size();
+    if (next_segment_index < segments->segments_size()) {
+      absl::StrAppend(&next_segment_key,
+                      segments->segment(next_segment_index).key());
+      segments->erase_segment(next_segment_index);
+    }
+    Segment *seg = segments->insert_segment(next_segment_index);
+    seg->set_segment_type(Segment::FREE);
+    seg->set_key(next_segment_key);
+  }
+
   segments->set_resized(true);
 
   ApplyConversion(segments, request);
@@ -590,7 +542,7 @@ bool Converter::ResizeSegments(Segments *segments,
 
 void Converter::ApplyConversion(Segments *segments,
                                 const ConversionRequest &request) const {
-  if (!immutable_converter_.ConvertForRequest(request, segments)) {
+  if (!immutable_converter_->ConvertForRequest(request, segments)) {
     // Conversion can fail for keys like "12". Even in such cases, rewriters
     // (e.g., number and variant rewriters) can populate some candidates.
     // Therefore, this is not an error.
@@ -639,7 +591,7 @@ void Converter::CompletePosIds(Segment::Candidate *candidate) const {
             })
             .Build();
     // In order to complete PosIds, call ImmutableConverter again.
-    if (!immutable_converter_.ConvertForRequest(request, &segments)) {
+    if (!immutable_converter_->ConvertForRequest(request, &segments)) {
       LOG(ERROR) << "ImmutableConverter::Convert() failed";
       return;
     }
@@ -667,9 +619,28 @@ void Converter::CompletePosIds(Segment::Candidate *candidate) const {
 
 void Converter::RewriteAndSuppressCandidates(const ConversionRequest &request,
                                              Segments *segments) const {
+  // 1. Resize segments if needed.
+  // Check if the segments need to be resized.
+  if (std::optional<RewriterInterface::ResizeSegmentsRequest> resize_request =
+          rewriter_->CheckResizeSegmentsRequest(request, *segments);
+      resize_request.has_value()) {
+    if (ResizeSegments(segments, request, resize_request->segment_index,
+                       resize_request->segment_sizes)) {
+      // If the segments are resized, ResizeSegments recursively executed
+      // RewriteAndSuppressCandidates with resized segments. No need to execute
+      // them again.
+      // TODO(b/381537649): Stop using the recursive call of
+      // RewriteAndSuppressCandidates.
+      return;
+    }
+  }
+
+  // 2. Rewrite candidates in each segment.
   if (!rewriter_->Rewrite(request, segments)) {
     return;
   }
+
+  // 3. Suppress candidates in each segment.
   // Optimization for common use case: Since most of users don't use suppression
   // dictionary and we can skip the subsequent check.
   if (suppression_dictionary_.IsEmpty()) {
@@ -742,4 +713,26 @@ void Converter::CommitUsageStats(const Segments *segments,
                            segment_length * 1000);
   UsageStats::IncrementCountBy("SubmittedTotalLength", submitted_total_length);
 }
+
+bool Converter::Reload() {
+  if (modules()->GetUserDictionary()) {
+    modules()->GetUserDictionary()->Reload();
+  }
+  return rewriter()->Reload() && predictor()->Reload();
+}
+
+bool Converter::Sync() {
+  if (modules()->GetUserDictionary()) {
+    modules()->GetUserDictionary()->Sync();
+  }
+  return rewriter()->Sync() && predictor()->Sync();
+}
+
+bool Converter::Wait() {
+  if (modules()->GetUserDictionary()) {
+    modules()->GetUserDictionary()->WaitForReloader();
+  }
+  return predictor()->Wait();
+}
+
 }  // namespace mozc
