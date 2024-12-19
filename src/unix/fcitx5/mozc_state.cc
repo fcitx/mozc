@@ -51,12 +51,10 @@
 #include "absl/log/log.h"
 #include "base/process.h"
 #include "base/vlog.h"
-#include "client/client_interface.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "unix/fcitx5/fcitx_key_event_handler.h"
 #include "unix/fcitx5/i18nwrapper.h"
-#include "unix/fcitx5/mozc_connection.h"
 #include "unix/fcitx5/mozc_engine.h"
 #include "unix/fcitx5/mozc_response_parser.h"
 #include "unix/fcitx5/surrounding_text_util.h"
@@ -465,13 +463,13 @@ void MozcState::DisplayUsage() {
   ic_->updateUserInterface(UserInterfaceComponent::InputPanel);
 }
 
-mozc::client::ClientInterface* MozcState::GetClient() const {
-  if (!client_holder_) {
-    client_holder_ = engine_->pool()->requestClient(ic_);
+MozcClientInterface* MozcState::GetClient() const {
+  if (!client_) {
+    client_ = engine_->pool()->requestClient(ic_);
   }
-  return client_holder_->client();
+  return client_.get();
 }
 
-void MozcState::ReleaseClient() { client_holder_.reset(); }
+void MozcState::ReleaseClient() { client_.reset(); }
 
 }  // namespace fcitx

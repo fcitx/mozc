@@ -141,11 +141,9 @@ Instance *Init(Instance *instance) {
 MozcEngine::MozcEngine(Instance *instance)
     : instance_(Init(instance)),
       parser_(std::make_unique<MozcResponseParser>(this)),
-      connection_(std::make_unique<MozcConnection>()),
-      client_(connection_->CreateClient()),
+      client_(createClient()),
       factory_([this](InputContext &ic) { return new MozcState(&ic, this); }) {
-  pool_ = std::make_unique<MozcClientPool>(connection_.get(),
-                                           GetSharedStatePolicy());
+  pool_ = std::make_unique<MozcClientPool>(GetSharedStatePolicy());
   for (auto command :
        {mozc::commands::DIRECT, mozc::commands::HIRAGANA,
         mozc::commands::FULL_KATAKANA, mozc::commands::FULL_ASCII,
