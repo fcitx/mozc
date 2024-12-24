@@ -24,13 +24,11 @@ MozcIPCClient::MozcIPCClient()
 
 MozcIPCClient::~MozcIPCClient() {}
 
-bool MozcIPCClient::EnsureConnection() {
-  return client_->EnsureConnection();
-}
+bool MozcIPCClient::EnsureConnection() { return client_->EnsureConnection(); }
 
-bool MozcIPCClient::SendKeyWithContext(
-    const mozc::commands::KeyEvent &key, const mozc::commands::Context &context,
-    mozc::commands::Output *output) {
+bool MozcIPCClient::SendKeyWithContext(const mozc::commands::KeyEvent &key,
+                                       const mozc::commands::Context &context,
+                                       mozc::commands::Output *output) {
   return client_->SendKeyWithContext(key, context, output);
 }
 
@@ -51,8 +49,7 @@ void MozcIPCClient::set_client_capability(
   return client_->set_client_capability(capability);
 }
 bool MozcIPCClient::SyncData() { return client_->SyncData(); }
-bool MozcIPCClient::LaunchTool(const std::string &mode,
-                                  std::string_view arg) {
+bool MozcIPCClient::LaunchTool(const std::string &mode, std::string_view arg) {
   return client_->LaunchTool(mode, arg);
 }
 bool MozcIPCClient::LaunchToolWithProtoBuf(

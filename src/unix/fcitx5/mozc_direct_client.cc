@@ -44,8 +44,7 @@ mozc::SessionHandlerInterface *GetSessionHandler() {
 
 }  // namespace
 
-MozcDirectClient::MozcDirectClient()
-    : id_(0) {
+MozcDirectClient::MozcDirectClient() : id_(0) {
   // Initialize direct_mode_keys_
   mozc::config::Config config;
   mozc::config::ConfigHandler::GetConfig(&config);
