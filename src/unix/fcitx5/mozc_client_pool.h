@@ -30,6 +30,7 @@
 #ifndef UNIX_FCITX5_MOZC_CLIENT_POOL_H_
 #define UNIX_FCITX5_MOZC_CLIENT_POOL_H_
 
+#include <fcitx-utils/trackableobject.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 
@@ -37,52 +38,27 @@
 #include <string>
 #include <unordered_map>
 
-#include "client/client_interface.h"
-#include "unix/fcitx5/mozc_connection.h"
+#include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 
-class MozcClientPool;
-
-class MozcClientHolder {
-  friend class MozcClientPool;
+class MozcClientPool : public TrackableObject<MozcClientPool> {
+  friend class MozcClientInterface;
 
  public:
-  MozcClientHolder() = default;
-
-  MozcClientHolder(MozcClientHolder &&) = delete;
-
-  ~MozcClientHolder();
-
-  mozc::client::ClientInterface *client() const { return client_.get(); }
-
- private:
-  MozcClientPool *pool_;
-  std::unique_ptr<mozc::client::ClientInterface> client_;
-  std::string key_;
-};
-
-class MozcClientPool {
-  friend class MozcClientHolder;
-
- public:
-  MozcClientPool(MozcConnection *connection,
-                 PropertyPropagatePolicy initialPolicy);
+  MozcClientPool(PropertyPropagatePolicy initialPolicy);
 
   void setPolicy(PropertyPropagatePolicy policy);
   PropertyPropagatePolicy policy() const { return policy_; }
 
-  std::shared_ptr<MozcClientHolder> requestClient(InputContext *ic);
-
-  MozcConnection *connection() const { return connection_; }
+  std::shared_ptr<MozcClientInterface> requestClient(InputContext *ic);
 
  private:
-  void registerClient(const std::string &key,
-                      std::shared_ptr<MozcClientHolder> client);
+  std::shared_ptr<MozcClientInterface> registerClient(
+      const std::string &key, std::unique_ptr<MozcClientInterface> client);
   void unregisterClient(const std::string &key);
-  MozcConnection *connection_;
   PropertyPropagatePolicy policy_;
-  std::unordered_map<std::string, std::weak_ptr<MozcClientHolder>> clients_;
+  std::unordered_map<std::string, std::weak_ptr<MozcClientInterface>> clients_;
 };
 
 }  // namespace fcitx

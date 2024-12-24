@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
     "//:build_defs.bzl",
     "mozc_cc_binary",
@@ -6,29 +7,83 @@ load(
 
 package(default_visibility = ["//:__subpackages__"])
 
+bool_flag(
+    name = "use_server",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "without_server",
+    flag_values = {
+        ":use_server": "False",
+    },
+)
+
 mozc_cc_library(
-    name = "mozc_connection",
-    srcs = ["mozc_connection.cc"],
-    hdrs = ["mozc_connection.h"],
+    name = "mozc_client_interface",
+    hdrs = [
+        "mozc_client_interface.h",
+    ],
     deps = [
-        ":fcitx_key_util",
-        ":surrounding_text_util",
-        "//base:port",
-        "//base:util",
-        "//base:vlog",
-        "//client",
         "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
     ],
 )
 
 mozc_cc_library(
     name = "mozc_client_pool",
-    srcs = ["mozc_client_pool.cc"],
-    hdrs = ["mozc_client_pool.h"],
+    srcs = [
+        "mozc_client_pool.cc",
+    ],
+    hdrs = [
+        "mozc_client_pool.h",
+    ],
     deps = [
-        ":mozc_connection",
-        "//client:client_interface",
+        ":mozc_client_interface",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
         "@fcitx5",
+    ],
+)
+
+mozc_cc_library(
+    name = "mozc_direct_client",
+    srcs = [
+        "mozc_direct_client.cc",
+    ],
+    hdrs = [
+        "mozc_direct_client.h",
+    ],
+    deps = [
+        ":mozc_client_interface",
+        "//base:singleton",
+        "//base:vlog",
+        "//config:config_handler",
+        "//engine:engine_factory",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//session:key_info_util",
+        "//session:session_handler",
+        "//session:session_handler_interface",
+        "//session:session_usage_observer",
+        "@com_google_absl//absl/log",
+    ],
+)
+
+mozc_cc_library(
+    name = "mozc_ipc_client",
+    srcs = [
+        "mozc_ipc_client.cc",
+    ],
+    hdrs = [
+        "mozc_ipc_client.h",
+    ],
+    deps = [
+        ":mozc_client_interface",
+        "//client",
+        "//ipc",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
     ],
 )
 
@@ -58,7 +113,6 @@ mozc_cc_library(
         ":fcitx_key_util",
         ":i18nwrapper",
         ":mozc_client_pool",
-        ":mozc_connection",
         ":surrounding_text_util",
         "//base:init_mozc",
         "//base:port",
@@ -66,11 +120,17 @@ mozc_cc_library(
         "//base:run_level",
         "//base:util",
         "//base:vlog",
-        "//client:client_interface",
         "//protocol:candidate_window_cc_proto",
         "//protocol:commands_cc_proto",
         "@fcitx5",
-    ],
+    ] + select({
+        ":without_server": [
+            ":mozc_direct_client",
+        ],
+        "//conditions:default": [
+            ":mozc_ipc_client",
+        ],
+    }),
 )
 
 mozc_cc_library(
