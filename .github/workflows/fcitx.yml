@@ -69,5 +69,5 @@ jobs:
         run: |
           cd mozc/src/
           chown -R builduser:builduser .
-          _BUILD_TARGETS=unix/fcitx5:fcitx5-mozc.so sudo -u builduser ../scripts/build_fcitx5_bazel --//unix/fcitx5:use_server={{ matrix.use_server }} --cxxopt=-Wno-uninitialized --host_cxxopt=-Wno-uninitialized --linkopt=-L/opt/fcitx/lib
+          _BUILD_TARGETS=unix/fcitx5:fcitx5-mozc.so sudo -u builduser ../scripts/build_fcitx5_bazel --//unix/fcitx5:use_server=${{ matrix.use_server }} --cxxopt=-Wno-uninitialized --host_cxxopt=-Wno-uninitialized --linkopt=-L/opt/fcitx/lib
           chown -R root:root .
