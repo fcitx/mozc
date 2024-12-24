@@ -22,6 +22,7 @@
 #include <fcitx/addonfactory.h>
 #include <fcitx/addoninstance.h>
 
+#include <cstdlib>
 #include <string_view>
 
 #include "base/system_util.h"

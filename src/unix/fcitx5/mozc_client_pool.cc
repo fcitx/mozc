@@ -38,6 +38,10 @@
 #include <cassert>
 #include <memory>
 #include <string>
+#include <utility>
+
+#include "protocol/commands.pb.h"
+#include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 
@@ -86,30 +90,34 @@ std::shared_ptr<MozcClientInterface> MozcClientPool::requestClient(
   if (iter != clients_.end()) {
     return iter->second.lock();
   }
-  std::shared_ptr<MozcClientInterface> newclient = createClient();
+  std::unique_ptr<MozcClientInterface> newclient = createClient();
   // Currently client capability is fixed.
   mozc::commands::Capability capability;
   capability.set_text_deletion(
       mozc::commands::Capability::DELETE_PRECEDING_TEXT);
   newclient->set_client_capability(capability);
-  registerClient(key, newclient);
-  return newclient;
+  return registerClient(key, std::move(newclient));
 }
 
-void MozcClientPool::registerClient(
-    const std::string &key, std::shared_ptr<MozcClientInterface> client) {
+std::shared_ptr<MozcClientInterface> MozcClientPool::registerClient(
+    const std::string &key, std::unique_ptr<MozcClientInterface> client) {
   assert(!key.empty());
-  client->pool_ = this;
-  client->key_ = key;
-  auto [_, success] = clients_.emplace(key, client);
+  std::shared_ptr<MozcClientInterface> managedClient(
+      client.release(),
+      [key, ref = this->watch()](MozcClientInterface *client) {
+        if (auto *that = ref.get()) {
+          that->unregisterClient(key);
+        }
+        delete client;
+      });
+  const auto [iter, success] = clients_.emplace(key, managedClient);
   FCITX_UNUSED(success);
   assert(success);
+  return managedClient;
 }
 
 void MozcClientPool::unregisterClient(const std::string &key) {
-  auto count = clients_.erase(key);
-  FCITX_UNUSED(count);
-  assert(count > 0);
+  clients_.erase(key);
 }
 
 }  // namespace fcitx

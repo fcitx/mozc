@@ -1,27 +1,51 @@
-#include "unix/fcitx5/mozc_client.h"
+#include "unix/fcitx5/mozc_direct_client.h"
 
-#include "base/const.h"
-#include "base/process.h"
-#include "base/vlog.h"
+#include <Fcitx5/Utils/fcitx-utils/macros.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "base/singleton.h"
+#include "config/config_handler.h"
 #include "engine/engine_factory.h"
+#include "protocol/commands.pb.h"
+#include "protocol/config.pb.h"
 #include "session/key_info_util.h"
 #include "session/session_handler.h"
-#include "unix/fcitx5/mozc_client_pool.h"
-
-#ifdef _WIN32
-#include <windows.h>
-
-#include "base/win32/wide_char.h"
-#include "base/win32/win_util.h"
-#else  // _WIN32
-#include <unistd.h>
-#endif  // _WIN32
+#include "session/session_handler_interface.h"
+#include "session/session_usage_observer.h"
+#include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 
-static std::unique_ptr<mozc::SessionHandler> session_handler;
+namespace {
 
-MozcClient::MozcClient() : id_(0), server_status_(SERVER_INVALID_SESSION) {
+std::unique_ptr<mozc::SessionHandlerInterface> CreateSessionHandler() {
+  auto engine = mozc::EngineFactory::Create();
+  DCHECK_OK(engine);
+  auto result =
+      std::make_unique<mozc::SessionHandler>(std::move(engine.value()));
+  result->AddObserver(
+      mozc::Singleton<mozc::session::SessionUsageObserver>::get());
+  return result;
+}
+
+mozc::SessionHandlerInterface *GetSessionHandler() {
+  static std::unique_ptr<mozc::SessionHandlerInterface> g_session_handler =
+      CreateSessionHandler();
+  return g_session_handler.get();
+}
+
+}  // namespace
+
+MozcDirectClient::MozcDirectClient()
+    : id_(0) {
   // Initialize direct_mode_keys_
   mozc::config::Config config;
   mozc::config::ConfigHandler::GetConfig(&config);
@@ -29,9 +53,9 @@ MozcClient::MozcClient() : id_(0), server_status_(SERVER_INVALID_SESSION) {
   InitRequestForSvsJapanese(true);
 }
 
-MozcClient::~MozcClient() { DeleteSession(); }
+MozcDirectClient::~MozcDirectClient() { DeleteSession(); }
 
-void MozcClient::InitRequestForSvsJapanese(bool use_svs) {
+void MozcDirectClient::InitRequestForSvsJapanese(bool use_svs) {
   request_ = std::make_unique<mozc::commands::Request>();
 
   mozc::commands::DecoderExperimentParams params;
@@ -45,7 +69,7 @@ void MozcClient::InitRequestForSvsJapanese(bool use_svs) {
       variation_types);
 }
 
-bool MozcClient::EnsureSession() {
+bool MozcDirectClient::EnsureSession() {
   if (server_status_ == SERVER_OK) {
     return true;
   }
@@ -68,9 +92,9 @@ bool MozcClient::EnsureSession() {
   return true;
 }
 
-bool MozcClient::SendKeyWithContext(const mozc::commands::KeyEvent &key,
-                                    const mozc::commands::Context &context,
-                                    mozc::commands::Output *output) {
+bool MozcDirectClient::SendKeyWithContext(
+    const mozc::commands::KeyEvent &key, const mozc::commands::Context &context,
+    mozc::commands::Output *output) {
   mozc::commands::Input input;
   input.set_type(mozc::commands::Input::SEND_KEY);
   *input.mutable_key() = key;
@@ -81,7 +105,7 @@ bool MozcClient::SendKeyWithContext(const mozc::commands::KeyEvent &key,
   return EnsureCallCommand(&input, output);
 }
 
-bool MozcClient::SendCommandWithContext(
+bool MozcDirectClient::SendCommandWithContext(
     const mozc::commands::SessionCommand &command,
     const mozc::commands::Context &context, mozc::commands::Output *output) {
   mozc::commands::Input input;
@@ -94,8 +118,8 @@ bool MozcClient::SendCommandWithContext(
   return EnsureCallCommand(&input, output);
 }
 
-bool MozcClient::EnsureCallCommand(mozc::commands::Input *input,
-                                   mozc::commands::Output *output) {
+bool MozcDirectClient::EnsureCallCommand(mozc::commands::Input *input,
+                                         mozc::commands::Output *output) {
   if (!EnsureSession()) {
     LOG(ERROR) << "EnsureSession failed";
     return false;
@@ -110,12 +134,12 @@ bool MozcClient::EnsureCallCommand(mozc::commands::Input *input,
   return true;
 }
 
-void MozcClient::set_client_capability(
+void MozcDirectClient::set_client_capability(
     const mozc::commands::Capability &capability) {
   client_capability_ = capability;
 }
 
-bool MozcClient::CreateSession() {
+bool MozcDirectClient::CreateSession() {
   id_ = 0;
   mozc::commands::Input input;
   input.set_type(mozc::commands::Input::CREATE_SESSION);
@@ -137,7 +161,7 @@ bool MozcClient::CreateSession() {
   return true;
 }
 
-bool MozcClient::DeleteSession() {
+bool MozcDirectClient::DeleteSession() {
   // No need to delete session
   if (id_ == 0) {
     return true;
@@ -156,12 +180,12 @@ bool MozcClient::DeleteSession() {
   return true;
 }
 
-bool MozcClient::IsDirectModeCommand(
+bool MozcDirectClient::IsDirectModeCommand(
     const mozc::commands::KeyEvent &key) const {
   return mozc::KeyInfoUtil::ContainsKey(direct_mode_keys_, key);
 }
 
-bool MozcClient::GetConfig(mozc::config::Config *config) {
+bool MozcDirectClient::GetConfig(mozc::config::Config *config) {
   mozc::commands::Input input;
   InitInput(&input);
   input.set_type(mozc::commands::Input::GET_CONFIG);
@@ -180,11 +204,11 @@ bool MozcClient::GetConfig(mozc::config::Config *config) {
   return true;
 }
 
-bool MozcClient::SyncData() {
+bool MozcDirectClient::SyncData() {
   return CallCommand(mozc::commands::Input::SYNC_DATA);
 }
 
-bool MozcClient::CallCommand(mozc::commands::Input::CommandType type) {
+bool MozcDirectClient::CallCommand(mozc::commands::Input::CommandType type) {
   mozc::commands::Input input;
   InitInput(&input);
   input.set_type(type);
@@ -192,26 +216,19 @@ bool MozcClient::CallCommand(mozc::commands::Input::CommandType type) {
   return Call(input, &output);
 }
 
-bool MozcClient::Call(const mozc::commands::Input &input,
-                      mozc::commands::Output *output) {
+bool MozcDirectClient::Call(const mozc::commands::Input &input,
+                            mozc::commands::Output *output) {
   mozc::commands::Command command;
   *command.mutable_input() = input;
-  if (!session_handler) {
-    session_handler = std::make_unique<mozc::SessionHandler>(
-        mozc::EngineFactory::Create().value());
-  }
-  if (!session_handler->EvalCommand(&command)) {
-    return false;
-  }
   *output = command.output();
-  return true;
+  return GetSessionHandler()->EvalCommand(&command);
 }
 
-void MozcClient::InitInput(mozc::commands::Input *input) const {
+void MozcDirectClient::InitInput(mozc::commands::Input *input) const {
   input->set_id(id_);
 }
 
-bool MozcClient::TranslateProtoBufToMozcToolArg(
+bool MozcDirectClient::TranslateProtoBufToMozcToolArg(
     const mozc::commands::Output &output, std::string *mode) {
   if (!output.has_launch_tool_mode() || mode == nullptr) {
     return false;
@@ -237,7 +254,8 @@ bool MozcClient::TranslateProtoBufToMozcToolArg(
   return true;
 }
 
-bool MozcClient::LaunchToolWithProtoBuf(const mozc::commands::Output &output) {
+bool MozcDirectClient::LaunchToolWithProtoBuf(
+    const mozc::commands::Output &output) {
   std::string mode;
   if (!TranslateProtoBufToMozcToolArg(output, &mode)) {
     return false;
@@ -247,40 +265,17 @@ bool MozcClient::LaunchToolWithProtoBuf(const mozc::commands::Output &output) {
   return LaunchTool(mode, "");
 }
 
-bool MozcClient::LaunchTool(const std::string &mode,
-                            const absl::string_view extra_arg) {
-  // Don't execute any child process if the parent process is not
-  // in proper runlevel.
-  if (!IsValidRunLevel()) {
-    return false;
-  }
-
-  constexpr size_t kModeMaxSize = 32;
-  if (mode.empty() || mode.size() >= kModeMaxSize) {
-    LOG(ERROR) << "Invalid mode: " << mode;
-    return false;
-  }
-
-  if (mode == "administration_dialog") {
-    return false;
-  }
-
-#if defined(_WIN32) || defined(__linux__)
-  std::string arg = absl::StrCat("--mode=", mode);
-  if (!extra_arg.empty()) {
-    absl::StrAppend(&arg, " ", extra_arg);
-  }
-  if (!mozc::Process::SpawnMozcProcess(mozc::kMozcTool, arg)) {
-    LOG(ERROR) << "Cannot execute: " << mozc::kMozcTool << " " << arg;
-    return false;
-  }
-#endif  // _WIN32 || __linux__
-
-  return true;
+bool MozcDirectClient::LaunchTool(const std::string &mode,
+                                  const std::string_view extra_arg) {
+  FCITX_UNUSED(mode);
+  FCITX_UNUSED(extra_arg);
+  // We don't spawn a server thread as for now, so the tool is not helpful
+  // anyway.
+  return false;
 }
 
 std::unique_ptr<MozcClientInterface> createClient() {
-  return std::make_unique<MozcClient>();
+  return std::make_unique<MozcDirectClient>();
 }
 
 }  // namespace fcitx

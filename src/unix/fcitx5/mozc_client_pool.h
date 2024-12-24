@@ -30,6 +30,7 @@
 #ifndef UNIX_FCITX5_MOZC_CLIENT_POOL_H_
 #define UNIX_FCITX5_MOZC_CLIENT_POOL_H_
 
+#include <fcitx-utils/trackableobject.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 
@@ -41,7 +42,7 @@
 
 namespace fcitx {
 
-class MozcClientPool {
+class MozcClientPool : public TrackableObject<MozcClientPool> {
   friend class MozcClientInterface;
 
  public:
@@ -53,8 +54,8 @@ class MozcClientPool {
   std::shared_ptr<MozcClientInterface> requestClient(InputContext *ic);
 
  private:
-  void registerClient(const std::string &key,
-                      std::shared_ptr<MozcClientInterface> client);
+  std::shared_ptr<MozcClientInterface> registerClient(
+      const std::string &key, std::unique_ptr<MozcClientInterface> client);
   void unregisterClient(const std::string &key);
   PropertyPropagatePolicy policy_;
   std::unordered_map<std::string, std::weak_ptr<MozcClientInterface>> clients_;

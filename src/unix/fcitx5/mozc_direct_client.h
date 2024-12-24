@@ -1,16 +1,23 @@
-#ifndef UNIX_FCITX5_MOZC_CLIENT_H_
-#define UNIX_FCITX5_MOZC_CLIENT_H_
+#ifndef UNIX_FCITX5_MOZC_DIRECT_CLIENT_H_
+#define UNIX_FCITX5_MOZC_DIRECT_CLIENT_H_
 
-#include "base/run_level.h"
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include "composer/key_event_util.h"
+#include "protocol/commands.pb.h"
+#include "protocol/config.pb.h"
 #include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 
-class MozcClient : public MozcClientInterface {
+class MozcDirectClient : public MozcClientInterface {
  public:
-  MozcClient();
-  ~MozcClient();
+  MozcDirectClient();
+  ~MozcDirectClient();
 
   bool EnsureConnection() override { return true; }
   bool SendKeyWithContext(const mozc::commands::KeyEvent &key,
@@ -24,7 +31,7 @@ class MozcClient : public MozcClientInterface {
   void set_client_capability(
       const mozc::commands::Capability &capability) override;
   bool SyncData() override;
-  bool LaunchTool(const std::string &mode, absl::string_view arg) override;
+  bool LaunchTool(const std::string &mode, std::string_view arg) override;
   bool LaunchToolWithProtoBuf(const mozc::commands::Output &output) override;
 
  private:
@@ -37,9 +44,6 @@ class MozcClient : public MozcClientInterface {
   static bool TranslateProtoBufToMozcToolArg(
       const mozc::commands::Output &output, std::string *mode);
 
-  bool IsValidRunLevel() const {
-    return mozc::RunLevel::IsValidClientRunLevel();
-  }
   bool EnsureSession();
 
   enum ServerStatus {
@@ -63,7 +67,7 @@ class MozcClient : public MozcClientInterface {
 
   uint64_t id_;
   std::unique_ptr<mozc::commands::Request> request_;
-  ServerStatus server_status_;
+  ServerStatus server_status_ = SERVER_INVALID_SESSION;
   // List of key combinations used in the direct input mode.
   std::vector<mozc::KeyInformation> direct_mode_keys_;
   mozc::commands::Capability client_capability_;

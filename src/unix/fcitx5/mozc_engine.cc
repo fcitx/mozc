@@ -45,6 +45,7 @@
 #include "base/process.h"
 #include "protocol/commands.pb.h"
 #include "unix/fcitx5/i18nwrapper.h"
+#include "unix/fcitx5/mozc_client_interface.h"
 #include "unix/fcitx5/mozc_client_pool.h"
 #include "unix/fcitx5/mozc_response_parser.h"
 #include "unix/fcitx5/mozc_state.h"

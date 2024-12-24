@@ -1,19 +1,20 @@
 #ifndef UNIX_FCITX5_MOZC_CLIENT_INTERFACE_H_
 #define UNIX_FCITX5_MOZC_CLIENT_INTERFACE_H_
 
-#include "absl/strings/string_view.h"
+#include <memory>
+#include <string>
+#include <string_view>
+
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 
 namespace fcitx {
-class MozcClientPool;
 
+// This is a simplified version of mozc::ClientInterface, with only functions
+// Needed by Fcitx.
 class MozcClientInterface {
-  friend class MozcClientPool;
-
  public:
-  virtual ~MozcClientInterface();
-
+  virtual ~MozcClientInterface() = default;
   virtual bool EnsureConnection() = 0;
   bool SendCommand(const mozc::commands::SessionCommand &command,
                    mozc::commands::Output *output) {
@@ -33,12 +34,8 @@ class MozcClientInterface {
   virtual void set_client_capability(
       const mozc::commands::Capability &capability) = 0;
   virtual bool SyncData() = 0;
-  virtual bool LaunchTool(const std::string &mode, absl::string_view arg) = 0;
+  virtual bool LaunchTool(const std::string &mode, std::string_view arg) = 0;
   virtual bool LaunchToolWithProtoBuf(const mozc::commands::Output &output) = 0;
-
- private:
-  MozcClientPool *pool_;
-  std::string key_;
 };
 
 std::unique_ptr<MozcClientInterface> createClient();

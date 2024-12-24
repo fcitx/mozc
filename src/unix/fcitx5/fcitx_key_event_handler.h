@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <memory>
 #include <set>
+#include <string>
 
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
