@@ -72,4 +72,4 @@ class MozcEngineFactory : public AddonFactory {
 };
 }  // namespace fcitx
 
-FCITX_ADDON_FACTORY(fcitx::MozcEngineFactory)
+FCITX_ADDON_FACTORY_V2(mozc, fcitx::MozcEngineFactory)
