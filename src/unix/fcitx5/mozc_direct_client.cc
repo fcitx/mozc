@@ -219,8 +219,11 @@ bool MozcDirectClient::Call(const mozc::commands::Input &input,
                             mozc::commands::Output *output) {
   mozc::commands::Command command;
   *command.mutable_input() = input;
+  if (!GetSessionHandler()->EvalCommand(&command)) {
+    return false;
+  }
   *output = command.output();
-  return GetSessionHandler()->EvalCommand(&command);
+  return true;
 }
 
 void MozcDirectClient::InitInput(mozc::commands::Input *input) const {
