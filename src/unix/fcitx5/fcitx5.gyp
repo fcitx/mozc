@@ -78,7 +78,7 @@
         'fcitx_key_translator.cc',
         'fcitx_key_event_handler.cc',
         'surrounding_text_util.cc',
-        'mozc_connection.cc',
+        'mozc_ipc_client.cc',
         'mozc_response_parser.cc',
         'mozc_engine.cc',
         'mozc_engine_factory.cc',
