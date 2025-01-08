@@ -326,8 +326,7 @@ class ConverterTest : public testing::TestWithTempUserProfile {
           return CreatePredictor(modules, predictor_type, converter,
                                  immutable_converter);
         },
-        [&](const engine::Modules &modules,
-            const ConverterInterface *converter) {
+        [&](const engine::Modules &modules) {
           return std::move(rewriter);
         });
   }
@@ -1253,8 +1252,8 @@ TEST_F(ConverterTest, VariantExpansionForSuggestion) {
                                                   immutable_converter),
             std::make_unique<UserHistoryPredictor>(modules, false), converter);
       },
-      [](const engine::Modules &modules, const ConverterInterface *converter) {
-        return std::make_unique<Rewriter>(modules, *converter);
+      [](const engine::Modules &modules) {
+        return std::make_unique<Rewriter>(modules);
       });
 
   Segments segments;
@@ -1942,8 +1941,7 @@ TEST_F(ConverterTest, RevertConversion) {
           const ImmutableConverterInterface *immutable_converter) {
         return std::move(mock_predictor);
       },
-      [&mock_rewriter](const engine::Modules &modules,
-                       const ConverterInterface *converter) {
+      [&mock_rewriter](const engine::Modules &modules) {
         return std::move(mock_rewriter);
       });
 
@@ -2339,4 +2337,48 @@ TEST_F(ConverterTest, IntegrationWithDateRewriter) {
   }
 }
 
+TEST_F(ConverterTest, IntegrationWithSymbolRewriter) {
+  std::unique_ptr<EngineInterface> engine =
+      MockDataEngineFactory::Create().value();
+  ConverterInterface *converter = engine->GetConverter();
+
+  {
+    Segments segments;
+    const ConversionRequest convreq =
+        ConversionRequestBuilder().SetKey("ー>").Build();
+    ASSERT_TRUE(converter->StartConversion(convreq, &segments));
+    EXPECT_EQ(segments.conversion_segments_size(), 1);
+    EXPECT_TRUE(FindCandidateByValue("→", segments.conversion_segment(0)));
+  }
+}
+
+TEST_F(ConverterTest, IntegrationWithUnicodeRewriter) {
+  std::unique_ptr<EngineInterface> engine =
+      MockDataEngineFactory::Create().value();
+  ConverterInterface *converter = engine->GetConverter();
+
+  {
+    Segments segments;
+    const ConversionRequest convreq =
+        ConversionRequestBuilder().SetKey("U+3042").Build();
+    ASSERT_TRUE(converter->StartConversion(convreq, &segments));
+    EXPECT_EQ(segments.conversion_segments_size(), 1);
+    EXPECT_TRUE(FindCandidateByValue("あ", segments.conversion_segment(0)));
+  }
+}
+
+TEST_F(ConverterTest, IntegrationWithSmallLetterRewriter) {
+  std::unique_ptr<EngineInterface> engine =
+      MockDataEngineFactory::Create().value();
+  ConverterInterface *converter = engine->GetConverter();
+
+  {
+    Segments segments;
+    const ConversionRequest convreq =
+        ConversionRequestBuilder().SetKey("^123").Build();
+    ASSERT_TRUE(converter->StartConversion(convreq, &segments));
+    EXPECT_EQ(segments.conversion_segments_size(), 1);
+    EXPECT_TRUE(FindCandidateByValue("¹²³", segments.conversion_segment(0)));
+  }
+}
 }  // namespace mozc
