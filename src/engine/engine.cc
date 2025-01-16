@@ -45,6 +45,7 @@
 #include "converter/immutable_converter.h"
 #include "converter/immutable_converter_interface.h"
 #include "data_manager/data_manager.h"
+#include "dictionary/user_dictionary_session_handler.h"
 #include "engine/data_loader.h"
 #include "engine/minimal_converter.h"
 #include "engine/modules.h"
@@ -54,6 +55,7 @@
 #include "prediction/predictor_interface.h"
 #include "prediction/user_history_predictor.h"
 #include "protocol/engine_builder.pb.h"
+#include "protocol/user_dictionary_storage.pb.h"
 #include "rewriter/rewriter.h"
 #include "rewriter/rewriter_interface.h"
 
@@ -210,6 +212,12 @@ bool Engine::SendSupplementalModelReloadRequest(
     converter_->modules()->GetMutableSupplementalModel()->LoadAsync(request);
   }
   return true;
+}
+
+bool Engine::EvaluateUserDictionaryCommand(
+    const user_dictionary::UserDictionaryCommand &command,
+    user_dictionary::UserDictionaryCommandStatus *status) {
+  return user_dictionary_session_handler_.Evaluate(command, status);
 }
 
 }  // namespace mozc
