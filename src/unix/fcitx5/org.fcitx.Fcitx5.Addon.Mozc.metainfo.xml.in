@@ -14,6 +14,7 @@
   <url type="vcs-browser">https://github.com/fcitx/mozc</url>
   <project_group>Fcitx</project_group>
   <releases>
+    <release version="2.31.5712.102" date="2025-01-16"></release>
     <release version="2.30.5618.102" date="2024-10-10"></release>
     <release version="2.30.5595.102" date="2024-09-17"></release>
     <release version="2.30.5544.102" date="2024-08-28"></release>
