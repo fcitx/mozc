@@ -98,23 +98,6 @@ int32_t CalculateCursorOffset(absl::string_view committed_text) {
   // If committed_text is a bracket pair, set the cursor in the middle.
   return Util::IsBracketPairText(committed_text) ? -1 : 0;
 }
-
-// Make a segment having one candidate. The value of candidate is the
-// same as the preedit.  This function can be used for error handling.
-// When the converter fails, we can call this function to make a
-// virtual segment.
-void InitSegmentsFromString(std::string key, std::string preedit,
-                            Segments *segments) {
-  segments->clear_conversion_segments();
-  Segment *segment = segments->add_segment();
-  segment->set_key(key);
-  segment->set_segment_type(Segment::FIXED_VALUE);
-  Segment::Candidate *c = segment->add_candidate();
-  c->value = preedit;
-  c->content_value = std::move(preedit);
-  c->key = key;
-  c->content_key = std::move(key);
-}
 }  // namespace
 
 SessionConverter::SessionConverter(const ConverterInterface *converter,
@@ -280,7 +263,7 @@ bool SessionConverter::ConvertToTransliteration(
       size_t offset = 0;
       for (const Segment &segment :
            segments_.conversion_segments().drop(segment_index_ + 1)) {
-        offset += Util::CharsLen(segment.key());
+        offset += segment.key_len();
       }
       ResizeSegmentWidth(composer, offset);
     }
@@ -394,35 +377,6 @@ bool SessionConverter::SwitchKanaType(const composer::Composer &composer) {
   SegmentFocus();
   return true;
 }
-
-namespace {
-
-// Prepend the candidates to the first conversion segment.
-void PrependCandidates(const Segment &previous_segment, std::string preedit,
-                       Segments *segments) {
-  DCHECK(segments);
-
-  // TODO(taku) want to have a method in converter to make an empty segment
-  if (segments->conversion_segments_size() == 0) {
-    segments->clear_conversion_segments();
-    Segment *segment = segments->add_segment();
-    segment->set_key(std::move(preedit));
-  }
-
-  DCHECK_EQ(1, segments->conversion_segments_size());
-  Segment *segment = segments->mutable_conversion_segment(0);
-  DCHECK(segment);
-
-  const size_t cands_size = previous_segment.candidates_size();
-  for (size_t i = 0; i < cands_size; ++i) {
-    Segment::Candidate *candidate = segment->push_front_candidate();
-    *candidate = previous_segment.candidate(cands_size - i - 1);
-  }
-  segment->mutable_meta_candidates()->assign(
-      previous_segment.meta_candidates().begin(),
-      previous_segment.meta_candidates().end());
-}
-}  // namespace
 
 bool SessionConverter::Suggest(const composer::Composer &composer,
                                const commands::Context &context) {
@@ -593,8 +547,7 @@ bool SessionConverter::PredictWithPreferences(
   }
 
   // Merge suggestions and prediction
-  std::string preedit = composer.GetStringForPreedit();
-  PrependCandidates(previous_suggestions_, std::move(preedit), &segments_);
+  segments_.PrependCandidates(previous_suggestions_);
 
   segment_index_ = 0;
   state_ = PREDICTION;
@@ -806,7 +759,7 @@ void SessionConverter::CommitSegmentsInternal(
 
     // Accumulate the size of i-th segment's key.
     // The caller will remove corresponding characters from the composer.
-    *consumed_key_size += Util::CharsLen(segment.key());
+    *consumed_key_size += segment.key_len();
 
     // Collect candidate's id for each segment.
     candidate_ids.push_back(GetCandidateIndexForConverter(i));
@@ -842,8 +795,7 @@ void SessionConverter::CommitPreedit(const composer::Composer &composer,
   // Cursor offset needs to be calculated based on normalized text.
   SessionOutput::FillCursorOffsetResult(
       CalculateCursorOffset(normalized_preedit), &result_);
-  InitSegmentsFromString(std::move(key), std::move(normalized_preedit),
-                         &segments_);
+  segments_.InitForCommit(key, normalized_preedit);
   CommitUsageStats(SessionConverterInterface::COMPOSITION, context);
   DCHECK(request_);
   DCHECK(config_);
@@ -1340,7 +1292,7 @@ size_t SessionConverter::GetConsumedPreeditSize(const size_t index,
         segments_.conversion_segment(i).candidate(id);
     DCHECK(
         !(candidate.attributes & Segment::Candidate::PARTIALLY_KEY_CONSUMED));
-    result += Util::CharsLen(segments_.conversion_segment(i).key());
+    result += segments_.conversion_segment(i).key_len();
   }
   return result;
 }

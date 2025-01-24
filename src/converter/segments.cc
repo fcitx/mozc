@@ -37,6 +37,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <ostream>
 #include <sstream>  // For DebugString()
 #include <string>
@@ -45,14 +46,13 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "base/number_util.h"
+#include "base/util.h"
 #include "base/vlog.h"
-
-#ifndef NDEBUG
-#include "absl/strings/str_cat.h"
-#endif  // !NDEBUG
 
 namespace mozc {
 namespace {
@@ -229,6 +229,7 @@ Segment::Segment(const Segment &x)
     : removed_candidates_for_debug_(x.removed_candidates_for_debug_),
       segment_type_(x.segment_type_),
       key_(x.key_),
+      key_len_(x.key_len_),
       meta_candidates_(x.meta_candidates_) {
   DeepCopyCandidates(x.candidates_);
 }
@@ -237,6 +238,7 @@ Segment &Segment::operator=(const Segment &x) {
   removed_candidates_for_debug_ = x.removed_candidates_for_debug_;
   segment_type_ = x.segment_type_;
   key_ = x.key_;
+  key_len_ = x.key_len_;
   meta_candidates_ = x.meta_candidates_;
 
   clear_candidates();
@@ -400,6 +402,7 @@ void Segment::move_candidate(int old_idx, int new_idx) {
 void Segment::Clear() {
   clear_candidates();
   key_.clear();
+  key_len_ = 0;
   meta_candidates_.clear();
   segment_type_ = FREE;
 }
@@ -572,9 +575,117 @@ void Segments::pop_back_segment() {
   }
 }
 
+void Segments::InitForConvert(absl::string_view key) {
+  set_max_history_segments_size(4);
+  clear_conversion_segments();
+
+  Segment *segment = add_segment();
+  segment->set_key(key);
+  segment->set_segment_type(mozc::Segment::FREE);
+
+  MOZC_VLOG(2) << DebugString();
+}
+
+void Segments::InitForCommit(absl::string_view key, absl::string_view value) {
+  clear_conversion_segments();
+
+  Segment *segment = add_segment();
+  segment->set_key(key);
+  segment->set_segment_type(Segment::FIXED_VALUE);
+
+  Segment::Candidate *candidate = segment->add_candidate();
+  candidate->key = std::string(key);
+  candidate->content_key = std::string(key);
+  candidate->value = std::string(value);
+  candidate->content_value = std::string(value);
+}
+
 void Segments::Clear() {
   clear_segments();
   clear_revert_entries();
+}
+
+void Segments::PrependCandidates(const Segment &previous_segment) {
+  if (conversion_segments_size() == 0) {
+    clear_conversion_segments();
+    Segment *segment = add_segment();
+    segment->set_key(previous_segment.key());
+  }
+
+  DCHECK_EQ(conversion_segments_size(), 1);
+  Segment *segment = mutable_conversion_segment(0);
+  DCHECK(segment);
+
+  const size_t cands_size = previous_segment.candidates_size();
+  for (size_t i = 0; i < cands_size; ++i) {
+    Segment::Candidate *candidate = segment->insert_candidate(i);
+    *candidate = previous_segment.candidate(i);
+  }
+  segment->mutable_meta_candidates()->assign(
+      previous_segment.meta_candidates().begin(),
+      previous_segment.meta_candidates().end());
+}
+
+bool Segments::Resize(size_t start_index, absl::Span<const uint8_t> new_sizes) {
+  const size_t total_size =
+      std::accumulate(new_sizes.begin(), new_sizes.end(), 0);
+  if (total_size == 0) {
+    return false;
+  }
+
+  std::string key;
+  size_t key_len = 0;
+  size_t modified_segments_size = 0;
+  for (const Segment &segment : all().drop(start_index)) {
+    absl::StrAppend(&key, segment.key());
+    key_len += segment.key_len();
+    ++modified_segments_size;
+    if (key_len >= total_size) {
+      break;
+    }
+  }
+
+  // If key is empty or less than the total size of new segments, return false.
+  if (key_len == 0 || key_len < total_size) {
+    return false;
+  }
+
+  size_t consumed = 0;
+  std::vector<std::string> new_keys;
+  new_keys.reserve(new_sizes.size());
+
+  for (size_t new_size : new_sizes) {
+    if (new_size != 0 && consumed < key_len) {
+      new_keys.emplace_back(Util::Utf8SubString(key, consumed, new_size));
+      consumed += new_size;
+    }
+  }
+
+  erase_segments(start_index, modified_segments_size);
+
+  for (size_t i = 0; i < new_keys.size(); ++i) {
+    Segment *seg = insert_segment(start_index + i);
+    seg->set_segment_type(Segment::FIXED_BOUNDARY);
+    seg->set_key(std::move(new_keys[i]));
+  }
+
+  // If there is a remaining key, replace the next segment with the new key
+  // prepending the remaining key to the next segment as a FREE type.
+  if (consumed < key_len) {
+    std::string next_segment_key(
+        Util::Utf8SubString(key, consumed, key_len - consumed));
+    const size_t next_segment_index = start_index + new_keys.size();
+    if (next_segment_index < segments_size()) {
+      absl::StrAppend(&next_segment_key, segment(next_segment_index).key());
+      erase_segment(next_segment_index);
+    }
+    Segment *seg = insert_segment(next_segment_index);
+    seg->set_segment_type(Segment::FREE);
+    seg->set_key(next_segment_key);
+  }
+
+  set_resized(true);
+  return true;
 }
 
 void Segments::clear_segments() {

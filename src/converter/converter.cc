@@ -35,16 +35,13 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "base/util.h"
@@ -80,21 +77,8 @@ size_t GetSegmentIndex(const Segments *segments, size_t segment_index) {
   return result;
 }
 
-void SetKey(Segments *segments, const absl::string_view key) {
-  segments->set_max_history_segments_size(4);
-  segments->clear_conversion_segments();
-
-  mozc::Segment *seg = segments->add_segment();
-  DCHECK(seg);
-
-  seg->set_key(key);
-  seg->set_segment_type(mozc::Segment::FREE);
-
-  MOZC_VLOG(2) << segments->DebugString();
-}
-
-bool ShouldSetKeyForPrediction(const absl::string_view key,
-                               const Segments &segments) {
+bool ShouldInitSegmentsForPrediction(absl::string_view key,
+                                     const Segments &segments) {
   // (1) If the segment size is 0, invoke SetKey because the segments is not
   //   correctly prepared.
   //   If the key of the segments differs from the input key,
@@ -167,7 +151,7 @@ bool Converter::StartConversion(const ConversionRequest &request,
     return false;
   }
 
-  SetKey(segments, key);
+  segments->InitForConvert(key);
   ApplyConversion(segments, request);
   return IsValidSegments(request, *segments);
 }
@@ -178,7 +162,7 @@ bool Converter::StartReverseConversion(Segments *segments,
   if (key.empty()) {
     return false;
   }
-  SetKey(segments, key);
+  segments->InitForConvert(key);
 
   return reverse_converter_.ReverseConvert(key, segments);
 }
@@ -236,8 +220,8 @@ bool Converter::StartPrediction(const ConversionRequest &request,
   DCHECK(ValidateConversionRequestForPrediction(request));
 
   absl::string_view key = request.key();
-  if (ShouldSetKeyForPrediction(key, *segments)) {
-    SetKey(segments, key);
+  if (ShouldInitSegmentsForPrediction(key, *segments)) {
+    segments->InitForConvert(key);
   }
   DCHECK_EQ(segments->conversion_segments_size(), 1);
   DCHECK_EQ(segments->conversion_segment(0).key(), key);
@@ -389,7 +373,7 @@ bool Converter::CommitPartialSuggestionSegmentValue(
   DCHECK_LT(0, segment->candidates_size());
   const Segment::Candidate &submitted_candidate = segment->candidate(0);
   const bool auto_partial_suggestion =
-      Util::CharsLen(submitted_candidate.key) != Util::CharsLen(segment->key());
+      Util::CharsLen(submitted_candidate.key) != segment->key_len();
   segment->set_key(current_segment_key);
 
   Segment *new_segment = segments->insert_segment(raw_segment_index + 1);
@@ -447,12 +431,11 @@ bool Converter::ResizeSegment(Segments *segments,
     return false;
   }
 
-  absl::string_view key = segments->conversion_segment(segment_index).key();
-  if (key.empty()) {
+  const size_t key_len = segments->conversion_segment(segment_index).key_len();
+  if (key_len == 0) {
     return false;
   }
 
-  const int key_len = Util::CharsLen(key);
   const int new_size = key_len + offset_length;
   if (new_size <= 0 || new_size > std::numeric_limits<uint8_t>::max()) {
     return false;
@@ -475,65 +458,9 @@ bool Converter::ResizeSegments(Segments *segments,
     return false;
   }
 
-  const size_t total_size =
-      std::accumulate(new_size_array.begin(), new_size_array.end(), 0);
-  if (total_size == 0) {
+  if (!segments->Resize(start_segment_index, new_size_array)) {
     return false;
   }
-
-  std::string key;
-  size_t key_len = 0;
-  size_t segments_size = 0;
-  for (const Segment &segment : segments->all().drop(start_segment_index)) {
-    absl::StrAppend(&key, segment.key());
-    key_len += Util::CharsLen(segment.key());
-    ++segments_size;
-    if (key_len >= total_size) {
-      break;
-    }
-  }
-
-  // If key is empty or less than the total size of new segments, return false.
-  if (key_len == 0 || key_len < total_size) {
-    return false;
-  }
-
-  size_t consumed = 0;
-  std::vector<std::string> new_keys;
-  new_keys.reserve(new_size_array.size());
-
-  for (size_t new_size : new_size_array) {
-    if (new_size != 0 && consumed < key_len) {
-      new_keys.emplace_back(Util::Utf8SubString(key, consumed, new_size));
-      consumed += new_size;
-    }
-  }
-
-  segments->erase_segments(start_segment_index, segments_size);
-
-  for (size_t i = 0; i < new_keys.size(); ++i) {
-    Segment *seg = segments->insert_segment(start_segment_index + i);
-    seg->set_segment_type(Segment::FIXED_BOUNDARY);
-    seg->set_key(std::move(new_keys[i]));
-  }
-
-  // If there is a remaining key, replace the next segment with the new key
-  // prepending the remaining key to the next segment as a FREE type.
-  if (consumed < key_len) {
-    std::string next_segment_key(
-        Util::Utf8SubString(key, consumed, key_len - consumed));
-    const size_t next_segment_index = start_segment_index + new_keys.size();
-    if (next_segment_index < segments->segments_size()) {
-      absl::StrAppend(&next_segment_key,
-                      segments->segment(next_segment_index).key());
-      segments->erase_segment(next_segment_index);
-    }
-    Segment *seg = segments->insert_segment(next_segment_index);
-    seg->set_segment_type(Segment::FREE);
-    seg->set_key(next_segment_key);
-  }
-
-  segments->set_resized(true);
 
   ApplyConversion(segments, request);
   return true;
@@ -576,7 +503,7 @@ void Converter::CompletePosIds(Segment::Candidate *candidate) const {
   for (size_t size = kExpandSizeStart; size < kExpandSizeMax;
        size += kExpandSizeDiff) {
     Segments segments;
-    SetKey(&segments, candidate->key);
+    segments.InitForConvert(candidate->key);
     // use PREDICTION mode, as the size of segments after
     // PREDICTION mode is always 1, thanks to real time conversion.
     // However, PREDICTION mode produces "predictions", meaning

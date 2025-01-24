@@ -47,6 +47,7 @@
 #include "base/container/freelist.h"
 #include "base/number_util.h"
 #include "base/strings/assign.h"
+#include "base/util.h"
 #include "converter/lattice.h"
 #include "testing/friend_test.h"
 
@@ -348,9 +349,14 @@ class Segment final {
   }
 
   const std::string &key() const { return key_; }
+
+  // Returns the length of the key in Unicode characters. (e.g. 1 for "あ")
+  size_t key_len() const { return key_len_; }
+
   template <typename T>
   void set_key(T &&key) {
     strings::Assign(key_, std::forward<T>(key));
+    key_len_ = Util::CharsLen(key_);
   }
 
   // check if the specified index is valid or not.
@@ -434,6 +440,7 @@ class Segment final {
   // for partial suggestion or not.
   // You should detect that by using both Composer and Segments.
   std::string key_;
+  size_t key_len_ = 0;
   std::deque<Candidate *> candidates_;
   std::vector<Candidate> meta_candidates_;
   std::vector<std::unique_ptr<Candidate>> pool_;
@@ -699,11 +706,27 @@ class Segments final {
   // Returns all history value when size == -1.
   std::string history_value(int size = -1) const;
 
+  // Initializes the segments with the given key as a preparation of conversion.
+  void InitForConvert(absl::string_view key);
+
+  // Initializes the segments with the given key and value as a preparation of
+  // committing the value.
+  void InitForCommit(absl::string_view key, absl::string_view value);
+
   // clear segments
   void Clear();
 
   // Dump Segments structure
   std::string DebugString() const;
+
+  // Prepend the candidates of `previous_segment` to the first conversion
+  // segment. This is used to merge the previous suggestion results to the
+  // prediction results.
+  void PrependCandidates(const Segment &previous_segment);
+
+  // Resize the segments starting from `start_index` with the given `new_sizes`.
+  // Returns true if the segments are resized.
+  bool Resize(size_t start_index, absl::Span<const uint8_t> new_sizes);
 
   friend std::ostream &operator<<(std::ostream &os, const Segments &segments) {
     return os << segments.DebugString();
