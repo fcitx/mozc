@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -82,39 +83,47 @@ bool IsNumberStyleLearningEnabled(const ConversionRequest &request) {
   return request.request().kana_modifier_insensitive_conversion();
 }
 
-// Returns rewrite type for the given segment and base candidate information.
+// Returns RewriteCandidateInformation if available.
 // base_candidate_pos: the index of the base candidate.
 // *arabic_candidate: arabic candidate using numeric style conversion.
 // POS information, cost, etc will be copied from base candidate.
-RewriteType GetRewriteTypeAndBase(const SerializedStringArray &suffix_array,
-                                  const Segment &seg, int base_candidate_pos,
-                                  const PosMatcher &pos_matcher,
-                                  Segment::Candidate *arabic_candidate) {
-  DCHECK(arabic_candidate);
-
+std::optional<RewriteCandidateInfo> GetRewriteCandidateInfo(
+    const SerializedStringArray &suffix_array, const Segment &seg,
+    int base_candidate_pos, const PosMatcher &pos_matcher) {
   const Segment::Candidate &c = seg.candidate(base_candidate_pos);
   if (!number_compound_util::IsNumber(suffix_array, pos_matcher, c)) {
-    return NO_REWRITE;
+    return std::nullopt;
   }
   if (c.attributes & Segment::Candidate::NO_MODIFICATION) {
-    return NO_REWRITE;
+    return std::nullopt;
+  }
+  // Do not rewrite hex/oct/bin number.
+  if (c.style == NumberUtil::NumberString::NUMBER_HEX ||
+      c.style == NumberUtil::NumberString::NUMBER_OCT ||
+      c.style == NumberUtil::NumberString::NUMBER_BIN) {
+    return std::nullopt;
   }
 
+  RewriteCandidateInfo info;
+  info.position = base_candidate_pos;
+
   if (Util::GetScriptType(c.content_value) == Util::NUMBER) {
-    *arabic_candidate = c;
-    arabic_candidate->inner_segment_boundary.clear();
-    DCHECK(arabic_candidate->IsValid());
+    info.candidate = c;
+    info.candidate.inner_segment_boundary.clear();
+    DCHECK(info.candidate.IsValid());
     if (Util::GetScriptType(c.content_key) == Util::NUMBER ||
         (c.attributes & Segment::Candidate::USER_DICTIONARY)) {
       // ARABIC_FIRST when:
       // - a user types number key
       // - or, the entry came from the user dictionary
-      return ARABIC_FIRST;
+      info.type = ARABIC_FIRST;
+    } else {
+      info.type = KANJI_FIRST;
     }
-    return KANJI_FIRST;
+    return info;
   }
 
-  std::string half_width_new_content_value =
+  const std::string half_width_new_content_value =
       japanese_util::FullWidthToHalfWidth(c.content_key);
   // Try to get normalized kanji_number and arabic_number.
   // If it failed, do nothing.
@@ -125,62 +134,61 @@ RewriteType GetRewriteTypeAndBase(const SerializedStringArray &suffix_array,
                                               &kanji_number, &arabic_number,
                                               &number_suffix) ||
       arabic_number == half_width_new_content_value) {
-    return NO_REWRITE;
+    return std::nullopt;
   }
   const std::string new_content_value = arabic_number + number_suffix;
   if (new_content_value == half_width_new_content_value) {
-    return NO_REWRITE;
+    return std::nullopt;
   }
   const std::string suffix(c.value, c.content_value.size(),
                            c.value.size() - c.content_value.size());
-  arabic_candidate->Clear();
-  arabic_candidate->value = new_content_value + suffix;
-  arabic_candidate->content_value = new_content_value;
-  arabic_candidate->key = c.key;
-  arabic_candidate->content_key = c.content_key;
-  arabic_candidate->consumed_key_size = c.consumed_key_size;
-  arabic_candidate->cost = c.cost;
-  arabic_candidate->structure_cost = c.structure_cost;
-  arabic_candidate->lid = c.lid;
-  arabic_candidate->rid = c.rid;
-  arabic_candidate->attributes |=
+  info.candidate.Clear();
+  info.candidate.value = new_content_value + suffix;
+  info.candidate.content_value = new_content_value;
+  info.candidate.key = c.key;
+  info.candidate.content_key = c.content_key;
+  info.candidate.consumed_key_size = c.consumed_key_size;
+  info.candidate.cost = c.cost;
+  info.candidate.structure_cost = c.structure_cost;
+  info.candidate.lid = c.lid;
+  info.candidate.rid = c.rid;
+  info.candidate.attributes |=
       c.attributes & Segment::Candidate::PARTIALLY_KEY_CONSUMED;
-  DCHECK(arabic_candidate->IsValid());
-  return KANJI_FIRST;
+  DCHECK(info.candidate.IsValid());
+
+  info.type = KANJI_FIRST;
+  return info;
 }
 
-void GetRewriteCandidateInfos(
+std::vector<RewriteCandidateInfo> GetRewriteCandidateInfos(
     const SerializedStringArray &suffix_array, const Segment &seg,
-    const PosMatcher &pos_matcher,
-    std::vector<RewriteCandidateInfo> *rewrite_candidate_info) {
-  DCHECK(rewrite_candidate_info);
-  RewriteCandidateInfo info;
+    const PosMatcher &pos_matcher) {
+  std::vector<RewriteCandidateInfo> rewrite_candidate_info;
   constexpr int kMaxLenForPhoneticNumber = 6;  // "100000" (じゅうまん)
 
   // Use the higher ranked candidate for deciding the insertion position.
   absl::flat_hash_set<std::string> seen;
   for (size_t i = 0; i < seg.candidates_size(); ++i) {
-    const RewriteType type = GetRewriteTypeAndBase(
-        suffix_array, seg, i, pos_matcher, &info.candidate);
-    if (type == NO_REWRITE) {
+    std::optional<RewriteCandidateInfo> info = GetRewriteCandidateInfo(
+        suffix_array, seg, i, pos_matcher);
+    if (!info.has_value()) {
       continue;
     }
 
     // Skip expanding number variation for large number for phonetic number
     // candidates. Generating "100000000" for the key "いちおく" would be noisy.
     const bool is_base_phonetic =
-        (Util::GetFirstScriptType(info.candidate.key) != Util::NUMBER);
+        (Util::GetFirstScriptType(info->candidate.key) != Util::NUMBER);
     if (is_base_phonetic &&
-        Util::CharsLen(info.candidate.value) > kMaxLenForPhoneticNumber) {
+        Util::CharsLen(info->candidate.value) > kMaxLenForPhoneticNumber) {
       continue;
     }
 
-    if (seen.insert(info.candidate.value).second) {
-      info.type = type;
-      info.position = i;
-      rewrite_candidate_info->push_back(info);
+    if (seen.insert(info->candidate.value).second) {
+      rewrite_candidate_info.push_back(std::move(*info));
     }
   }
+  return rewrite_candidate_info;
 }
 
 // If top candidate is Kanji numeric, we want to expand at least
@@ -288,35 +296,26 @@ class CheckValueOperator {
 
 // If we have the candidates to be inserted before the base candidate,
 // delete them.
-void EraseExistingCandidates(
-    absl::Span<const Segment::Candidate> results, int base_candidate_pos,
-    RewriteType type, Segment *seg,
-    std::vector<RewriteCandidateInfo> *rewrite_candidate_info_list) {
-  DCHECK(seg);
+void FindEraseCandidates(absl::Span<const Segment::Candidate> results,
+                         int base_candidate_pos, RewriteType type,
+                         const Segment &seg, std::set<int> *erase_positions) {
   // Remember base candidate value
-  const int start_pos = std::min<int>(
-      base_candidate_pos + GetInsertOffset(type), seg->candidates_size() - 1);
+  const int start_pos =
+      std::min<int>(base_candidate_pos + GetInsertOffset(type),
+                    seg.candidates_size() - 1);
   for (int pos = start_pos; pos >= 0; --pos) {
     if (pos == base_candidate_pos) {
       continue;
     }
+    if (seg.candidate(pos).attributes & Segment::Candidate::NO_MODIFICATION) {
+      continue;
+    }
+
     // Simple liner search. |results| size is small. (at most 10 or so)
-    const auto iter =
-        std::find_if(results.begin(), results.end(),
-                     CheckValueOperator(seg->candidate(pos).value));
-    if (iter == results.end()) {
-      continue;
-    }
-    if (seg->candidate(pos).attributes & Segment::Candidate::NO_MODIFICATION) {
-      continue;
-    }
-
-    seg->erase_candidate(pos);
-
-    // Adjust position in rewrite_candidate_info.
-    for (size_t i = 0; i < rewrite_candidate_info_list->size(); ++i) {
-      if ((*rewrite_candidate_info_list)[i].position > pos) {
-        --(*rewrite_candidate_info_list)[i].position;
+    for (const Segment::Candidate &cand : results) {
+      if (cand.value == seg.candidate(pos).value) {
+        erase_positions->insert(pos);
+        break;
       }
     }
   }
@@ -492,6 +491,23 @@ bool NumberRewriter::Rewrite(const ConversionRequest &request,
   return modified;
 }
 
+namespace {
+bool IsAlreadyUpdated(absl::Span<const Segment::Candidate> number_candidates,
+                      const Segment &seg) {
+  absl::flat_hash_set<absl::string_view> values;
+  for (int i = 0; i < seg.candidates_size(); ++i) {
+    values.insert(seg.candidate(i).value);
+  }
+
+  for (const auto &candidate : number_candidates) {
+    if (!values.contains(candidate.value)) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
 bool NumberRewriter::RewriteOneSegment(const ConversionRequest &request,
                                        Segment *seg, Segments *segments) const {
   DCHECK(segments);
@@ -502,19 +518,19 @@ bool NumberRewriter::RewriteOneSegment(const ConversionRequest &request,
        request.request_type() == ConversionRequest::CONVERSION);
   const bool should_rerank = ShouldRerankCandidates(request, *segments);
 
-  bool modified = false;
-  std::vector<RewriteCandidateInfo> rewrite_candidate_infos;
-  GetRewriteCandidateInfos(suffix_array_, *seg, pos_matcher_,
-                           &rewrite_candidate_infos);
+  const std::vector<RewriteCandidateInfo> infos =
+      GetRewriteCandidateInfos(suffix_array_, *seg, pos_matcher_);
 
-  for (int i = rewrite_candidate_infos.size() - 1; i >= 0; --i) {
-    const RewriteCandidateInfo &info = rewrite_candidate_infos[i];
+  bool modified = false;
+  std::set<int> erase_positions;  // Use std::set for deterministic order.
+  for (auto it = infos.rbegin(); it != infos.rend(); ++it) {
+    const RewriteCandidateInfo &info = *it;
     if (info.candidate.content_value.size() > info.candidate.value.size()) {
       LOG(ERROR) << "Invalid content_value/value: ";
       break;
     }
 
-    std::string arabic_content_value =
+    const std::string arabic_content_value =
         japanese_util::FullWidthToHalfWidth(info.candidate.content_value);
     if (Util::GetScriptType(arabic_content_value) != Util::NUMBER) {
       if (Util::GetFirstScriptType(arabic_content_value) == Util::NUMBER) {
@@ -537,17 +553,24 @@ bool NumberRewriter::RewriteOneSegment(const ConversionRequest &request,
     const std::vector<Segment::Candidate> number_candidates =
         GenerateCandidatesToInsert(info.candidate, output, should_rerank);
 
-    // Caution!!!: This invocation will update the data inside of the
-    // rewrite_candidate_infos. Thus, |info| also can be updated as well
-    // regardless of whether it's const reference-ness.
-    EraseExistingCandidates(number_candidates, info.position, info.type, seg,
-                            &rewrite_candidate_infos);
-    int insert_pos = GetInsertPos(info.position, *seg, info.type);
+    // If all the candidates are already in the segment, do nothing.
+    if (IsAlreadyUpdated(number_candidates, *seg)) {
+      continue;
+    }
+
+    FindEraseCandidates(number_candidates, info.position, info.type, *seg,
+                        &erase_positions);
+    const int insert_pos = GetInsertPos(info.position, *seg, info.type);
     DCHECK_LT(info.position, insert_pos);
     InsertConvertedCandidates(number_candidates, info.candidate, info.position,
                               insert_pos, seg);
     modified = true;
   }
+
+  for (auto it = erase_positions.rbegin(); it != erase_positions.rend(); ++it) {
+    seg->erase_candidate(*it);
+  }
+
   return modified;
 }
 

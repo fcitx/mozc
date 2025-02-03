@@ -58,6 +58,7 @@
         'engine.cc',
       ],
       'dependencies': [
+        'engine_converter',
         'minimal_converter',
         '<(mozc_oss_src_dir)/base/absl.gyp:absl_status',
         '<(mozc_oss_src_dir)/base/absl.gyp:absl_strings',
@@ -70,6 +71,45 @@
         '<(mozc_oss_src_dir)/protocol/protocol.gyp:commands_proto',
         '<(mozc_oss_src_dir)/protocol/protocol.gyp:user_dictionary_storage_proto',
         '<(mozc_oss_src_dir)/rewriter/rewriter.gyp:rewriter',
+      ],
+    },
+    {
+      'target_name': 'engine_converter',
+      'type': 'static_library',
+      'sources': [
+        'engine_converter.cc',
+      ],
+      'dependencies': [
+        '<(mozc_oss_src_dir)/base/absl.gyp:absl_log',
+        '<(mozc_oss_src_dir)/base/absl.gyp:absl_strings',
+        '<(mozc_oss_src_dir)/base/base.gyp:base',
+        '<(mozc_oss_src_dir)/composer/composer.gyp:key_parser',
+        '<(mozc_oss_src_dir)/config/config.gyp:config_handler',
+        '<(mozc_oss_src_dir)/converter/converter_base.gyp:segments',
+        '<(mozc_oss_src_dir)/dictionary/dictionary_base.gyp:pos_matcher',
+        '<(mozc_oss_src_dir)/protocol/protocol.gyp:commands_proto',
+        '<(mozc_oss_src_dir)/protocol/protocol.gyp:config_proto',
+        '<(mozc_oss_src_dir)/request/request.gyp:conversion_request',
+        '<(mozc_oss_src_dir)/transliteration/transliteration.gyp:transliteration',
+        '<(mozc_oss_src_dir)/usage_stats/usage_stats_base.gyp:usage_stats',
+        'engine_internal',
+      ],
+    },
+    {
+      'target_name': 'engine_internal',
+      'type' : 'static_library',
+      'hard_dependency': 1,
+      'sources': [
+        'candidate_list.cc',
+        'engine_output.cc',
+      ],
+      'dependencies': [
+        '<(mozc_oss_src_dir)/base/absl.gyp:absl_strings',
+        '<(mozc_oss_src_dir)/base/base.gyp:base',
+        '<(mozc_oss_src_dir)/composer/composer.gyp:composer',
+        '<(mozc_oss_src_dir)/config/config.gyp:config_handler',
+        '<(mozc_oss_src_dir)/protocol/protocol.gyp:commands_proto',
+        '<(mozc_oss_src_dir)/protocol/protocol.gyp:config_proto',
       ],
     },
     {

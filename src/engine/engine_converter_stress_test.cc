@@ -38,11 +38,12 @@
 #include "composer/table.h"
 #include "config/config_handler.h"
 #include "converter/converter_interface.h"
+#include "engine/engine.h"
+#include "engine/engine_converter.h"
 #include "engine/engine_interface.h"
 #include "engine/mock_data_engine_factory.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
-#include "session/session_converter.h"
 #include "testing/gunit.h"
 #include "testing/mozctest.h"
 #include "transliteration/transliteration.h"
@@ -57,11 +58,11 @@ ABSL_FLAG(int32_t, test_srand_seed, 0,
           "used only when \"test_deterministic\" is true");
 
 namespace mozc {
-namespace session {
+namespace engine {
 
-class SessionConverterStressTest : public testing::TestWithTempUserProfile {
+class EngineConverterStressTest : public testing::TestWithTempUserProfile {
  public:
-  SessionConverterStressTest() {
+  EngineConverterStressTest() {
     if (absl::GetFlag(FLAGS_test_deterministic)) {
       random_ = Random(std::seed_seq{absl::GetFlag(FLAGS_test_srand_seed)});
     }
@@ -77,7 +78,7 @@ class SessionConverterStressTest : public testing::TestWithTempUserProfile {
   Random random_;
 };
 
-TEST_F(SessionConverterStressTest, ConvertToHalfWidthForRandomAsciiInput) {
+TEST_F(EngineConverterStressTest, ConvertToHalfWidthForRandomAsciiInput) {
   // ConvertToHalfWidth has to return the same string as the input.
 
   constexpr int kTestCaseSize = 2;
@@ -92,10 +93,9 @@ TEST_F(SessionConverterStressTest, ConvertToHalfWidthForRandomAsciiInput) {
   const commands::Request request;
   config::Config config;
 
-  std::unique_ptr<EngineInterface> engine =
-      MockDataEngineFactory::Create().value();
+  std::unique_ptr<Engine> engine = MockDataEngineFactory::Create().value();
   ConverterInterface* converter = engine->GetConverter();
-  SessionConverter sconverter(converter, &request, &config);
+  EngineConverter sconverter(converter, &request, &config);
   composer::Table table;
   table.LoadFromFile(kRomajiHiraganaTable.c_str());
   composer::Composer composer(&table, &request, &config);
@@ -125,5 +125,5 @@ TEST_F(SessionConverterStressTest, ConvertToHalfWidthForRandomAsciiInput) {
   }
 }
 
-}  // namespace session
+}  // namespace engine
 }  // namespace mozc

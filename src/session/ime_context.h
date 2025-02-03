@@ -30,8 +30,8 @@
 // ImeContext class contains the whole internal variables representing
 // a session.
 
-#ifndef MOZC_SESSION_INTERNAL_IME_CONTEXT_H_
-#define MOZC_SESSION_INTERNAL_IME_CONTEXT_H_
+#ifndef MOZC_SESSION_IME_CONTEXT_H_
+#define MOZC_SESSION_IME_CONTEXT_H_
 
 #include <memory>
 #include <utility>
@@ -39,11 +39,11 @@
 #include "absl/time/time.h"
 #include "composer/composer.h"
 #include "config/config_handler.h"
+#include "engine/engine_converter_interface.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
-#include "session/internal/key_event_transformer.h"
-#include "session/internal/keymap.h"
-#include "session/session_converter_interface.h"
+#include "session/key_event_transformer.h"
+#include "session/keymap.h"
 
 namespace mozc {
 namespace session {
@@ -74,9 +74,14 @@ class ImeContext final {
     composer_ = std::move(composer);
   }
 
-  const SessionConverterInterface &converter() const { return *converter_; }
-  SessionConverterInterface *mutable_converter() { return converter_.get(); }
-  void set_converter(std::unique_ptr<SessionConverterInterface> converter) {
+  const engine::EngineConverterInterface &converter() const {
+    return *converter_;
+  }
+  engine::EngineConverterInterface *mutable_converter() {
+    return converter_.get();
+  }
+  void set_converter(
+      std::unique_ptr<engine::EngineConverterInterface> converter) {
     converter_ = std::move(converter);
   }
 
@@ -140,7 +145,7 @@ class ImeContext final {
   absl::Time last_command_time_ = absl::InfinitePast();
 
   std::unique_ptr<composer::Composer> composer_;
-  std::unique_ptr<SessionConverterInterface> converter_;
+  std::unique_ptr<engine::EngineConverterInterface> converter_;
   KeyEventTransformer key_event_transformer_;
 
   const commands::Request *request_;
@@ -160,4 +165,4 @@ class ImeContext final {
 }  // namespace session
 }  // namespace mozc
 
-#endif  // MOZC_SESSION_INTERNAL_IME_CONTEXT_H_
+#endif  // MOZC_SESSION_IME_CONTEXT_H_

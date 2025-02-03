@@ -31,10 +31,13 @@
 #define MOZC_REWRITER_VARIANTS_REWRITER_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "base/util.h"
 #include "converter/segments.h"
 #include "dictionary/pos_matcher.h"
 #include "request/conversion_request.h"
@@ -81,6 +84,26 @@ class VariantsRewriter : public RewriterInterface {
   static void SetDescriptionForPrediction(dictionary::PosMatcher pos_matcher,
                                           Segment::Candidate *candidate);
 
+  // Returns form types for given two pair of strings.
+  // This function tries to find the difference between
+  // |input1| and |input2| and find the place where the script
+  // form (halfwidth/fullwidth) is different. This function returns
+  // a pair of forms if input1 or input2 needs to have full/half width
+  // annotation.
+  //
+  // Example:
+  //  input1="ABCぐーぐる input2="ＡＢＣ"
+  //  form1=Half form2=Full
+  //
+  // If input1 and input2 have mixed form types and the result
+  // is ambiguous, this function returns {FULL_HALF_WIDTH, FULL_HALF_WIDTH}.
+  //
+  // Ambiguous case:
+  //  input1="ABC１２３" input2="ＡＢＣ123"
+  //  return {FULL_HALF_WIDTH, FULL_HALF_WIDTH}.
+  static std::pair<Util::FormType, Util::FormType> GetFormTypesFromStringPair(
+      absl::string_view input1, absl::string_view input2);
+
  private:
   // 1) Full width / half width description
   // 2) CharForm (hiragana/katakana) description
@@ -89,7 +112,7 @@ class VariantsRewriter : public RewriterInterface {
   enum DescriptionType {
     FULL_HALF_WIDTH = 1,  // automatically detect full/haflwidth.
     DEPRECATED_FULL_HALF_WIDTH_WITH_UNKNOWN = 2,  // Deprecated.
-    // Set half/full widith for symbols.
+    // Set half/full width for symbols.
     // This flag must be used together with FULL_HALF_WIDTH.
     // If WITH_UNKNOWN is specified, assign FULL/HALF width annotation
     // more aggressively.
@@ -112,12 +135,38 @@ class VariantsRewriter : public RewriterInterface {
                              int description_type,
                              Segment::Candidate *candidate);
   bool RewriteSegment(RewriteType type, Segment *seg) const;
+
+  // Generates values for primary and secondary candidates.
+  //
+  // There are two orthogonal categories for two candidates.
+  //
+  // * {primary, secondary}: The primary candidate ranked higher than secondary.
+  //   If the user has configured half-width value as primary, full-width value
+  //   will be secondary.
+  // * {original, alternative}: Original is the candidate that already exists in
+  //   the segment before this rewriter. The original candidate is used as the
+  //   input to this rewriter. Alternative is the candidate that is generated
+  //   from the original candidate.
+  //
+  // original can be either primary or secondary. alternative will be the
+  // opposite of original.
+  //
+  // Returns true if at least one of the values is modified.
   bool GenerateAlternatives(
-      const Segment::Candidate &original, std::string *default_value,
-      std::string *alternative_value, std::string *default_content_value,
-      std::string *alternative_content_value,
-      std::vector<uint32_t> *default_inner_segment_boundary,
-      std::vector<uint32_t> *alternative_inner_segment_boundary) const;
+      const Segment::Candidate &original, std::string *primary_value,
+      std::string *secondary_value, std::string *primary_content_value,
+      std::string *secondary_content_value,
+      std::vector<uint32_t> *primary_inner_segment_boundary,
+      std::vector<uint32_t> *secondary_inner_segment_boundary) const;
+
+  // Returns an alternative candidate and information for the base candidate.
+  struct AlternativeCandidateResult {
+    bool is_original_candidate_primary;
+    int original_candidate_description_type;
+    std::unique_ptr<Segment::Candidate> alternative_candidate = nullptr;
+  };
+  AlternativeCandidateResult CreateAlternativeCandidate(
+      const Segment::Candidate &original_candidate) const;
 
   const dictionary::PosMatcher pos_matcher_;
 };

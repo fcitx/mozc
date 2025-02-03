@@ -43,11 +43,14 @@
 #include "data_manager/data_manager.h"
 #include "dictionary/user_dictionary_session_handler.h"
 #include "engine/data_loader.h"
+#include "engine/engine_converter.h"
 #include "engine/engine_interface.h"
 #include "engine/minimal_converter.h"
 #include "engine/modules.h"
 #include "engine/supplemental_model_interface.h"
 #include "prediction/predictor_interface.h"
+#include "protocol/commands.pb.h"
+#include "protocol/config.pb.h"
 #include "rewriter/rewriter_interface.h"
 
 namespace mozc {
@@ -86,8 +89,15 @@ class Engine : public EngineInterface {
 
   // TODO(taku): Avoid returning pointer, as converter_ may be updated
   // dynamically and return value will become a dangling pointer.
-  ConverterInterface *GetConverter() const override {
+  ConverterInterface *GetConverter() const {
     return converter_ ? converter_.get() : minimal_converter_.get();
+  }
+
+  std::unique_ptr<engine::EngineConverterInterface> CreateEngineConverter(
+      const commands::Request &request,
+      const config::Config &config) const override {
+    return std::make_unique<engine::EngineConverter>(GetConverter(), &request,
+                                                     &config);
   }
 
   // Functions for Reload, Sync, Wait return true if successfully operated

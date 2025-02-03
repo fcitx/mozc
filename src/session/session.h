@@ -44,28 +44,27 @@
 #include "engine/engine_interface.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
-#include "session/internal/ime_context.h"
-#include "session/internal/keymap.h"
-#include "session/session_interface.h"
+#include "session/ime_context.h"
+#include "session/keymap.h"
 #include "testing/friend_test.h"
 #include "transliteration/transliteration.h"
 
 namespace mozc {
 namespace session {
 
-class Session : public SessionInterface {
+class Session {
  public:
   explicit Session(EngineInterface *engine);
   Session(const Session &) = delete;
   Session &operator=(const Session &) = delete;
 
-  bool SendKey(mozc::commands::Command *command) override;
+  bool SendKey(mozc::commands::Command *command);
 
   // Check if the input key event will be consumed by the session.
-  bool TestSendKey(mozc::commands::Command *command) override;
+  bool TestSendKey(mozc::commands::Command *command);
 
   // Perform the SEND_COMMAND command defined commands.proto.
-  bool SendCommand(mozc::commands::Command *command) override;
+  bool SendCommand(mozc::commands::Command *command);
 
   // Turn on IME. Do nothing (but the keyevent is consumed) when IME is already
   // turned on.
@@ -231,31 +230,29 @@ class Session : public SessionInterface {
 
   bool ReportBug(mozc::commands::Command *command);
 
-  void SetConfig(const mozc::config::Config *config) override;
+  void SetConfig(const mozc::config::Config *config);
 
-  void SetKeyMapManager(
-      const mozc::keymap::KeyMapManager *key_map_manager) override;
+  void SetKeyMapManager(const mozc::keymap::KeyMapManager *key_map_manager);
 
-  void SetRequest(const mozc::commands::Request *request) override;
+  void SetRequest(const mozc::commands::Request *request);
 
-  void SetTable(const mozc::composer::Table *table) override;
+  void SetTable(const mozc::composer::Table *table);
 
   // Set client capability for this session.  Used by unittest.
-  void set_client_capability(
-      const mozc::commands::Capability &capability) override;
+  void set_client_capability(const mozc::commands::Capability &capability);
 
   // Set application information for this session.
   void set_application_info(
-      const mozc::commands::ApplicationInfo &application_info) override;
+      const mozc::commands::ApplicationInfo &application_info);
 
   // Get application information
-  const mozc::commands::ApplicationInfo &application_info() const override;
+  const mozc::commands::ApplicationInfo &application_info() const;
 
   // Return the time when this instance was created.
-  absl::Time create_session_time() const override;
+  absl::Time create_session_time() const;
 
   // return 0 (default value) if no command is executed in this session.
-  absl::Time last_command_time() const override;
+  absl::Time last_command_time() const;
 
   // TODO(komatsu): delete this function.
   // For unittest only
@@ -312,11 +309,11 @@ class Session : public SessionInterface {
   // it requires the argument id.
   bool SelectCandidate(mozc::commands::Command *command);
 
-  // Calls SessionConverter::ConmmitHeadToFocusedSegments()
+  // Calls EngineConverter::ConmmitHeadToFocusedSegments()
   // and deletes characters from the composer.
   void CommitHeadToFocusedSegmentsInternal(const commands::Context &context);
 
-  // Commits without SessionConverter.
+  // Commits without EngineConverter.
   void CommitCompositionDirectly(commands::Command *command);
   void CommitSourceTextDirectly(commands::Command *command);
   void CommitRawTextDirectly(commands::Command *command);
@@ -325,10 +322,10 @@ class Session : public SessionInterface {
   bool CommitInternal(commands::Command *command,
                       bool trigger_zero_query_suggest);
 
-  // Calls SessionConverter::Suggest if the condition is applicable to
-  // call it.  True is returned when SessionConverter::Suggest is
+  // Calls EngineConverter::Suggest if the condition is applicable to
+  // call it.  True is returned when EngineConverter::Suggest is
   // called and results exist.  False is returned when
-  // SessionConverter::Suggest is not called or no results exist.
+  // EngineConverter::Suggest is not called or no results exist.
   bool Suggest(const mozc::commands::Input &input);
 
   // Commands like EditCancel should restore the original string used for
