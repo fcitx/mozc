@@ -213,17 +213,21 @@ class EngineConverterInterface {
   virtual void PopOutput(const composer::Composer &composer,
                          commands::Output *output) = 0;
 
+  // Fill preedit
+  virtual void FillPreedit(const composer::Composer &composer,
+                           commands::Preedit *preedit) const = 0;
+
   // Fill protocol buffers
   virtual void FillOutput(const composer::Composer &composer,
                           commands::Output *output) const = 0;
 
   // Set setting by the request.
   // Currently this is especially for EngineConverter.
-  virtual void SetRequest(const commands::Request *request) = 0;
+  virtual void SetRequest(const commands::Request &request) = 0;
 
   // Set setting by the config.
   // Currently this is especially for EngineConverter.
-  virtual void SetConfig(const config::Config *config) = 0;
+  virtual void SetConfig(const config::Config &config) = 0;
 
   // Update the internal state by the context.
   virtual void OnStartComposition(const commands::Context &context) = 0;

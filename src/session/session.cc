@@ -51,7 +51,6 @@
 #include "composer/table.h"
 #include "engine/engine_converter_interface.h"
 #include "engine/engine_interface.h"
-#include "engine/engine_output.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "session/ime_context.h"
@@ -233,8 +232,8 @@ void Session::InitContext(ImeContext *context) const {
   context->set_create_time(Clock::GetAbslTime());
   context->set_last_command_time(absl::InfinitePast());
   context->set_composer(std::make_unique<composer::Composer>(
-      &composer::Table::GetDefaultTable(), &context->GetRequest(),
-      &context->GetConfig()));
+      composer::Table::GetDefaultTable(), context->GetRequest(),
+      context->GetConfig()));
   context->set_converter(engine_->CreateEngineConverter(context->GetRequest(),
                                                         context->GetConfig()));
 #ifdef _WIN32
@@ -246,8 +245,8 @@ void Session::InitContext(ImeContext *context) const {
 #endif  // _WIN32
   context->mutable_client_context()->Clear();
 
-  context->SetConfig(&context->GetConfig());
-  context->SetKeyMapManager(&context->GetKeyMapManager());
+  context->SetConfig(context->GetConfig());
+  context->SetKeyMapManager(context->GetKeyMapManager());
 
   // TODO(team): Remove #if based behavior change for cascading window.
   // Tests for session layer (session_handler_scenario_test, etc) can be
@@ -1189,23 +1188,23 @@ bool Session::ResetContext(commands::Command *command) {
   return true;
 }
 
-void Session::SetTable(const composer::Table *table) {
+void Session::SetTable(const composer::Table &table) {
   ClearUndoContext();
   context_->mutable_composer()->SetTable(table);
 }
 
-void Session::SetConfig(const config::Config *config) {
+void Session::SetConfig(const config::Config &config) {
   ClearUndoContext();
   context_->SetConfig(config);
 }
 
-void Session::SetRequest(const commands::Request *request) {
+void Session::SetRequest(const commands::Request &request) {
   ClearUndoContext();
   context_->SetRequest(request);
 }
 
 void Session::SetKeyMapManager(
-    const mozc::keymap::KeyMapManager *key_map_manager) {
+    const mozc::keymap::KeyMapManager &key_map_manager) {
   context_->SetKeyMapManager(key_map_manager);
 }
 
@@ -2749,9 +2748,8 @@ void Session::OutputMode(commands::Command *command) const {
 
 void Session::OutputComposition(commands::Command *command) const {
   OutputMode(command);
-  commands::Preedit *preedit = command->mutable_output()->mutable_preedit();
-  // TODO(taku): Removes the dependency to SessionOutput.
-  engine::EngineOutput::FillPreedit(context_->composer(), preedit);
+  context_->converter().FillPreedit(
+      context_->composer(), command->mutable_output()->mutable_preedit());
 }
 
 void Session::OutputKey(commands::Command *command) const {
