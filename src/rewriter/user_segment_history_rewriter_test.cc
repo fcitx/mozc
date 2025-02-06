@@ -163,11 +163,11 @@ class UserSegmentHistoryRewriterTest : public testing::TestWithTempUserProfile {
   const PosGroup &pos_group() const { return *pos_group_; }
 
   NumberRewriter *CreateNumberRewriter() const {
-    return new NumberRewriter(&mock_data_manager_);
+    return new NumberRewriter(mock_data_manager_);
   }
 
   UserSegmentHistoryRewriter *CreateUserSegmentHistoryRewriter() const {
-    return new UserSegmentHistoryRewriter(&pos_matcher_, pos_group_.get());
+    return new UserSegmentHistoryRewriter(pos_matcher_, *pos_group_);
   }
 
   void SetNumberForm(Config::CharacterForm form) {
