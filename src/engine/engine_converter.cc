@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -59,7 +60,6 @@
 #include "protocol/config.pb.h"
 #include "request/conversion_request.h"
 #include "transliteration/transliteration.h"
-#include "usage_stats/usage_stats.h"
 
 namespace mozc {
 namespace engine {
@@ -67,7 +67,6 @@ namespace {
 
 using ::mozc::commands::Request;
 using ::mozc::config::Config;
-using ::mozc::usage_stats::UsageStats;
 
 absl::string_view GetCandidateShortcuts(
     config::Config::SelectionShortcut selection_shortcut) {
@@ -459,7 +458,7 @@ bool EngineConverter::SuggestWithPreferences(
   // The candidates are always from suggestion API
   // as richer results are not needed.
   if (request_->fill_incognito_candidate_words()) {
-    const Config incognito_config = CreateIncognitoConfig();
+    const Config &incognito_config = GetIncognitoConfig();
     ConversionRequest::Options incognito_options = conversion_request.options();
     incognito_options.enable_user_history_for_conversion = false;
     incognito_options.request_type = use_partial_composition
@@ -630,7 +629,7 @@ void EngineConverter::Commit(const composer::Composer &composer,
       LOG(WARNING) << "Failed to commit segment " << i;
     }
   }
-  CommitUsageStats(state_, context);
+  CommitSegmentsSize(state_, context);
   DCHECK(request_);
   DCHECK(config_);
   const ConversionRequest conversion_request(composer, *request_, context,
@@ -670,7 +669,7 @@ bool EngineConverter::CommitSuggestionInternal(
       LOG(WARNING) << "CommitPartialSuggestionSegmentValue failed";
       return false;
     }
-    CommitUsageStats(EngineConverterInterface::SUGGESTION, context);
+    CommitSegmentsSize(EngineConverterInterface::SUGGESTION, context);
     InitializeSelectedCandidateIndices();
     // One or more segments must exist because new segment is inserted
     // just after the committed segment.
@@ -682,7 +681,7 @@ bool EngineConverter::CommitSuggestionInternal(
       LOG(WARNING) << "CommitSegmentValue failed";
       return false;
     }
-    CommitUsageStats(EngineConverterInterface::SUGGESTION, context);
+    CommitSegmentsSize(EngineConverterInterface::SUGGESTION, context);
     DCHECK(config_);
     const ConversionRequest conversion_request(composer, *request_, context,
                                                *config_, {});
@@ -776,7 +775,7 @@ void EngineConverter::CommitSegmentsInternal(const composer::Composer &composer,
   }
 
   // Commit the [0, segments_to_commit - 1] conversion segment.
-  CommitUsageStatsWithSegmentsSize(state_, context, segments_to_commit);
+  CommitSegmentsSize(segments_to_commit);
 
   // Adjust the segment_index, since the [0, segment_to_commit - 1] segments
   // disappeared.
@@ -803,7 +802,7 @@ void EngineConverter::CommitPreedit(const composer::Composer &composer,
   output::FillCursorOffsetResult(CalculateCursorOffset(normalized_preedit),
                                  &result_);
   segments_.InitForCommit(key, normalized_preedit);
-  CommitUsageStats(EngineConverterInterface::COMPOSITION, context);
+  CommitSegmentsSize(EngineConverterInterface::COMPOSITION, context);
   DCHECK(request_);
   DCHECK(config_);
   // the request mode is CONVERSION, as the user experience
@@ -1638,6 +1637,7 @@ void EngineConverter::SetConfig(const config::Config &config) {
   updated_command_ = Segment::Candidate::DEFAULT_COMMAND;
   selection_shortcut_ = config.selection_shortcut();
   use_cascading_window_ = config.use_cascading_window();
+  incognito_config_.reset();
 }
 
 void EngineConverter::OnStartComposition(const commands::Context &context) {
@@ -1736,10 +1736,9 @@ void EngineConverter::UpdateCandidateStats(absl::string_view base_name,
   } else {
     name += "GE10";
   }
-  UsageStats::IncrementCount(name);
 }
 
-void EngineConverter::CommitUsageStats(
+void EngineConverter::CommitSegmentsSize(
     EngineConverterInterface::State commit_state,
     const commands::Context &context) {
   size_t commit_segment_size = 0;
@@ -1757,50 +1756,12 @@ void EngineConverter::CommitUsageStats(
     default:
       LOG(DFATAL) << "Unexpected state: " << commit_state;
   }
-  CommitUsageStatsWithSegmentsSize(commit_state, context, commit_segment_size);
+  CommitSegmentsSize(commit_segment_size);
 }
 
-void EngineConverter::CommitUsageStatsWithSegmentsSize(
-    EngineConverterInterface::State commit_state,
-    const commands::Context &context, size_t commit_segments_size) {
+void EngineConverter::CommitSegmentsSize(size_t commit_segments_size) {
   CHECK_LE(commit_segments_size, selected_candidate_indices_.size());
-
-  std::string stats_str;
-  switch (commit_state) {
-    case COMPOSITION:
-      stats_str = "Composition";
-      break;
-    case SUGGESTION:
-    case PREDICTION:
-      // Suggestion related usage stats are collected as Prediction.
-      stats_str = "Prediction";
-      UpdateCandidateStats(stats_str, selected_candidate_indices_[0]);
-      break;
-    case CONVERSION:
-      stats_str = "Conversion";
-      for (size_t i = 0; i < commit_segments_size; ++i) {
-        UpdateCandidateStats(stats_str, selected_candidate_indices_[i]);
-      }
-      break;
-    default:
-      LOG(DFATAL) << "Unexpected state: " << commit_state;
-      stats_str = "Unknown";
-  }
-
-  UsageStats::IncrementCount("Commit");
-  UsageStats::IncrementCount("CommitFrom" + stats_str);
-
-  if (stats_str != "Unknown") {
-    if (HasExperimentalFeature(context, "chrome_omnibox")) {
-      UsageStats::IncrementCount("CommitFrom" + stats_str + "InChromeOmnibox");
-    }
-    if (HasExperimentalFeature(context, "google_search_box")) {
-      UsageStats::IncrementCount("CommitFrom" + stats_str +
-                                 "InGoogleSearchBox");
-    }
-  }
-
-  const std::vector<int>::iterator it = selected_candidate_indices_.begin();
+  const auto it = selected_candidate_indices_.begin();
   selected_candidate_indices_.erase(it, it + commit_segments_size);
 }
 
@@ -1812,10 +1773,14 @@ void EngineConverter::SetRequestType(
   options.request_type = request_type;
 }
 
-Config EngineConverter::CreateIncognitoConfig() {
-  Config ret = *config_;
-  ret.set_incognito_mode(true);
-  return ret;
+const Config &EngineConverter::GetIncognitoConfig() {
+  if (!incognito_config_) {
+    // Initializes lazily. incognito_config_ is reset in SetConfig()
+    // method because *config_ is updated in SetConfig().
+    incognito_config_ = std::make_unique<Config>(*config_);
+    incognito_config_->set_incognito_mode(true);
+  }
+  return *incognito_config_;
 }
 
 }  // namespace engine

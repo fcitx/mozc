@@ -349,18 +349,17 @@ class EngineConverter : public EngineConverterInterface {
   void InitializeSelectedCandidateIndices();
   void UpdateSelectedCandidateIndex();
   void UpdateCandidateStats(absl::string_view base_name, int32_t index);
-  void CommitUsageStats(EngineConverterInterface::State commit_state,
-                        const commands::Context &context);
-  void CommitUsageStatsWithSegmentsSize(
-      EngineConverterInterface::State commit_state,
-      const commands::Context &context, size_t commit_segments_size);
+  void CommitSegmentsSize(EngineConverterInterface::State commit_state,
+                          const commands::Context &context);
+  void CommitSegmentsSize(size_t commit_segments_size);
 
   // Sets request type and update the engine_converter's state
   void SetRequestType(ConversionRequest::RequestType request_type,
                       ConversionRequest::Options &options);
 
-  // Creates a config for incognito mode from the current config.
-  config::Config CreateIncognitoConfig();
+  // Gets a config for incognito mode from the current config.
+  // `incognito_config_` is lazily initialized.
+  const config::Config &GetIncognitoConfig();
 
   const ConverterInterface *converter_ = nullptr;
   // Conversion stats used by converter_.
@@ -384,6 +383,7 @@ class EngineConverter : public EngineConverterInterface {
 
   const commands::Request *request_ = nullptr;
   const config::Config *config_ = nullptr;
+  std::unique_ptr<config::Config> incognito_config_;
 
   EngineConverterInterface::State state_;
 

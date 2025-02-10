@@ -138,7 +138,6 @@ mozc_cc_library(
 
 mozc_cc_library(
     name = "node_list_builder",
-    srcs = ["node_list_builder.cc"],
     hdrs = ["node_list_builder.h"],
     deps = [
         ":node",
@@ -146,6 +145,7 @@ mozc_cc_library(
         "//dictionary:dictionary_interface",
         "//dictionary:dictionary_token",
         "//protocol:commands_cc_proto",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
@@ -456,7 +456,6 @@ mozc_cc_library(
         "//rewriter:rewriter_interface",
         "//testing:friend_test",
         "//transliteration",
-        "//usage_stats",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -509,8 +508,6 @@ mozc_cc_test(
         "//testing:gunit_main",
         "//testing:mozctest",
         "//transliteration",
-        "//usage_stats",
-        "//usage_stats:usage_stats_testing_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -789,6 +786,7 @@ mozc_cc_library(
 
 mozc_cc_binary(
     name = "quality_regression_main",
+    testonly = 1,
     srcs = ["quality_regression_main.cc"],
     deps = [
         ":quality_regression_util",
@@ -797,11 +795,14 @@ mozc_cc_binary(
         "//base/file:temp_dir",
         "//engine",
         "//engine:eval_engine_factory",
+        "//protocol:commands_cc_proto",
+        "//request:request_test_util",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )
