@@ -353,8 +353,8 @@ mozc_cc_library(
     hdrs = ["key_info_util.h"],
     visibility = [
         "//client:__subpackages__",
-        "//win32:__subpackages__",
         "//unix/fcitx5:__subpackages__",
+        "//win32:__subpackages__",
     ],
     deps = [
         ":keymap",
