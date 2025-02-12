@@ -18,26 +18,22 @@
 #include "protocol/config.pb.h"
 #include "session/key_info_util.h"
 #include "session/session_handler.h"
-#include "session/session_handler_interface.h"
-#include "session/session_usage_observer.h"
 #include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 
 namespace {
 
-std::unique_ptr<mozc::SessionHandlerInterface> CreateSessionHandler() {
+std::unique_ptr<mozc::SessionHandler> CreateSessionHandler() {
   auto engine = mozc::EngineFactory::Create();
   DCHECK_OK(engine);
   auto result =
       std::make_unique<mozc::SessionHandler>(std::move(engine.value()));
-  result->AddObserver(
-      mozc::Singleton<mozc::session::SessionUsageObserver>::get());
   return result;
 }
 
-mozc::SessionHandlerInterface *GetSessionHandler() {
-  static std::unique_ptr<mozc::SessionHandlerInterface> g_session_handler =
+mozc::SessionHandler *GetSessionHandler() {
+  static std::unique_ptr<mozc::SessionHandler> g_session_handler =
       CreateSessionHandler();
   return g_session_handler.get();
 }

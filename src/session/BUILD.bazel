@@ -153,6 +153,7 @@ mozc_cc_library(
         "//android:__subpackages__",
         "//ios:__subpackages__",
         "//server:__subpackages__",
+        "//unix/fcitx5:__subpackages__",
     ],
     deps = [
         ":keymap",
@@ -353,6 +354,7 @@ mozc_cc_library(
     visibility = [
         "//client:__subpackages__",
         "//win32:__subpackages__",
+        "//unix/fcitx5:__subpackages__",
     ],
     deps = [
         ":keymap",

@@ -64,8 +64,6 @@ mozc_cc_library(
         "//protocol:config_cc_proto",
         "//session:key_info_util",
         "//session:session_handler",
-        "//session:session_handler_interface",
-        "//session:session_usage_observer",
         "@com_google_absl//absl/log",
     ],
 )
