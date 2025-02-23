@@ -27,45 +27,20 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <cstddef>
-#include <iostream>  // NOLINT
-#include <memory>
-#include <ostream>
-#include <sstream>
-#include <string>
+#ifndef MOZC_BASE_CONTAINER_ENTRY_H_
+#define MOZC_BASE_CONTAINER_ENTRY_H_
 
-#include "absl/flags/flag.h"
-#include "base/init_mozc.h"
-#include "composer/internal/composition.h"
-#include "composer/table.h"
+namespace mozc {
 
-ABSL_FLAG(std::string, table, "system://romanji-hiragana.tsv",
-          "preedit conversion table file.");
+// Represents an entry in a map.
+//
+// We need constexpr copy/move, which `std::pair` doesn't get until C++20.
+template <class K, class V>
+struct Entry {
+  K key;
+  V value;
+};
 
-int main(int argc, char **argv) {
-  mozc::InitMozc(argv[0], &argc, &argv);
+}  // namespace mozc
 
-  auto table = std::make_shared<mozc::composer::Table>();
-  table->LoadFromFile(absl::GetFlag(FLAGS_table).c_str());
-
-  mozc::composer::Composition composition(table);
-
-  std::string command;
-  size_t pos = 0;
-
-  while (std::getline(std::cin, command)) {
-    char initial = command[0];
-    if (initial == '-' || (initial >= '0' && initial <= '9')) {
-      std::stringstream ss;
-      int delta;
-      ss << command;
-      ss >> delta;
-      pos += delta;
-    } else if (initial == '!') {
-      pos = composition.DeleteAt(pos);
-    } else {
-      pos = composition.InsertAt(pos, command);
-    }
-    std::cout << composition.GetString() << " : " << pos << std::endl;
-  }
-}
+#endif  // MOZC_BASE_CONTAINER_ENTRY_H_

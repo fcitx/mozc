@@ -27,45 +27,47 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <cstddef>
-#include <iostream>  // NOLINT
-#include <memory>
-#include <ostream>
-#include <sstream>
-#include <string>
+#include "base/container/flat_set.h"
 
-#include "absl/flags/flag.h"
-#include "base/init_mozc.h"
-#include "composer/internal/composition.h"
-#include "composer/table.h"
+#include <functional>
 
-ABSL_FLAG(std::string, table, "system://romanji-hiragana.tsv",
-          "preedit conversion table file.");
+#include "absl/strings/string_view.h"
+#include "testing/gunit.h"
 
-int main(int argc, char **argv) {
-  mozc::InitMozc(argv[0], &argc, &argv);
+namespace mozc {
+namespace {
 
-  auto table = std::make_shared<mozc::composer::Table>();
-  table->LoadFromFile(absl::GetFlag(FLAGS_table).c_str());
+TEST(FlatSetTest, Contains) {
+  constexpr auto kSet = CreateFlatSet<absl::string_view>({
+      "one",
+      "three",
+      "five",
+  });
 
-  mozc::composer::Composition composition(table);
-
-  std::string command;
-  size_t pos = 0;
-
-  while (std::getline(std::cin, command)) {
-    char initial = command[0];
-    if (initial == '-' || (initial >= '0' && initial <= '9')) {
-      std::stringstream ss;
-      int delta;
-      ss << command;
-      ss >> delta;
-      pos += delta;
-    } else if (initial == '!') {
-      pos = composition.DeleteAt(pos);
-    } else {
-      pos = composition.InsertAt(pos, command);
-    }
-    std::cout << composition.GetString() << " : " << pos << std::endl;
-  }
+  EXPECT_FALSE(kSet.contains("zero"));
+  EXPECT_TRUE(kSet.contains("one"));
+  EXPECT_FALSE(kSet.contains("two"));
+  EXPECT_TRUE(kSet.contains("three"));
+  EXPECT_FALSE(kSet.contains("four"));
+  EXPECT_TRUE(kSet.contains("five"));
+  EXPECT_FALSE(kSet.contains("six"));
 }
+
+TEST(FlatSetTest, CustomerCompare) {
+  constexpr auto kSet = CreateFlatSet<absl::string_view, std::greater<>>({
+      "one",
+      "three",
+      "five",
+  });
+
+  EXPECT_FALSE(kSet.contains("zero"));
+  EXPECT_TRUE(kSet.contains("one"));
+  EXPECT_FALSE(kSet.contains("two"));
+  EXPECT_TRUE(kSet.contains("three"));
+  EXPECT_FALSE(kSet.contains("four"));
+  EXPECT_TRUE(kSet.contains("five"));
+  EXPECT_FALSE(kSet.contains("six"));
+}
+
+}  // namespace
+}  // namespace mozc

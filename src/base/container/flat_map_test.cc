@@ -27,45 +27,52 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <cstddef>
-#include <iostream>  // NOLINT
-#include <memory>
-#include <ostream>
-#include <sstream>
-#include <string>
+#include "base/container/flat_map.h"
 
-#include "absl/flags/flag.h"
-#include "base/init_mozc.h"
-#include "composer/internal/composition.h"
-#include "composer/table.h"
+#include <functional>
 
-ABSL_FLAG(std::string, table, "system://romanji-hiragana.tsv",
-          "preedit conversion table file.");
+#include "absl/strings/string_view.h"
+#include "testing/gmock.h"
+#include "testing/gunit.h"
 
-int main(int argc, char **argv) {
-  mozc::InitMozc(argv[0], &argc, &argv);
+namespace mozc {
+namespace {
 
-  auto table = std::make_shared<mozc::composer::Table>();
-  table->LoadFromFile(absl::GetFlag(FLAGS_table).c_str());
+using ::testing::Eq;
+using ::testing::IsNull;
+using ::testing::Pointee;
 
-  mozc::composer::Composition composition(table);
+TEST(FlatMapTest, FindOrNull) {
+  constexpr auto kMap = CreateFlatMap<int, absl::string_view>({
+      {1, "one"},
+      {3, "three"},
+      {5, "five"},
+  });
 
-  std::string command;
-  size_t pos = 0;
-
-  while (std::getline(std::cin, command)) {
-    char initial = command[0];
-    if (initial == '-' || (initial >= '0' && initial <= '9')) {
-      std::stringstream ss;
-      int delta;
-      ss << command;
-      ss >> delta;
-      pos += delta;
-    } else if (initial == '!') {
-      pos = composition.DeleteAt(pos);
-    } else {
-      pos = composition.InsertAt(pos, command);
-    }
-    std::cout << composition.GetString() << " : " << pos << std::endl;
-  }
+  EXPECT_THAT(kMap.FindOrNull(0), IsNull());
+  EXPECT_THAT(kMap.FindOrNull(1), Pointee(Eq("one")));
+  EXPECT_THAT(kMap.FindOrNull(2), IsNull());
+  EXPECT_THAT(kMap.FindOrNull(3), Pointee(Eq("three")));
+  EXPECT_THAT(kMap.FindOrNull(4), IsNull());
+  EXPECT_THAT(kMap.FindOrNull(5), Pointee(Eq("five")));
+  EXPECT_THAT(kMap.FindOrNull(6), IsNull());
 }
+
+TEST(FlatMapTest, CustomerCompare) {
+  constexpr auto kMap = CreateFlatMap<int, absl::string_view, std::greater<>>({
+      {1, "one"},
+      {3, "three"},
+      {5, "five"},
+  });
+
+  EXPECT_THAT(kMap.FindOrNull(0), IsNull());
+  EXPECT_THAT(kMap.FindOrNull(1), Pointee(Eq("one")));
+  EXPECT_THAT(kMap.FindOrNull(2), IsNull());
+  EXPECT_THAT(kMap.FindOrNull(3), Pointee(Eq("three")));
+  EXPECT_THAT(kMap.FindOrNull(4), IsNull());
+  EXPECT_THAT(kMap.FindOrNull(5), Pointee(Eq("five")));
+  EXPECT_THAT(kMap.FindOrNull(6), IsNull());
+}
+
+}  // namespace
+}  // namespace mozc
