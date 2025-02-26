@@ -69,11 +69,11 @@ TEST(ImeContextTest, DefaultValues) {
 }
 
 TEST(ImeContextTest, BasicTest) {
-  const commands::Request request;
-  const config::Config config;
-  const keymap::KeyMapManager keymap;
+  auto request = std::make_shared<const commands::Request>();
+  auto config = std::make_shared<const config::Config>();
+  auto keymap = std::make_shared<const keymap::KeyMapManager>();
 
-  MockConverter converter;
+  auto converter = std::make_shared<MockConverter>();
   ImeContext context(std::make_unique<EngineConverter>(converter));
 
   context.set_create_time(absl::FromUnixSeconds(100));
@@ -88,9 +88,9 @@ TEST(ImeContextTest, BasicTest) {
   context.SetRequest(request);
   context.SetConfig(config);
   context.SetKeyMapManager(keymap);
-  EXPECT_PROTO_EQ(request, context.GetRequest());
-  EXPECT_PROTO_EQ(config, context.GetConfig());
-  EXPECT_EQ(&keymap, &context.GetKeyMapManager());
+  EXPECT_PROTO_EQ(*request, context.GetRequest());
+  EXPECT_PROTO_EQ(*config, context.GetConfig());
+  EXPECT_EQ(keymap.get(), &context.GetKeyMapManager());
 
   context.mutable_client_capability()->set_text_deletion(
       commands::Capability::DELETE_PRECEDING_TEXT);
@@ -109,20 +109,20 @@ TEST(ImeContextTest, CopyContext) {
   table->AddRule("a", "あ", "");
   table->AddRule("n", "ん", "");
   table->AddRule("na", "な", "");
-  const commands::Request request;
-  config::Config config;
-  const keymap::KeyMapManager keymap;
+  auto request = std::make_shared<const commands::Request>();
+  auto config = std::make_shared<config::Config>();
+  auto keymap = std::make_shared<const keymap::KeyMapManager>();
 
-  config.set_session_keymap(config::Config::CHROMEOS);
+  config->set_session_keymap(config::Config::CHROMEOS);
 
-  MockConverter converter;
+  auto converter = std::make_shared<MockConverter>();
 
   Segments segments;
   Segment *segment = segments.add_segment();
   segment->set_key("あん");
   Segment::Candidate *candidate = segment->add_candidate();
   candidate->value = "庵";
-  EXPECT_CALL(converter, StartConversion(_, _))
+  EXPECT_CALL(*converter, StartConversion(_, _))
       .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
 
   {
