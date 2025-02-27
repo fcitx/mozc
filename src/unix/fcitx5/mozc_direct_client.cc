@@ -42,9 +42,8 @@ mozc::SessionHandler *GetSessionHandler() {
 
 MozcDirectClient::MozcDirectClient() : id_(0) {
   // Initialize direct_mode_keys_
-  mozc::config::Config config;
-  mozc::config::ConfigHandler::GetConfig(&config);
-  direct_mode_keys_ = mozc::KeyInfoUtil::ExtractSortedDirectModeKeys(config);
+  direct_mode_keys_ = mozc::KeyInfoUtil::ExtractSortedDirectModeKeys(
+      *mozc::config::ConfigHandler::GetSharedConfig());
   InitRequestForSvsJapanese(true);
 }
 
