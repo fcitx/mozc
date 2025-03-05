@@ -27,34 +27,42 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "rewriter/calculator/calculator_mock.h"
+#include "composer/special_key.h"
 
 #include <string>
-#include <utility>
 
-#include "absl/log/check.h"
-#include "absl/strings/string_view.h"
+#include "composer/table.h"
+#include "testing/gmock.h"
+#include "testing/gunit.h"
 
-namespace mozc {
+namespace mozc::composer::internal {
+namespace {
 
-void CalculatorMock::SetCalculatePair(const absl::string_view key,
-                                      const absl::string_view value,
-                                      bool return_value) {
-  calculation_map_[key] = {std::string(value), return_value};
+using ::testing::IsEmpty;
+
+TEST(SpecialKeyTest, TrimLeadingpecialKey) {
+  const Table table;
+  std::string input = table.ParseSpecialKey("{!}ab");
+  EXPECT_EQ(TrimLeadingSpecialKey(input), "ab");
+
+  input = table.ParseSpecialKey("{!}{?}ab");
+  EXPECT_EQ(TrimLeadingSpecialKey(input), table.ParseSpecialKey("{?}ab"));
+
+  input = table.ParseSpecialKey("a{!}b");
+  EXPECT_EQ(TrimLeadingSpecialKey(input), input);
+
+  // Invalid patterns
+  //   "\u000F" = parsed-"{"
+  //   "\u000E" = parsed-"}"
+  input = "\u000Fab";  // "{ab"
+  EXPECT_EQ(TrimLeadingSpecialKey(input), input);
+  input = "ab\u000E";  // "ab}"
+  EXPECT_EQ(TrimLeadingSpecialKey(input), input);
+  input = "\u000F\u000Fab\u000E";  // "{{ab}"
+  EXPECT_THAT(TrimLeadingSpecialKey(input), IsEmpty());
+  input = "\u000Fab\u000E\u000E";  // "{ab}}"
+  EXPECT_EQ(TrimLeadingSpecialKey(input), "\u000E");
 }
 
-int CalculatorMock::calculation_counter() const { return calculation_counter_; }
-
-bool CalculatorMock::CalculateString(const absl::string_view key,
-                                     std::string *result) const {
-  ++calculation_counter_;
-  DCHECK(result);
-  CalculationMap::const_iterator iter = calculation_map_.find(key);
-  if (iter == calculation_map_.end()) {
-    result->clear();
-    return false;
-  }
-  *result = iter->second.first;
-  return iter->second.second;
-}
-}  // namespace mozc
+}  // namespace
+}  // namespace mozc::composer::internal

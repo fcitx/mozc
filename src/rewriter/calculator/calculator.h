@@ -27,62 +27,43 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Simple word patterns matcher which will be used in composer objects
-// for auto swtiching input mode.
-
-#ifndef MOZC_COMPOSER_INTERNAL_MODE_SWITCHING_HANDLER_H_
-#define MOZC_COMPOSER_INTERNAL_MODE_SWITCHING_HANDLER_H_
+#ifndef MOZC_REWRITER_CALCULATOR_CALCULATOR_H_
+#define MOZC_REWRITER_CALCULATOR_CALCULATOR_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 
 namespace mozc {
-namespace composer {
 
-class ModeSwitchingHandler {
+class Calculator {
  public:
-  ModeSwitchingHandler();
-  ~ModeSwitchingHandler() = default;
+  Calculator();
 
-  enum ModeSwitching {
-    NO_CHANGE,
-    REVERT_TO_PREVIOUS_MODE,
-    PREFERRED_ALPHANUMERIC,
-    HALF_ALPHANUMERIC,
-    FULL_ALPHANUMERIC,
-  };
-
-  struct Rule {
-    // |display_mode| affects the existing composition the user typed.
-    ModeSwitching display_mode;
-    // |input_mode| affects current input mode to be used for the user's new
-    // typing.
-    ModeSwitching input_mode;
-  };
-
-  // Returns a Rule for the current preedit. |key| is the string which the user
-  // actually typed. display_mode and input_mode are stored rules controlling
-  // the composer. Returns NO_CHANGE if the key doesn't match the stored rules.
-  Rule GetModeSwitchingRule(absl::string_view key) const;
-
-  // Gets the singleton instance of this class.
-  static ModeSwitchingHandler *GetModeSwitchingHandler();
-
-  // Matcher to Windows drive letters like "C:\".
-  // TODO(team): This static method is internal use only.  It's public for
-  // testing purpose.
-  static bool IsDriveLetter(absl::string_view key);
+  bool CalculateString(absl::string_view key, std::string *result) const;
 
  private:
-  // Adds a rule for mode switching. The rule is passed by value as it's small.
-  void AddRule(absl::string_view key, Rule rule);
+  using TokenSequence = std::vector<std::pair<int, double>>;
 
-  absl::flat_hash_map<std::string, Rule> patterns_;
+  // Max byte length of operator character
+  static constexpr size_t kMaxLengthOfOperator = 3;
+
+  // Tokenizes |expression_body| and sets the tokens into |tokens|.
+  // It returns false if |expression_body| includes an invalid token or
+  // does not include both of a number token and an operator token.
+  // Parenthesis is not considered as an operator.
+  bool Tokenize(absl::string_view expression_body, TokenSequence *tokens) const;
+
+  // Perform calculation with a given sequence of token.
+  bool CalculateTokens(const TokenSequence &tokens, double *result_value) const;
+
+  // Mapping from operator character such as '+' to the corresponding
+  // token type such as PLUS.
+  absl::flat_hash_map<absl::string_view, int> operator_map_;
 };
 
-}  // namespace composer
 }  // namespace mozc
 
-#endif  // MOZC_COMPOSER_INTERNAL_MODE_SWITCHING_HANDLER_H_
+#endif  // MOZC_REWRITER_CALCULATOR_CALCULATOR_H_

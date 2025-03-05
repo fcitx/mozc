@@ -56,10 +56,10 @@
 #include "base/strings/unicode.h"
 #include "base/util.h"
 #include "base/vlog.h"
-#include "composer/internal/composition.h"
-#include "composer/internal/composition_input.h"
-#include "composer/internal/mode_switching_handler.h"
-#include "composer/internal/transliterators.h"
+#include "composer/composition.h"
+#include "composer/composition_input.h"
+#include "composer/mode_switching_handler.h"
+#include "composer/transliterators.h"
 #include "composer/key_event_util.h"
 #include "composer/table.h"
 #include "config/character_form_manager.h"
@@ -609,12 +609,14 @@ Composer::Composer(std::shared_ptr<const Table> table,
   Reset();
 }
 
-// static
-ComposerData Composer::CreateEmptyComposerData() {
-  static const absl::NoDestructor<Composition> composition(
+const ComposerData &Composer::EmptyComposerData() {
+  static const absl::NoDestructor<Composition> kComposition(
       Table::GetSharedDefaultTable());
-  return ComposerData(*composition, 0, transliteration::HIRAGANA,
-                      commands::Context::NORMAL, "", {});
+  // Cannot use NoDestructor as it doesn't' accept > 6 params.
+  static const ComposerData *kComposerData =
+      new ComposerData(*kComposition, 0, transliteration::HIRAGANA,
+                       commands::Context::NORMAL, "", {});
+  return *kComposerData;
 }
 
 ComposerData Composer::CreateComposerData() const {

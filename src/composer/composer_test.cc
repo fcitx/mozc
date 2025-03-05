@@ -547,7 +547,7 @@ TEST_F(ComposerTest, Issue277163340) {
   // Test against http://b/277163340.
   // Before the fix, unexpected input was passed to
   // RemoveExpandedCharsForModifier() in the following test due to another
-  // bug in composer/internal/char_chunk.cc and it
+  // bug in composer/char_chunk.cc and it
   // caused the process to crash.
   table_->AddRuleWithAttributes("[", "", "", NO_TRANSLITERATION);
   commands::KeyEvent key;
@@ -3217,7 +3217,7 @@ TEST_F(ComposerTest, CreateComposerOperators) {
 }
 
 TEST_F(ComposerTest, CreateEmptyComposerData) {
-  const ComposerData data = Composer::CreateEmptyComposerData();
+  const ComposerData &data = Composer::EmptyComposerData();
   EXPECT_EQ(data.GetInputMode(), transliteration::HIRAGANA);
   EXPECT_EQ(data.GetStringForPreedit(), "");
   EXPECT_EQ(data.GetQueryForConversion(), "");

@@ -208,7 +208,7 @@ ConversionRequest GetConversionRequestForRealtimeCandidates(
   ConversionRequest::Options options = request.options();
   options.max_conversion_candidates_size = realtime_candidates_size;
   return ConversionRequestBuilder()
-      .SetConversionRequest(request)
+      .SetConversionRequestView(request)
       .SetOptions(std::move(options))
       .Build();
 }
@@ -239,6 +239,14 @@ bool GetHistoryKeyAndValue(const Segments &segments, std::string *key,
   key->assign(history_segment.candidate(0).key);
   value->assign(history_segment.candidate(0).value);
   return true;
+}
+
+bool IsBigramNwpFilteringMode(
+    const ConversionRequest &request,
+    commands::DecoderExperimentParams::BigramNwpFilteringMode mode) {
+  return request.request()
+             .decoder_experiment_params()
+             .bigram_nwp_filtering_mode() == mode;
 }
 
 }  // namespace
@@ -713,16 +721,18 @@ PredictionTypes DictionaryPredictionAggregator::AggregatePredictionForZeroQuery(
   PredictionTypes selected_types = NO_PREDICTION;
   constexpr int kMinHistoryKeyLenForZeroQuery = 2;
   if (HasHistoryKeyLongerThanOrEqualTo(segments,
-                                       kMinHistoryKeyLenForZeroQuery)) {
+                                       kMinHistoryKeyLenForZeroQuery) &&
+      !IsBigramNwpFilteringMode(
+          request, commands::DecoderExperimentParams::FILTER_ALL)) {
     AggregateBigramPrediction(
         request, segments,
         Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_BIGRAM, results);
     selected_types |= BIGRAM;
   }
   if (segments.history_segments_size() > 0) {
-    const engine::SupplementalModelInterface *supplemental_model =
-        modules_.GetSupplementalModel();
-    if (supplemental_model != nullptr &&
+    if (const engine::SupplementalModelInterface *const supplemental_model =
+            modules_.GetSupplementalModel();
+        supplemental_model != nullptr &&
         supplemental_model->Predict(request, segments, *results)) {
       selected_types |= SUPPLEMENTAL_MODEL;
     }
@@ -835,7 +845,7 @@ bool DictionaryPredictionAggregator::PushBackTopConversionResult(
   options.create_partial_candidates = false;
   options.request_type = ConversionRequest::CONVERSION;
   const ConversionRequest tmp_request = ConversionRequestBuilder()
-                                            .SetConversionRequest(request)
+                                            .SetConversionRequestView(request)
                                             .SetOptions(std::move(options))
                                             .Build();
   if (!converter_.StartConversion(tmp_request, &tmp_segments)) {
@@ -1014,7 +1024,7 @@ DictionaryPredictionAggregator::GenerateQueryForHandwriting(
   }
   const ConversionRequest request_for_realtime =
       ConversionRequestBuilder()
-          .SetConversionRequest(request)
+          .SetConversionRequestView(request)
           .SetRequestType(ConversionRequest::REVERSE_CONVERSION)
           .Build();
   if (!immutable_converter_.ConvertForRequest(request_for_realtime,
@@ -1212,6 +1222,12 @@ void DictionaryPredictionAggregator::AggregateBigramPrediction(
   DCHECK(results);
   DCHECK(dictionary_);
 
+  if (segments.conversion_segment(0).key().empty() &&
+      IsBigramNwpFilteringMode(request,
+                               commands::DecoderExperimentParams::FILTER_ALL)) {
+    return;
+  }
+
   // TODO(toshiyuki): Support suggestion from the last 2 histories.
   //  ex) "六本木"+"ヒルズ"->"レジデンス"
   std::string history_key, history_value;
@@ -1265,8 +1281,9 @@ void DictionaryPredictionAggregator::AddBigramResultsFromHistory(
   const Util::ScriptType last_history_ctype = Util::GetScriptType(
       Util::Utf8SubString(history_value, history_value_size - 1, 1));
   for (size_t i = prev_results_size; i < results->size(); ++i) {
-    CheckBigramResult(find_history_callback.token(), history_ctype,
-                      last_history_ctype, request, &(*results)[i]);
+    CheckBigramResult(
+        find_history_callback.token(), history_ctype, last_history_ctype,
+        request, segments.conversion_segment(0).key().empty(), &(*results)[i]);
   }
 }
 
@@ -1275,7 +1292,7 @@ void DictionaryPredictionAggregator::AddBigramResultsFromHistory(
 void DictionaryPredictionAggregator::CheckBigramResult(
     const Token &history_token, const Util::ScriptType history_ctype,
     const Util::ScriptType last_history_ctype, const ConversionRequest &request,
-    Result *result) const {
+    bool is_zero_query, Result *result) const {
   DCHECK(result);
 
   const std::string &history_key = history_token.key;
@@ -1294,6 +1311,15 @@ void DictionaryPredictionAggregator::CheckBigramResult(
 
   const Util::ScriptType ctype =
       Util::GetScriptType(Util::Utf8SubString(value, 0, 1));
+
+  if (is_zero_query &&
+      IsBigramNwpFilteringMode(
+          request, commands::DecoderExperimentParams::FILTER_SAME_CTYPE) &&
+      ctype == history_ctype) {
+    result->removed = true;
+    MOZC_WORD_LOG(*result, "Removed. ctype is the same as history ctype.");
+    return;
+  }
 
   if (history_ctype == Util::KANJI && ctype == Util::KATAKANA) {
     // Do not filter "六本木ヒルズ"
@@ -1745,7 +1771,7 @@ void DictionaryPredictionAggregator::AggregateTypingCorrectedPrediction(
     options.key = key;
     const ConversionRequest corrected_request =
         ConversionRequestBuilder()
-            .SetConversionRequest(request)
+            .SetConversionRequestView(request)
             .SetOptions(std::move(options))
             .Build();
 

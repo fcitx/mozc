@@ -30,6 +30,7 @@
 #include "dictionary/user_dictionary.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -65,7 +66,6 @@
 #include "dictionary/user_dictionary_storage.h"
 #include "dictionary/user_dictionary_util.h"
 #include "dictionary/user_pos.h"
-#include "dictionary/user_pos_interface.h"
 #include "protocol/config.pb.h"
 #include "protocol/user_dictionary_storage.pb.h"
 #include "request/conversion_request.h"
@@ -133,7 +133,7 @@ class UserDictionaryFileManager {
 
 class UserDictionary::TokensIndex {
  public:
-  TokensIndex(const UserPosInterface *user_pos,
+  TokensIndex(const UserPos &user_pos,
               SuppressionDictionary *suppression_dictionary)
       : user_pos_(user_pos), suppression_dictionary_(suppression_dictionary) {}
 
@@ -149,7 +149,9 @@ class UserDictionary::TokensIndex {
     return user_pos_tokens_.end();
   }
 
-  void Load(const user_dictionary::UserDictionaryStorage &storage) {
+  void Load(const user_dictionary::UserDictionaryStorage &storage,
+            std::atomic<bool> *canceled_signal) {
+    DCHECK(canceled_signal);
     user_pos_tokens_.clear();
     absl::flat_hash_set<uint64_t> seen;
     std::vector<UserPos::Token> tokens;
@@ -167,8 +169,12 @@ class UserDictionary::TokensIndex {
 
       for (const UserDictionaryStorage::UserDictionaryEntry &entry :
            dic.entries()) {
-        if (!UserDictionaryUtil::IsValidEntry(*user_pos_, entry)) {
+        if (!UserDictionaryUtil::IsValidEntry(user_pos_, entry)) {
           continue;
+        }
+        if (canceled_signal->load()) {
+          LOG(INFO) << "User dictionary loading is canceled";
+          return;
         }
 
         // We cannot call NormalizeVoiceSoundMark inside NormalizeReading,
@@ -207,13 +213,13 @@ class UserDictionary::TokensIndex {
                                .attributes = UserPos::Token::SHORTCUT,
                                .comment = std::string(comment)};
           // NO_POS has '名詞サ変' id as in user_pos.def
-          user_pos_->GetPosIds("名詞サ変", &token.id);
+          user_pos_.GetPosIds("名詞サ変", &token.id);
           user_pos_tokens_.push_back(std::move(token));
         } else {
           tokens.clear();
-          user_pos_->GetTokens(
-              reading, entry.value(),
-              UserDictionaryUtil::GetStringPosType(entry.pos()), &tokens);
+          user_pos_.GetTokens(reading, entry.value(),
+                              UserDictionaryUtil::GetStringPosType(entry.pos()),
+                              &tokens);
           const absl::string_view comment =
               absl::StripAsciiWhitespace(entry.comment());
           for (auto &token : tokens) {
@@ -240,8 +246,8 @@ class UserDictionary::TokensIndex {
   }
 
  private:
-  const UserPosInterface *user_pos_;
-  SuppressionDictionary *suppression_dictionary_;
+  const UserPos &user_pos_;
+  SuppressionDictionary *suppression_dictionary_ = nullptr;
   std::vector<UserPos::Token> user_pos_tokens_;
 };
 
@@ -319,26 +325,29 @@ class UserDictionary::UserDictionaryReloader {
 
   std::optional<BackgroundFuture<void>> reload_;
   FileTimeStamp modified_at_;
-  UserDictionary *dic_;
-  std::string key_;
-  std::string value_;
+  UserDictionary *dic_ = nullptr;
 };
 
-UserDictionary::UserDictionary(std::unique_ptr<const UserPosInterface> user_pos,
+UserDictionary::UserDictionary(std::unique_ptr<const UserPos> user_pos,
                                PosMatcher pos_matcher,
                                SuppressionDictionary *suppression_dictionary)
     : reloader_(std::make_unique<UserDictionaryReloader>(this)),
       user_pos_(std::move(user_pos)),
       pos_matcher_(pos_matcher),
       suppression_dictionary_(suppression_dictionary),
-      tokens_(std::make_unique<TokensIndex>(user_pos_.get(),
-                                            suppression_dictionary)) {
-  DCHECK(user_pos_.get());
+      tokens_(
+          std::make_shared<TokensIndex>(*user_pos_, suppression_dictionary)) {
+  DCHECK(user_pos_);
+  DCHECK(tokens_);
   DCHECK(suppression_dictionary_);
+  DCHECK(!canceled_signal_);
   Reload();
 }
 
-UserDictionary::~UserDictionary() { WaitForReloader(); }
+UserDictionary::~UserDictionary() {
+  canceled_signal_.store(true);  // force to finish the thread.
+  WaitForReloader();
+}
 
 bool UserDictionary::HasKey(absl::string_view key) const {
   // TODO(noriyukit): Currently, we don't support HasKey() for user dictionary
@@ -358,13 +367,14 @@ bool UserDictionary::HasValue(absl::string_view value) const {
 void UserDictionary::LookupPredictive(
     absl::string_view key, const ConversionRequest &conversion_request,
     Callback *callback) const {
-  absl::ReaderMutexLock l(&mutex_);
-
   if (key.empty()) {
     MOZC_VLOG(2) << "string of length zero is passed.";
     return;
   }
-  if (tokens_->empty()) {
+
+  std::shared_ptr<const TokensIndex> tokens = GetTokens();
+
+  if (tokens->empty()) {
     return;
   }
   if (conversion_request.incognito_mode()) {
@@ -373,8 +383,8 @@ void UserDictionary::LookupPredictive(
 
   // Find the starting point of iteration over dictionary contents.
   Token token;
-  for (auto [begin, end] = std::equal_range(tokens_->begin(), tokens_->end(),
-                                            key, OrderByKeyPrefix());
+  for (auto [begin, end] = std::equal_range(tokens->begin(), tokens->end(), key,
+                                            OrderByKeyPrefix());
        begin != end; ++begin) {
     const UserPos::Token &user_pos_token = *begin;
     switch (callback->OnKey(user_pos_token.key)) {
@@ -404,25 +414,27 @@ void UserDictionary::LookupPredictive(
 void UserDictionary::LookupPrefix(absl::string_view key,
                                   const ConversionRequest &conversion_request,
                                   Callback *callback) const {
-  absl::ReaderMutexLock l(&mutex_);
-
   if (key.empty()) {
     LOG(WARNING) << "string of length zero is passed.";
     return;
   }
-  if (tokens_->empty()) {
+
+  if (conversion_request.incognito_mode()) {
     return;
   }
-  if (conversion_request.incognito_mode()) {
+
+  std::shared_ptr<const TokensIndex> tokens = GetTokens();
+
+  if (tokens->empty()) {
     return;
   }
 
   // Find the starting point for iteration over dictionary contents.
   const absl::string_view first_char = Utf8AsChars(key).front();
   Token token;
-  for (auto it = std::lower_bound(tokens_->begin(), tokens_->end(), first_char,
+  for (auto it = std::lower_bound(tokens->begin(), tokens->end(), first_char,
                                   OrderByKey());
-       it != tokens_->end(); ++it) {
+       it != tokens->end(); ++it) {
     const UserPos::Token &user_pos_token = *it;
     if (user_pos_token.key > key) {
       break;
@@ -465,12 +477,13 @@ void UserDictionary::LookupPrefix(absl::string_view key,
 void UserDictionary::LookupExact(absl::string_view key,
                                  const ConversionRequest &conversion_request,
                                  Callback *callback) const {
-  absl::ReaderMutexLock l(&mutex_);
-  if (key.empty() || tokens_->empty() || conversion_request.incognito_mode()) {
+  std::shared_ptr<const TokensIndex> tokens = GetTokens();
+
+  if (key.empty() || tokens->empty() || conversion_request.incognito_mode()) {
     return;
   }
   auto [begin, end] =
-      std::equal_range(tokens_->begin(), tokens_->end(), key, OrderByKey());
+      std::equal_range(tokens->begin(), tokens->end(), key, OrderByKey());
   if (begin == end) {
     return;
   }
@@ -507,14 +520,15 @@ bool UserDictionary::LookupComment(absl::string_view key,
     return false;
   }
 
-  absl::ReaderMutexLock l(&mutex_);
-  if (tokens_->empty()) {
+  std::shared_ptr<const TokensIndex> tokens = GetTokens();
+
+  if (tokens->empty()) {
     return false;
   }
 
   // Set the comment that was found first.
-  for (auto [begin, end] = std::equal_range(tokens_->begin(), tokens_->end(),
-                                            key, OrderByKey());
+  for (auto [begin, end] =
+           std::equal_range(tokens->begin(), tokens->end(), key, OrderByKey());
        begin != end; ++begin) {
     const UserPos::Token &token = *begin;
     if (token.value == value && !token.comment.empty()) {
@@ -533,7 +547,6 @@ bool UserDictionary::Reload() {
 }
 
 namespace {
-
 class FindValueCallback : public DictionaryInterface::Callback {
  public:
   explicit FindValueCallback(absl::string_view value)
@@ -560,19 +573,9 @@ class FindValueCallback : public DictionaryInterface::Callback {
 
 void UserDictionary::WaitForReloader() { reloader_->Wait(); }
 
-void UserDictionary::Swap(std::unique_ptr<TokensIndex> new_tokens) {
-  DCHECK(new_tokens);
-  absl::WriterMutexLock l(&mutex_);
-  tokens_ = std::move(new_tokens);
-}
-
 bool UserDictionary::Load(
     const user_dictionary::UserDictionaryStorage &storage) {
-  size_t size = 0;
-  {
-    absl::ReaderMutexLock l(&mutex_);
-    size = tokens_->size();
-  }
+  const size_t size = GetTokens()->size();
 
   // If UserDictionary is pretty big, we first remove the
   // current dictionary to save memory usage.
@@ -584,14 +587,15 @@ bool UserDictionary::Load(
 
   if (size >= kVeryBigUserDictionarySize) {
     auto placeholder_empty_tokens =
-        std::make_unique<TokensIndex>(user_pos_.get(), suppression_dictionary_);
-    Swap(std::move(placeholder_empty_tokens));
+        std::make_shared<TokensIndex>(*user_pos_, suppression_dictionary_);
+    SetTokens(std::move(placeholder_empty_tokens));
   }
 
   auto tokens =
-      std::make_unique<TokensIndex>(user_pos_.get(), suppression_dictionary_);
-  tokens->Load(storage);
-  Swap(std::move(tokens));
+      std::make_shared<TokensIndex>(*user_pos_, suppression_dictionary_);
+  tokens->Load(storage, &canceled_signal_);
+
+  SetTokens(tokens);
   return true;
 }
 
@@ -604,7 +608,7 @@ void UserDictionary::SetUserDictionaryName(const absl::string_view filename) {
 }
 
 void UserDictionary::PopulateTokenFromUserPosToken(
-    const UserPosInterface::Token &user_pos_token, RequestType request_type,
+    const UserPos::Token &user_pos_token, RequestType request_type,
     Token *token) const {
   token->key = user_pos_token.key;
   token->value = user_pos_token.value;

@@ -42,9 +42,9 @@
 #include "absl/container/btree_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "composer/internal/composition.h"
-#include "composer/internal/composition_input.h"
-#include "composer/internal/transliterators.h"
+#include "composer/composition.h"
+#include "composer/composition_input.h"
+#include "composer/transliterators.h"
 #include "composer/table.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
@@ -180,8 +180,8 @@ class Composer final {
   Composer(Composer &&) = default;
   Composer &operator=(Composer &&) = default;
 
-  // Return an empty ComposerData used for placeholder.
-  static ComposerData CreateEmptyComposerData();
+  // Returns a reference of empty ComposerData used for placeholder.
+  static const ComposerData &EmptyComposerData();
 
   // Return a ComposerData with the current state of the composer.
   ComposerData CreateComposerData() const;
