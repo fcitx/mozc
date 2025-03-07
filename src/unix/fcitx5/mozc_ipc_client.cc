@@ -12,8 +12,7 @@
 namespace fcitx {
 
 MozcIPCClient::MozcIPCClient()
-    : client_(mozc::client::ClientFactory::NewClient()) {
-}
+    : client_(mozc::client::ClientFactory::NewClient()) {}
 
 MozcIPCClient::~MozcIPCClient() {}
 
