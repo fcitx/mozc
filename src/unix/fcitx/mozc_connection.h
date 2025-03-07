@@ -139,9 +139,6 @@ class MozcConnection : public MozcConnectionInterface {
 
   const std::unique_ptr<KeyEventHandler> handler_;
   mozc::config::Config::PreeditMethod preedit_method_;
-  // Keep definition order of client_factory_ and client_.
-  // We should delete client_ before deleting client_factory_.
-  std::unique_ptr<mozc::IPCClientFactoryInterface> client_factory_;
   std::unique_ptr<mozc::client::ClientInterface> client_;
 };
 

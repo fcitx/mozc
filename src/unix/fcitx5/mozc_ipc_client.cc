@@ -5,21 +5,14 @@
 #include <string_view>
 
 #include "client/client.h"
-#include "ipc/ipc.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "unix/fcitx5/mozc_client_interface.h"
 
 namespace fcitx {
 
-static mozc::IPCClientFactoryInterface *client_factory = nullptr;
-
 MozcIPCClient::MozcIPCClient()
     : client_(mozc::client::ClientFactory::NewClient()) {
-  if (!client_factory) {
-    client_factory = mozc::IPCClientFactory::GetIPCClientFactory();
-  }
-  client_->SetIPCClientFactory(client_factory);
 }
 
 MozcIPCClient::~MozcIPCClient() {}

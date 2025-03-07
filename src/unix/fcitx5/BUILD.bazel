@@ -79,7 +79,6 @@ mozc_cc_library(
     deps = [
         ":mozc_client_interface",
         "//client",
-        "//ipc",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
     ],
