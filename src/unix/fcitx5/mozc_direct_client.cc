@@ -13,7 +13,8 @@
 #include "absl/log/log.h"
 #include "base/singleton.h"
 #include "config/config_handler.h"
-#include "engine/engine_factory.h"
+#include "data_manager/oss/oss_data_manager.h"
+#include "engine/engine.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "session/key_info_util.h"
@@ -25,7 +26,8 @@ namespace fcitx {
 namespace {
 
 std::unique_ptr<mozc::SessionHandler> CreateSessionHandler() {
-  auto engine = mozc::EngineFactory::Create();
+  auto engine = mozc::Engine::CreateDesktopEngine(
+      std::make_unique<mozc::oss::OssDataManager>());
   DCHECK_OK(engine);
   auto result =
       std::make_unique<mozc::SessionHandler>(std::move(engine.value()));
