@@ -44,9 +44,6 @@
 
 namespace mozc {
 
-class IPCClientInterface;
-class IPCClientFactoryInterface;
-
 namespace client {
 class ClientInterface;
 }  // namespace client
@@ -135,7 +132,7 @@ class MozcConnection : public MozcConnectionInterface {
 
  private:
   friend class MozcConnectionTest;
-  MozcConnection(mozc::IPCClientFactoryInterface *client_factory);
+  MozcConnection();
 
   const std::unique_ptr<KeyEventHandler> handler_;
   mozc::config::Config::PreeditMethod preedit_method_;

@@ -197,7 +197,7 @@ mozc::client::ClientInterface* MozcConnection::GetClient()
 }
 
 MozcConnection *MozcConnection::CreateMozcConnection() {
-  return new MozcConnection(new mozc::IPCClientFactory);
+  return new MozcConnection;
 }
 
 }  // namespace fcitx
