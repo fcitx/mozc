@@ -60,7 +60,7 @@ mozc_cc_library(
         "//base:vlog",
         "//config:config_handler",
         "//data_manager/oss:oss_data_manager",
-        "//engine:engine",
+        "//engine",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
         "//session:key_info_util",
