@@ -49,7 +49,6 @@
 #include "converter/segments.h"
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/pos_matcher.h"
-#include "dictionary/suppression_dictionary.h"
 #include "engine/modules.h"
 #include "prediction/predictor_interface.h"
 #include "prediction/user_history_predictor.pb.h"
@@ -504,9 +503,9 @@ class UserHistoryPredictor : public PredictorInterface {
   //  (# of candidate committed) / (# of candidate shown on commit event)
   void MaybeRemoveUnselectedHistory(const Segments &segments);
 
-  const dictionary::DictionaryInterface *dictionary_;
-  const dictionary::PosMatcher *pos_matcher_;
-  const dictionary::SuppressionDictionary *suppression_dictionary_;
+  const dictionary::DictionaryInterface &dictionary_;
+  const dictionary::PosMatcher &pos_matcher_;
+  const dictionary::UserDictionaryInterface &user_dictionary_;
   const std::string predictor_name_;
 
   bool content_word_learning_enabled_;

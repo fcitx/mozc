@@ -47,7 +47,6 @@
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/pos_group.h"
 #include "dictionary/pos_matcher.h"
-#include "dictionary/suppression_dictionary.h"
 #include "engine/modules.h"
 #include "prediction/suggestion_filter.h"
 #include "request/conversion_request.h"
@@ -62,8 +61,8 @@ class ImmutableConverter : public ImmutableConverterInterface {
   ImmutableConverter &operator=(const ImmutableConverter &) = delete;
   ~ImmutableConverter() override = default;
 
-  [[nodiscard]] bool ConvertForRequest(
-      const ConversionRequest &request, Segments *segments) const override;
+  [[nodiscard]] bool ConvertForRequest(const ConversionRequest &request,
+                                       Segments *segments) const override;
 
  private:
   FRIEND_TEST(ImmutableConverterTest, AddPredictiveNodes);
@@ -194,13 +193,13 @@ class ImmutableConverter : public ImmutableConverterInterface {
                                      absl::Span<const uint16_t> group,
                                      Segments *segments) const;
 
-  const dictionary::DictionaryInterface *dictionary_;
-  const dictionary::DictionaryInterface *suffix_dictionary_;
-  const dictionary::SuppressionDictionary *suppression_dictionary_;
+  const dictionary::DictionaryInterface &dictionary_;
+  const dictionary::DictionaryInterface &suffix_dictionary_;
+  const dictionary::UserDictionaryInterface &user_dictionary_;
   const Connector &connector_;
-  const Segmenter *segmenter_;
-  const dictionary::PosMatcher *pos_matcher_;
-  const dictionary::PosGroup *pos_group_;
+  const Segmenter &segmenter_;
+  const dictionary::PosMatcher &pos_matcher_;
+  const dictionary::PosGroup &pos_group_;
   const SuggestionFilter &suggestion_filter_;
 
   // Cache for POS ids.
