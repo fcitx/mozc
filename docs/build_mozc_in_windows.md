@@ -68,7 +68,7 @@ python build_tools/update_deps.py
 
 In this step, additional build dependencies will be downloaded.
 
-  * [LLVM 19.1.7](https://github.com/llvm/llvm-project/releases/tag/llvmorg-19.1.7)
+  * [LLVM 20.1.0](https://github.com/llvm/llvm-project/releases/tag/llvmorg-20.1.0)
   * [MSYS2 2025-02-21](https://github.com/msys2/msys2-installer/releases/tag/2025-02-21)
   * [Ninja 1.11.0](https://github.com/ninja-build/ninja/releases/download/v1.11.0/ninja-win.zip)
   * [Qt 6.8.0](https://download.qt.io/archive/qt/6.8/6.8.0/submodules/qtbase-everywhere-src-6.8.0.tar.xz)
@@ -175,7 +175,7 @@ Additional requirements:
 After running `build_tools/update_deps.py` and `build_tools/build_qt.py`, run the following command instead of `build_mozc.py`:
 
 ```
-bazelisk --bazelrc=windows.bazelrc build --config oss_windows --config release_build package
+bazelisk build --config oss_windows --config release_build package
 ```
 
 You have release build binaries in `bazel-bin\win32\installer\Mozc64.msi`.
