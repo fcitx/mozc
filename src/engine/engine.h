@@ -112,7 +112,7 @@ class Engine : public EngineInterface {
 
   absl::string_view GetDataVersion() const override {
     static absl::string_view kDefaultDataVersion = "0.0.0";
-    return converter_ ? converter_->modules()->GetDataManager().GetDataVersion()
+    return converter_ ? converter_->modules().GetDataManager().GetDataVersion()
                       : kDefaultDataVersion;
   }
 
@@ -122,13 +122,14 @@ class Engine : public EngineInterface {
   // available POS items. In practice, the POS items are rarely changed.
   std::vector<std::string> GetPosList() const override {
     if (converter_) {
-      return converter_->modules()->GetUserDictionary().GetPosList();
+      return converter_->modules().GetUserDictionary().GetPosList();
     }
     return {};
   }
 
   // For testing only.
-  engine::Modules *GetModulesForTesting() const {
+  engine::Modules &GetModulesForTesting() const {
+    DCHECK(converter_);
     return converter_->modules();
   }
 
@@ -146,6 +147,8 @@ class Engine : public EngineInterface {
 
  private:
   Engine();
+  // For the constructor.
+  friend std::unique_ptr<Engine> std::make_unique<Engine>();
 
   // Initializes the engine object by the given modules and is_mobile flag.
   // The is_mobile flag is used to select DefaultPredictor and MobilePredictor.

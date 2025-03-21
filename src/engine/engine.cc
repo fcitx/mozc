@@ -86,8 +86,7 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
 
 absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
     std::unique_ptr<engine::Modules> modules, bool is_mobile) {
-  // Since Engine() is a private function, std::make_unique does not work.
-  auto engine = absl::WrapUnique(new Engine());
+  auto engine = std::make_unique<Engine>();
   absl::Status engine_status = engine->Init(std::move(modules), is_mobile);
   if (!engine_status.ok()) {
     return engine_status;
@@ -96,7 +95,7 @@ absl::StatusOr<std::unique_ptr<Engine>> Engine::CreateEngine(
 }
 
 std::unique_ptr<Engine> Engine::CreateEngine() {
-  return absl::WrapUnique(new Engine());
+  return std::make_unique<Engine>();
 }
 
 Engine::Engine() : minimal_converter_(CreateMinimalConverter()) {}
@@ -162,17 +161,17 @@ bool Engine::ReloadAndWait() { return Reload() && Wait(); }
 
 bool Engine::ClearUserHistory() {
   if (converter_) {
-    converter_->rewriter()->Clear();
+    converter_->rewriter().Clear();
   }
   return true;
 }
 
 bool Engine::ClearUserPrediction() {
-  return converter_ && converter_->predictor()->ClearAllHistory();
+  return converter_ && converter_->predictor().ClearAllHistory();
 }
 
 bool Engine::ClearUnusedUserPrediction() {
-  return converter_ && converter_->predictor()->ClearUnusedHistory();
+  return converter_ && converter_->predictor().ClearUnusedHistory();
 }
 
 bool Engine::MaybeReloadEngine(EngineReloadResponse *response) {
@@ -208,8 +207,8 @@ bool Engine::SendEngineReloadRequest(const EngineReloadRequest &request) {
 
 bool Engine::SendSupplementalModelReloadRequest(
     const EngineReloadRequest &request) {
-  if (converter_ && converter_->modules()->GetSupplementalModel()) {
-    converter_->modules()->GetMutableSupplementalModel()->LoadAsync(request);
+  if (converter_ && converter_->modules().GetSupplementalModel()) {
+    converter_->modules().GetMutableSupplementalModel()->LoadAsync(request);
   }
   return true;
 }
