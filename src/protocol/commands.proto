@@ -447,6 +447,8 @@ message SessionCommand {
   required CommandType type = 1;
 
   // Unique number specifying a candidate word.
+  // Note: This value is NOT an index of the candidate window or the candidate
+  // list. This value is a return value of CandidateWord::id().
   optional int32 id = 2;
 
   // This is used with SWITCH_INPUT_MODE, TURN_ON_IME and TURN_OFF_IME.
@@ -649,7 +651,7 @@ message DecoderExperimentParams {
 // Users cannot modify this.
 // In the future each request may be able to be overwritten by Config.
 // The server does not have to obey this request.
-// Next ID: 23
+// Next ID: 24
 message Request {
   // Enable zero query suggestion.
   optional bool zero_query_suggestion = 1
@@ -958,6 +960,15 @@ message Request {
   // For example, we support 混ぜ書き conversion ("かん字" → "漢字") for
   // handwriting.
   optional bool is_handwriting = 22 [default = false];
+
+  // Whether the conversion is performed in incognito mode.
+  // In incognito mode, the conversion is performed without using
+  // user history and user dictionary.
+  // When any of this value and Config::incognito_mode are true,
+  // incognito mode is enabled.
+  // Clients needs to check ConversionRequest::incognito_mode() instead of
+  // this value directly, as the incognito mode can be set in other ways.
+  optional bool is_incognito_mode = 23 [default = false];
 }
 
 // Note there is another ApplicationInfo inside RendererCommand.
