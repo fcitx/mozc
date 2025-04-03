@@ -804,7 +804,7 @@ void DictionaryPredictor::SetPredictionCost(
     }
   }
 
-  const std::string &input_key = segments.conversion_segment(0).key();
+  absl::string_view input_key = segments.conversion_segment(0).key();
   const KeyValueView history = GetHistoryKeyAndValue(segments);
   const std::string bigram_key = absl::StrCat(history.key, history.key);
   const bool is_suggestion = (request_type == ConversionRequest::SUGGESTION);
@@ -897,7 +897,7 @@ void DictionaryPredictor::SetPredictionCostForMixedConversion(
   }
 
   absl::flat_hash_map<PrefixPenaltyKey, int32_t> prefix_penalty_cache;
-  const std::string &input_key = segments.conversion_segment(0).key();
+  absl::string_view input_key = segments.conversion_segment(0).key();
   const int single_kanji_offset = CalculateSingleKanjiCostOffset(
       request, rid, input_key, *results, &prefix_penalty_cache);
 
@@ -1143,7 +1143,7 @@ int DictionaryPredictor::CalculatePrefixPenalty(
     LOG(WARNING) << "Invalid prefix key: " << result.key;
     return 0;
   }
-  const std::string &candidate_key = result.key;
+  absl::string_view candidate_key = result.key;
   const uint16_t result_rid = result.rid;
   const size_t key_len = Util::CharsLen(candidate_key);
   const PrefixPenaltyKey cache_key = std::make_pair(result_rid, key_len);
@@ -1255,7 +1255,7 @@ std::shared_ptr<Result> DictionaryPredictor::MaybeGetPreviousTopResult(
     return nullptr;
   }
 
-  auto prev_top_result = std::atomic_load(&prev_top_result_);
+  std::shared_ptr<Result> prev_top_result = prev_top_result_.load();
 
   // Updates the key length.
   const int cur_top_key_length = segments.conversion_segment(0).key().size();
@@ -1279,8 +1279,7 @@ std::shared_ptr<Result> DictionaryPredictor::MaybeGetPreviousTopResult(
   }
 
   // Remembers the top result.
-  std::atomic_store(&prev_top_result_,
-                    std::make_shared<Result>(current_top_result));
+  prev_top_result_.store(std::make_shared<Result>(current_top_result));
 
   return nullptr;
 }

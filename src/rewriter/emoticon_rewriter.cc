@@ -151,7 +151,7 @@ void InsertCandidates(SerializedDictionary::const_iterator begin,
 bool EmoticonRewriter::RewriteCandidate(Segments *segments) const {
   bool modified = false;
   for (Segment &segment : segments->conversion_segments()) {
-    const std::string &key = segment.key();
+    absl::string_view key = segment.key();
     if (key.empty()) {
       // This case happens for zero query suggestion.
       continue;
@@ -189,7 +189,8 @@ bool EmoticonRewriter::RewriteCandidate(Segments *segments) const {
       begin = dic_.begin();
       CHECK(begin != dic_.end());
       // use secure random not to predict the next emoticon.
-      begin += absl::Uniform(bitgen_, 0u, dic_.size());
+      absl::BitGen bitgen;
+      begin += absl::Uniform(bitgen, 0u, dic_.size());
       end = begin + 1;
       initial_insert_pos = RewriterUtil::CalculateInsertPosition(segment, 4);
       initial_insert_size = 1;
