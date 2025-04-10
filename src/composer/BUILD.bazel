@@ -80,7 +80,6 @@ mozc_cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:btree",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -216,7 +215,6 @@ mozc_cc_library(
     ],
     deps = [
         "//base:util",
-        "//base/container:entry",
         "//base/container:flat_map",
         "//base/container:flat_multimap",
         "//protocol:commands_cc_proto",
