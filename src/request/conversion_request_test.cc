@@ -33,8 +33,11 @@
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "composer/composer.h"
 #include "composer/table.h"
+#include "converter/candidate.h"
+#include "converter/segments.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "testing/gunit.h"
@@ -136,6 +139,104 @@ TEST(ConversionRequestTest, SetKeyTest) {
                                               .SetKey("foo")
                                               .Build();
   EXPECT_EQ("foo", conversion_request2.key());
+}
+
+TEST(ConversionRequestTest, SetHistorySegmentsTest) {
+  Segments segments;
+  for (int i = 0; i < 3; ++i) {
+    Segment *seg = segments.push_back_segment();
+    seg->set_segment_type(Segment::HISTORY);
+    converter::Candidate *c = seg->add_candidate();
+    c->key = absl::StrCat("k", i);
+    c->value = absl::StrCat("v", i);
+  }
+
+  {
+    const ConversionRequest convreq =
+        ConversionRequestBuilder().SetHistorySegmentsView(segments).Build();
+
+    EXPECT_EQ(convreq.converter_history_key(), "k0k1k2");
+    EXPECT_EQ(convreq.converter_history_value(), "v0v1v2");
+    EXPECT_EQ(convreq.converter_history_key(10), "k0k1k2");
+    EXPECT_EQ(convreq.converter_history_value(10), "v0v1v2");
+    EXPECT_EQ(convreq.converter_history_key(0), "");
+    EXPECT_EQ(convreq.converter_history_value(0), "");
+    EXPECT_EQ(convreq.converter_history_key(2), "k1k2");
+    EXPECT_EQ(convreq.converter_history_value(2), "v1v2");
+    EXPECT_EQ(convreq.converter_history_key(1), "k2");
+    EXPECT_EQ(convreq.converter_history_value(1), "v2");
+  }
+
+  {
+    const ConversionRequest convreq = ConversionRequestBuilder().Build();
+    EXPECT_EQ(convreq.converter_history_key(), "");
+    EXPECT_EQ(convreq.converter_history_value(), "");
+    EXPECT_EQ(convreq.converter_history_key(10), "");
+    EXPECT_EQ(convreq.converter_history_value(10), "");
+    EXPECT_EQ(convreq.converter_history_key(0), "");
+    EXPECT_EQ(convreq.converter_history_value(0), "");
+    EXPECT_EQ(convreq.converter_history_key(2), "");
+    EXPECT_EQ(convreq.converter_history_value(2), "");
+    EXPECT_EQ(convreq.converter_history_key(1), "");
+    EXPECT_EQ(convreq.converter_history_value(1), "");
+  }
+}
+
+TEST(ConversionRequestTest, IsZeroQuerySuggestionTest) {
+  // Segments are not set => use key().
+  EXPECT_TRUE(ConversionRequestBuilder().Build().IsZeroQuerySuggestion());
+  EXPECT_FALSE(
+      ConversionRequestBuilder().SetKey("key").Build().IsZeroQuerySuggestion());
+
+  // Segments are specified => use segments.key()
+  Segments segments;
+  segments.InitForConvert("");
+  EXPECT_TRUE(ConversionRequestBuilder()
+                  .SetHistorySegmentsView(segments)
+                  .Build()
+                  .IsZeroQuerySuggestion());
+
+  EXPECT_TRUE(ConversionRequestBuilder()
+                  .SetHistorySegmentsView(segments)
+                  .SetKey("key")
+                  .Build()
+                  .IsZeroQuerySuggestion());
+
+  segments.InitForConvert("key");
+  EXPECT_FALSE(ConversionRequestBuilder()
+                   .SetHistorySegmentsView(segments)
+                   .SetKey("")
+                   .Build()
+                   .IsZeroQuerySuggestion());
+
+  EXPECT_FALSE(ConversionRequestBuilder()
+                   .SetHistorySegmentsView(segments)
+                   .SetKey("key")
+                   .Build()
+                   .IsZeroQuerySuggestion());
+}
+
+TEST(ConversionRequestTest, ConverterKeyTest) {
+  EXPECT_EQ(ConversionRequestBuilder().SetKey("foo").Build().converter_key(),
+            "foo");
+  EXPECT_EQ(ConversionRequestBuilder().Build().converter_key(), "");
+
+  Segments segments;
+  segments.InitForConvert("bar");
+  EXPECT_EQ(ConversionRequestBuilder()
+                .SetHistorySegmentsView(segments)
+                .SetKey("bar")  // key must be the same as Segment key.
+                .Build()
+                .converter_key(),
+            "bar");
+
+#ifdef NDEBUG
+  EXPECT_EQ(ConversionRequestBuilder()
+                .SetHistorySegmentsView(segments)
+                .Build()
+                .converter_key(),
+            "bar");
+#endif  // NDEBUG
 }
 
 TEST(ConversionRequestTest, IncognitoModeTest) {

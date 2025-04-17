@@ -41,6 +41,7 @@
 #include "base/util.h"
 #include "composer/composer.h"
 #include "config/config_handler.h"
+#include "converter/segments.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 
@@ -259,6 +260,16 @@ class ConversionRequest {
            options_.kana_modifier_insensitive_conversion;
   }
 
+  bool IsZeroQuerySuggestion() const {
+    // Checks segments_ first for compatibility.
+    if (segments_) {
+      return segments_->conversion_segments_size() == 0 ||
+             (segments_->conversion_segments_size() > 0 &&
+              segments_->conversion_segment(0).key().empty());
+    }
+    return key().empty();
+  }
+
   size_t max_conversion_candidates_size() const {
     return options_.max_conversion_candidates_size;
   }
@@ -291,6 +302,28 @@ class ConversionRequest {
     return options_.key;
   }
 
+  // Temporal API to return conversion key (conversion_segment(0).key()).
+  // Since converter sets request.key() to conversion_segment.key(),
+  // conversion_key() must be the same as key().
+  // TODO(taku): remove this API. Uses always key().
+  absl::string_view converter_key() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    if (segments_ && segments_->conversion_segments_size() > 0) {
+      DCHECK_EQ(key(), segments_->conversion_segment(0).key());
+      return segments_->conversion_segment(0).key();
+    }
+    return key();
+  }
+
+  // Takes the last `size` history key. return all key when size = -1.
+  std::string converter_history_key(int size = -1) const {
+    return segments_ ? segments_->history_key(size) : "";
+  }
+
+  // Takes the last `size` history value. return all value when size = -1.
+  std::string converter_history_value(int size = -1) const {
+    return segments_ ? segments_->history_value(size) : "";
+  }
+
   // Builder can access the private member for construction.
   friend class ConversionRequestBuilder;
 
@@ -307,6 +340,13 @@ class ConversionRequest {
 
   // Input config.
   internal::copy_or_view_ptr<const config::Config> config_;
+
+  // Stores segments to access legacy context key/value stored in Segments.
+  // Actual segments is NOT exposed to users to get rid of the dependency from
+  // supplemental model to Segments. See converter_history_(key|value) methods.
+  // TODO(taku): Migrate them to context proto to feed the context information
+  // from the client to decoder.
+  internal::copy_or_view_ptr<const Segments> segments_;
 
   // Options for conversion request.
   Options options_;
@@ -406,6 +446,24 @@ class ConversionRequestBuilder {
     request_.config_.set_view(config);
     return *this;
   }
+  // `segments` contain both conversion segments and history segments,
+  // but we only populate the information in history segments.
+  // Generally ConversionRequest only stores the request to the
+  // converter, while segments both contain request and result.
+  ConversionRequestBuilder &SetHistorySegments(
+      const Segments &segments ABSL_ATTRIBUTE_LIFETIME_BOUND) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
+    request_.segments_.copy_from(segments);
+    return *this;
+  }
+  ConversionRequestBuilder &SetHistorySegmentsView(
+      const Segments &segments ABSL_ATTRIBUTE_LIFETIME_BOUND) {
+    DCHECK_LE(stage_, 2);
+    stage_ = 2;
+    request_.segments_.set_view(segments);
+    return *this;
+  }
   ConversionRequestBuilder &SetOptions(ConversionRequest::Options &&options) {
     DCHECK_LE(stage_, 2);
     stage_ = 2;
@@ -429,8 +487,8 @@ class ConversionRequestBuilder {
   }
 
  private:
-  // Remove unnecessary but potentially large options for ConversionRequest from
-  // Config and return it.
+  // Remove unnecessary but potentially large options for ConversionRequest
+  // from Config and return it.
   // TODO(b/365909808): Move this method to Session after updating the
   // ConversionRequest constructor.
   static config::Config TrimConfig(const config::Config &base_config) {
