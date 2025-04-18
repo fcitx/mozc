@@ -27,30 +27,17 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "base/vlog.h"
+#ifndef MOZC_BASE_ABSL_NULLABILITY_H_
+#define MOZC_BASE_ABSL_NULLABILITY_H_
 
-#include <algorithm>
-#include <atomic>
+#include "absl/base/nullability.h"  // IWYU pragma: export
 
-#include "absl/flags/declare.h"
-#include "absl/flags/flag.h"
-#include "absl/log/flags.h"  // IWYU pragma: keep
+// This is for backward compatibility with the Abseil LTS version 20250127.1.
+// TODO(b/397718233): Remove this once the latest LTS version supports lower
+// case macros.
+#ifndef absl_nullable
+#define absl_nullable ABSL_NULLABLE
+#define absl_nonnull ABSL_NONNULL
+#endif  // absl_nullable
 
-// Abseil defines --v flag. We rely on it to avoid symbol name collision (though
-// not recommended).
-ABSL_DECLARE_FLAG(int, v);
-
-namespace mozc::internal {
-
-constinit std::atomic<int> config_vlog_level = 0;
-
-int GetVLogLevel() {
-  return std::max(absl::GetFlag(FLAGS_v),
-                  config_vlog_level.load(std::memory_order_acquire));
-}
-
-void SetConfigVLogLevel(int v) {
-  config_vlog_level.store(v, std::memory_order_release);
-}
-
-}  // namespace mozc::internal
+#endif  // MOZC_BASE_ABSL_NULLABILITY_H_
