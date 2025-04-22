@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: fcitx5-mozc\n"
 "Report-Msgid-Bugs-To: fcitx-dev@googlegroups.com\n"
-"POT-Creation-Date: 2025-03-22 20:24+0000\n"
+"POT-Creation-Date: 2025-04-22 20:24+0000\n"
 "PO-Revision-Date: 2017-11-23 05:28+0000\n"
 "Last-Translator: hoanghuy309 <hoanghuy309@gmail.com>, 2025\n"
 "Language-Team: Vietnamese (https://app.transifex.com/fcitx/teams/12005/vi/)\n"
@@ -29,7 +29,7 @@ msgstr ""
 
 #: mozc_engine.h:64
 msgid "All"
-msgstr ""
+msgstr "Tất cả"
 
 #: mozc_engine.h:67
 msgid "Always"
@@ -37,7 +37,7 @@ msgstr ""
 
 #: mozc_engine.h:100 mozc_engine.cc:185
 msgid "Configuration Tool"
-msgstr ""
+msgstr "Công Cụ Cấu Hình"
 
 #: mozc_engine.h:102 mozc_engine.cc:193
 msgid "Dictionary Tool"
@@ -57,7 +57,7 @@ msgstr ""
 
 #: mozc_engine.h:64
 msgid "Follow Global Configuration"
-msgstr ""
+msgstr "Theo Cấu Hình Chung"
 
 #. Full width ASCII letter A.
 #: mozc_engine.h:72 mozc_engine.cc:96
