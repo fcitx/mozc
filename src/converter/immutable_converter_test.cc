@@ -52,8 +52,22 @@
 #include "request/request_test_util.h"
 #include "testing/gmock.h"
 #include "testing/gunit.h"
+#include "testing/test_peer.h"
 
 namespace mozc {
+
+class ImmutableConverterTestPeer : testing::TestPeer<ImmutableConverter> {
+ public:
+  explicit ImmutableConverterTestPeer(ImmutableConverter &converter)
+      : testing::TestPeer<ImmutableConverter>(converter) {}
+
+  // Make them public via peer class.
+  PEER_METHOD(MakeLattice);
+  PEER_METHOD(Viterbi);
+  PEER_METHOD(MakeGroup);
+  PEER_METHOD(InsertDummyCandidates);
+};
+
 namespace {
 
 using dictionary::DictionaryInterface;
@@ -103,6 +117,9 @@ class MockDataAndImmutableConverter {
   }
 
   ImmutableConverter *GetConverter() { return immutable_converter_.get(); }
+  ImmutableConverterTestPeer GetConverterTestPeer() {
+    return ImmutableConverterTestPeer(*immutable_converter_);
+  }
 
  private:
   std::unique_ptr<engine::Modules> modules_;
@@ -170,7 +187,8 @@ TEST(ImmutableConverterTest, DummyCandidatesCost) {
       new MockDataAndImmutableConverter);
   Segment segment;
   SetCandidate("てすと", "test", &segment);
-  data_and_converter->GetConverter()->InsertDummyCandidates(&segment, 10);
+  data_and_converter->GetConverterTestPeer().InsertDummyCandidates(&segment,
+                                                                   10);
   EXPECT_GE(segment.candidates_size(), 3);
   EXPECT_LT(segment.candidate(0).wcost, segment.candidate(1).wcost);
   EXPECT_LT(segment.candidate(0).wcost, segment.candidate(2).wcost);
@@ -186,7 +204,8 @@ TEST(ImmutableConverterTest, DummyCandidatesInnerSegmentBoundary) {
   c->PushBackInnerSegmentBoundary(6, 2, 6, 2);
   EXPECT_TRUE(c->IsValid());
 
-  data_and_converter->GetConverter()->InsertDummyCandidates(&segment, 10);
+  data_and_converter->GetConverterTestPeer().InsertDummyCandidates(&segment,
+                                                                   10);
   ASSERT_GE(segment.candidates_size(), 3);
   for (size_t i = 1; i < 3; ++i) {
     EXPECT_TRUE(segment.candidate(i).inner_segment_boundary.empty());
@@ -235,72 +254,6 @@ class KeyCheckDictionary : public DictionaryInterface {
   mutable bool received_target_query_;
 };
 }  // namespace
-
-TEST(ImmutableConverterTest, PredictiveNodesOnlyForConversionKey) {
-  Segments segments;
-  {
-    Segment *segment = segments.add_segment();
-    segment->set_key("いいんじゃな");
-    segment->set_segment_type(Segment::HISTORY);
-    Segment::Candidate *candidate = segment->add_candidate();
-    candidate->key = "いいんじゃな";
-    candidate->value = "いいんじゃな";
-
-    segment = segments.add_segment();
-    segment->set_key("いか");
-
-    EXPECT_EQ(segments.history_segments_size(), 1);
-    EXPECT_EQ(segments.conversion_segments_size(), 1);
-  }
-
-  Lattice lattice;
-  lattice.SetKey("いいんじゃないか");
-
-  auto dictionary = std::make_unique<KeyCheckDictionary>("ないか");
-  KeyCheckDictionary *dictionary_ptr = dictionary.get();
-  auto suffix_dictionary = std::make_unique<KeyCheckDictionary>("ないか");
-  KeyCheckDictionary *suffix_dictionary_ptr = dictionary.get();
-
-  auto data_and_converter = std::make_unique<MockDataAndImmutableConverter>(
-      std::move(dictionary), std::move(suffix_dictionary));
-  ImmutableConverter *converter = data_and_converter->GetConverter();
-  const ConversionRequest request;
-  converter->MakeLatticeNodesForPredictiveNodes(segments, request, &lattice);
-  EXPECT_FALSE(dictionary_ptr->received_target_query());
-  EXPECT_FALSE(suffix_dictionary_ptr->received_target_query());
-}
-
-TEST(ImmutableConverterTest, AddPredictiveNodes) {
-  Segments segments;
-  {
-    Segment *segment = segments.add_segment();
-    segment->set_key("よろしくおねがいしま");
-
-    EXPECT_EQ(segments.conversion_segments_size(), 1);
-  }
-
-  Lattice lattice;
-  lattice.SetKey("よろしくおねがいしま");
-
-  auto dictionary = std::make_unique<KeyCheckDictionary>("しま");
-  KeyCheckDictionary *dictionary_ptr = dictionary.get();
-  auto suffix_dictionary = std::make_unique<KeyCheckDictionary>("しま");
-  KeyCheckDictionary *suffix_dictionary_ptr = suffix_dictionary.get();
-
-  auto data_and_converter = std::make_unique<MockDataAndImmutableConverter>(
-      std::move(dictionary), std::move(suffix_dictionary));
-  ImmutableConverter *converter = data_and_converter->GetConverter();
-
-  {
-    const ConversionRequest request =
-        ConversionRequestBuilder()
-            .SetOptions({.request_type = ConversionRequest::CONVERSION})
-            .Build();
-    converter->MakeLatticeNodesForPredictiveNodes(segments, request, &lattice);
-    EXPECT_FALSE(dictionary_ptr->received_target_query());
-    EXPECT_TRUE(suffix_dictionary_ptr->received_target_query());
-  }
-}
 
 TEST(ImmutableConverterTest, InnerSegmenBoundaryForPrediction) {
   std::unique_ptr<MockDataAndImmutableConverter> data_and_converter(
@@ -375,7 +328,8 @@ TEST(ImmutableConverterTest, NoInnerSegmenBoundaryForConversion) {
 TEST(ImmutableConverterTest, MakeLatticeKatakana) {
   std::unique_ptr<MockDataAndImmutableConverter> data_and_converter(
       new MockDataAndImmutableConverter);
-  ImmutableConverter *converter = data_and_converter->GetConverter();
+  ImmutableConverterTestPeer converter =
+      data_and_converter->GetConverterTestPeer();
 
   Segments segments;
 
@@ -386,7 +340,7 @@ TEST(ImmutableConverterTest, MakeLatticeKatakana) {
   Lattice lattice;
   lattice.SetKey("カタカナです");
   const ConversionRequest request;
-  converter->MakeLattice(request, &segments, &lattice);
+  converter.MakeLattice(request, &segments, &lattice);
 
   // If the first character of a node is `ALPHABET` or `KATAKANA`,
   // `AddCharacterTypeBasedNodes` should create a node of the character type.
@@ -398,7 +352,8 @@ TEST(ImmutableConverterTest, MakeLatticeKatakana) {
 TEST(ImmutableConverterTest, NotConnectedTest) {
   std::unique_ptr<MockDataAndImmutableConverter> data_and_converter(
       new MockDataAndImmutableConverter);
-  ImmutableConverter *converter = data_and_converter->GetConverter();
+  ImmutableConverterTestPeer converter =
+      data_and_converter->GetConverterTestPeer();
 
   Segments segments;
 
@@ -413,11 +368,11 @@ TEST(ImmutableConverterTest, NotConnectedTest) {
   Lattice lattice;
   lattice.SetKey("しょうめいできる");
   const ConversionRequest request;
-  converter->MakeLattice(request, &segments, &lattice);
+  converter.MakeLattice(request, &segments, &lattice);
 
   std::vector<uint16_t> group;
-  converter->MakeGroup(segments, &group);
-  converter->Viterbi(segments, &lattice);
+  converter.MakeGroup(segments, &group);
+  converter.Viterbi(segments, &lattice);
 
   // Intentionally segmented position - 1
   const size_t pos = strlen("しょうめ");

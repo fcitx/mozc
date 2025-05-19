@@ -36,7 +36,6 @@
 #include "absl/strings/string_view.h"
 #include "converter/segments.h"
 #include "dictionary/pos_matcher.h"
-#include "testing/friend_test.h"
 
 namespace mozc {
 namespace converter {
@@ -50,7 +49,7 @@ class HistoryReconstructor {
                           Segments *segments) const;
 
  private:
-  FRIEND_TEST(HistoryReconstructorTest, GetLastConnectivePart);
+  friend class HistoryReconstructorTestPeer;
 
   // Returns the substring of |str|. This substring consists of similar script
   // type and you can use it as preceding text for conversion.

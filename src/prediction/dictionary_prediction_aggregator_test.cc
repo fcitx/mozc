@@ -308,8 +308,9 @@ class MockImmutableConverter : public ImmutableConverterInterface {
 class MockSingleKanjiPredictionAggregator
     : public SingleKanjiPredictionAggregator {
  public:
-  explicit MockSingleKanjiPredictionAggregator(const DataManager &data_manager)
-      : SingleKanjiPredictionAggregator(data_manager) {}
+  explicit MockSingleKanjiPredictionAggregator(const DataManager &data_manager,
+                                               const PosMatcher &pos_matcher)
+      : SingleKanjiPredictionAggregator(data_manager, pos_matcher) {}
   ~MockSingleKanjiPredictionAggregator() override = default;
   MOCK_METHOD(std::vector<Result>, AggregateResults,
               (const ConversionRequest &request), (const, override));
@@ -331,8 +332,11 @@ class MockDataAndAggregator {
 
     auto data_manager = std::make_unique<testing::MockDataManager>();
 
+    const PosMatcher pos_matcher(data_manager->GetPosMatcherData());
+
     auto kanji_aggregator =
-        std::make_unique<MockSingleKanjiPredictionAggregator>(*data_manager);
+        std::make_unique<MockSingleKanjiPredictionAggregator>(*data_manager,
+                                                              pos_matcher);
     // TODO(taku): avoid sharing the pointer owned by std::unique_ptr.
     single_kanji_prediction_aggregator_ = kanji_aggregator.get();
 
@@ -1318,24 +1322,24 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateBigramPrediction) {
 
     const ConversionRequest convreq =
         CreateSuggestionConversionRequest(segments);
-    aggregator.AggregateBigram(convreq, Segment::Candidate::SOURCE_INFO_NONE,
-                               &results);
+    aggregator.AggregateBigram(convreq, &results);
     EXPECT_FALSE(results.empty());
 
     for (size_t i = 0; i < results.size(); ++i) {
       // "グーグルアドセンス", "グーグル", "アドセンス"
       // are in the dictionary.
-      if (results[i].value == "グーグルアドセンス") {
+      if (results[i].value == "アドセンス") {
         EXPECT_FALSE(results[i].removed);
       } else {
         EXPECT_TRUE(results[i].removed);
       }
       EXPECT_EQ(results[i].types, BIGRAM);
-      EXPECT_TRUE(results[i].key.starts_with(kHistoryKey));
-      EXPECT_TRUE(results[i].value.starts_with(kHistoryValue));
+      EXPECT_FALSE(results[i].key.starts_with(kHistoryKey));
+      EXPECT_FALSE(results[i].value.starts_with(kHistoryValue));
+      EXPECT_TRUE(results[i].key.starts_with("あ"));
+      EXPECT_TRUE(results[i].value.starts_with("ア"));
       // Not zero query
-      EXPECT_FALSE(results[i].source_info &
-                   Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_SUFFIX);
+      EXPECT_EQ(results[i].zero_query_type, 0);
     }
 
     EXPECT_EQ(segments.conversion_segments_size(), 1);
@@ -1355,8 +1359,7 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateBigramPrediction) {
 
     const ConversionRequest convreq =
         CreateSuggestionConversionRequest(segments);
-    aggregator.AggregateBigram(convreq, Segment::Candidate::SOURCE_INFO_NONE,
-                               &results);
+    aggregator.AggregateBigram(convreq, &results);
     EXPECT_TRUE(results.empty());
   }
 }
@@ -1384,17 +1387,15 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateZeroQueryBigramPrediction) {
 
     const ConversionRequest convreq =
         CreateSuggestionConversionRequest(segments);
-    aggregator.AggregateBigram(
-        convreq, Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_BIGRAM,
-        &results);
+    aggregator.AggregateBigram(convreq, &results);
     EXPECT_FALSE(results.empty());
 
     for (const auto &result : results) {
-      EXPECT_TRUE(result.key.starts_with(kHistoryKey));
-      EXPECT_TRUE(result.value.starts_with(kHistoryValue));
+      // history must be removed from key/value.
+      EXPECT_FALSE(result.key.starts_with(kHistoryKey));
+      EXPECT_FALSE(result.value.starts_with(kHistoryValue));
       // Zero query
-      EXPECT_FALSE(result.source_info &
-                   Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_SUFFIX);
+      EXPECT_EQ(result.zero_query_type, ZERO_QUERY_BIGRAM);
     }
   }
 
@@ -1440,28 +1441,25 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateZeroQueryBigramPrediction) {
 
     const ConversionRequest convreq =
         CreateSuggestionConversionRequest(segments);
-    aggregator.AggregateBigram(
-        convreq, Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_BIGRAM,
-        &results);
+    aggregator.AggregateBigram(convreq, &results);
     EXPECT_FALSE(results.empty());
     EXPECT_EQ(results.size(), 5);
 
-    EXPECT_TRUE(FindResultByValue(results, "ありがとうございます"));
-    EXPECT_TRUE(FindResultByValue(results, "ありがとう御座います"));
-    EXPECT_TRUE(FindResultByValue(results, "ありがとう御座いました"));
+    EXPECT_TRUE(FindResultByValue(results, "ございます"));
+    EXPECT_TRUE(FindResultByValue(results, "御座います"));
+    EXPECT_TRUE(FindResultByValue(results, "御座いました"));
     // "ございました" is not in the dictionary, but suggested
     // because it is used as the key of other words (i.e. 御座いました).
-    EXPECT_TRUE(FindResultByValue(results, "ありがとうございました"));
+    EXPECT_TRUE(FindResultByValue(results, "ございました"));
     // "ね" is in the dictionary, but filtered due to the word length.
-    EXPECT_FALSE(FindResultByValue(results, "ありがとうね"));
+    EXPECT_FALSE(FindResultByValue(results, "ね"));
 
     for (const auto &result : results) {
-      EXPECT_TRUE(result.key.starts_with(kHistory));
-      EXPECT_TRUE(result.value.starts_with(kHistory));
+      EXPECT_FALSE(result.key.starts_with(kHistory));
+      EXPECT_FALSE(result.value.starts_with(kHistory));
       // Zero query
-      EXPECT_FALSE(result.source_info &
-                   Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_SUFFIX);
-      if (result.key == "ありがとうね") {
+      EXPECT_NE(result.zero_query_type, ZERO_QUERY_SUFFIX);
+      if (result.key == "ね") {
         EXPECT_TRUE(result.removed);
       } else {
         EXPECT_FALSE(result.removed);
@@ -1511,13 +1509,11 @@ TEST_F(DictionaryPredictionAggregatorTest,
 
     const ConversionRequest convreq =
         CreateSuggestionConversionRequest(segments);
-    aggregator.AggregateBigram(
-        convreq, Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_BIGRAM,
-        &results);
+    aggregator.AggregateBigram(convreq, &results);
     EXPECT_FALSE(results.empty());
 
-    EXPECT_FALSE(FindResultByValue(results, "グーグルジャパン"));
-    EXPECT_TRUE(FindResultByValue(results, "グーグル合同会社"));
+    EXPECT_FALSE(FindResultByValue(results, "ジャパン"));
+    EXPECT_TRUE(FindResultByValue(results, "合同会社"));
   }
 }
 
@@ -2130,8 +2126,7 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateSuffixPrediction) {
   EXPECT_TRUE(GetMergedTypes(results) & SUFFIX);
   for (const auto &result : results) {
     EXPECT_EQ(result.types, SUFFIX);
-    EXPECT_TRUE(Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_SUFFIX &
-                result.source_info);
+    EXPECT_EQ(result.zero_query_type, ZERO_QUERY_SUFFIX);
   }
 }
 
@@ -2165,8 +2160,7 @@ TEST_F(DictionaryPredictionAggregatorTest, AggregateZeroQuerySuffixPrediction) {
     for (size_t i = 0; i < results.size(); ++i) {
       EXPECT_EQ(results[i].types, SUFFIX);
       // Zero query
-      EXPECT_TRUE(Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_SUFFIX &
-                  results[i].source_info);
+      EXPECT_EQ(results[i].zero_query_type, ZERO_QUERY_SUFFIX);
     }
   }
   {
@@ -2412,10 +2406,7 @@ TEST_F(DictionaryPredictionAggregatorTest, ZeroQuerySuggestionAfterNumbers) {
     auto target = results.end();
     for (auto it = results.begin(); it != results.end(); ++it) {
       EXPECT_EQ(it->types, SUFFIX);
-
-      EXPECT_TRUE(
-          Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_NUMBER_SUFFIX &
-          it->source_info);
+      EXPECT_EQ(it->zero_query_type, ZERO_QUERY_NUMBER_SUFFIX);
 
       if (it->value == kExpectedValue) {
         target = it;
@@ -2445,9 +2436,7 @@ TEST_F(DictionaryPredictionAggregatorTest, ZeroQuerySuggestionAfterNumbers) {
     for (auto it = results.begin(); it != results.end(); ++it) {
       EXPECT_EQ(it->types, SUFFIX);
       if (it->value == kExpectedValue) {
-        EXPECT_TRUE(
-            Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_NUMBER_SUFFIX &
-            it->source_info);
+        EXPECT_EQ(it->zero_query_type, ZERO_QUERY_NUMBER_SUFFIX);
         found = true;
         break;
       }
@@ -2496,9 +2485,7 @@ TEST_F(DictionaryPredictionAggregatorTest, TriggerNumberZeroQuerySuggestion) {
       EXPECT_EQ(it->types, SUFFIX);
       if (it->value == test_case.find_suffix_value &&
           it->lid == pos_matcher.GetCounterSuffixWordId()) {
-        EXPECT_TRUE(
-            Segment::Candidate::DICTIONARY_PREDICTOR_ZERO_QUERY_NUMBER_SUFFIX &
-            it->source_info);
+        EXPECT_EQ(it->zero_query_type, ZERO_QUERY_NUMBER_SUFFIX);
         found = true;
         break;
       }
@@ -3004,9 +2991,7 @@ TEST_F(DictionaryPredictionAggregatorTest, GetZeroQueryCandidates) {
     EXPECT_EQ(results.size(), test_case.expected_candidates.size());
     for (size_t i = 0; i < test_case.expected_candidates.size(); ++i) {
       EXPECT_EQ(results[i].value, test_case.expected_candidates[i]);
-      Result tmp_result;
-      tmp_result.SetSourceInfoForZeroQuery(test_case.expected_types[i]);
-      EXPECT_EQ(tmp_result.source_info, results[i].source_info);
+      EXPECT_EQ(results[i].zero_query_type, test_case.expected_types[i]);
     }
   }
 }

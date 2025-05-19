@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2010-2021, Google Inc.
 # All rights reserved.
 #
@@ -27,36 +28,65 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-{
-  'variables': {
-    'relative_dir': 'client',
-    'gen_out_dir': '<(SHARED_INTERMEDIATE_DIR)/<(relative_dir)',
-  },
-  'targets': [
-    {
-      'target_name': 'client_test',
-      'type': 'executable',
-      'sources': [
-        'client_test.cc',
-      ],
-      'dependencies': [
-        'client.gyp:client',
-        '<(mozc_oss_src_dir)/base/absl.gyp:absl_strings',
-        '<(mozc_oss_src_dir)/base/base.gyp:version',
-        '<(mozc_oss_src_dir)/testing/testing.gyp:gtest_main',
-        '<(mozc_oss_src_dir)/testing/testing.gyp:mozctest',
-      ],
-      'variables': {
-        'test_size': 'small',
-      },
-    },
-    # Test cases meta target: this target is referred from gyp/tests.gyp
-    {
-      'target_name': 'client_all_test',
-      'type': 'none',
-      'dependencies': [
-        'client_test',
-      ],
-    },
-  ],
-}
+"""A cross-platform script to open file with resolving symlink.
+
+Usage:
+  % python3 build_tools/open.py bazel-bin/win32/installer/Mozc64.msi
+"""
+
+import argparse
+import os
+import pathlib
+import subprocess
+
+
+def is_windows() -> bool:
+  """Returns true if the platform is Windows."""
+  return os.name == 'nt'
+
+
+def is_mac() -> bool:
+  """Returns true if the platform is Mac."""
+  return os.name == 'posix' and os.uname()[0] == 'Darwin'
+
+
+def is_linux() -> bool:
+  """Returns true if the platform is Linux."""
+  return os.name == 'posix' and os.uname()[0] == 'Linux'
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('filename', type=str)
+
+  args = parser.parse_args()
+
+  if args.filename is None:
+    print('Please specify the filename.')
+    return
+
+  filename = pathlib.Path(args.filename)
+  abspath = filename.resolve()
+
+  if not abspath.exists():
+    if abspath == filename:
+      print(f'The specified file {filename} does not exist.')
+    else:
+      print(f'The specified file {filename} ({abspath}) does not exist.')
+    return
+
+  command = []
+  if is_windows():
+    command = ['cmd', '/c', 'start', str(abspath)]
+  elif is_mac():
+    command = ['open', str(abspath)]
+  elif is_linux():
+    command = ['xdg-open', str(abspath)]
+  else:
+    print('Unsupported platform.')
+    return
+  subprocess.run(command, shell=False, check=False)
+
+
+if __name__ == '__main__':
+  main()
