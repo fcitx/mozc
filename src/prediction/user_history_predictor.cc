@@ -59,12 +59,13 @@
 #include "base/config_file_stream.h"
 #include "base/container/freelist.h"
 #include "base/container/trie.h"
+#include "base/file_util.h"
 #include "base/hash.h"
 #include "base/japanese_util.h"
 #include "base/util.h"
 #include "base/vlog.h"
 #include "composer/composer.h"
-#include "converter/segments.h"
+#include "converter/candidate.h"
 #include "dictionary/dictionary_interface.h"
 #include "engine/modules.h"
 #include "prediction/result.h"
@@ -141,19 +142,6 @@ bool IsPunctuation(absl::string_view value) {
           value == "，" || value == "．");
 }
 
-bool IsSentenceLikeCandidate(const Segment::Candidate &candidate) {
-  // A sentence should have a long reading.  Length check is done using key to
-  // absorb length difference in value variation, e.g.,
-  // "〜ください" and "〜下さい".
-  if (candidate.value.empty() || Util::CharsLen(candidate.key) < 8) {
-    return false;
-  }
-  // Our primary target sentence ends with Hiragana, e.g., "〜ます".
-  const ConstChar32ReverseIterator iter(candidate.value);
-  bool ret = Util::GetScriptType(iter.Get()) == Util::HIRAGANA;
-  return ret;
-}
-
 // Returns romanaized string.
 std::string ToRoman(const absl::string_view str) {
   return japanese_util::HiraganaToRomanji(str);
@@ -171,38 +159,42 @@ bool IsContentWord(const absl::string_view value) {
 // or auto partial suggestion,
 // don't use the description, since "did you mean" like description must be
 // provided at an appropriate timing and context.
-std::string GetDescription(const Segment::Candidate &candidate) {
-  if (candidate.attributes & (Segment::Candidate::SPELLING_CORRECTION |
-                              Segment::Candidate::TYPING_CORRECTION |
-                              Segment::Candidate::AUTO_PARTIAL_SUGGESTION)) {
+absl::string_view GetDescription(const Result &result) {
+  if (result.candidate_attributes &
+      (converter::Candidate::SPELLING_CORRECTION |
+       converter::Candidate::TYPING_CORRECTION |
+       converter::Candidate::AUTO_PARTIAL_SUGGESTION)) {
     return "";
   }
-  return candidate.description;
+  return result.description;
 }
 
 }  // namespace
 
 // Returns true if the input first candidate seems to be a privacy sensitive
 // such like password.
-bool UserHistoryPredictor::IsPrivacySensitive(const Segments &segments) const {
+bool UserHistoryPredictor::IsPrivacySensitive(
+    absl::Span<const Result> results) const {
   constexpr bool kNonSensitive = false;
   constexpr bool kSensitive = true;
+
+  if (results.empty()) {
+    return kNonSensitive;
+  }
 
   // Skips privacy sensitive check if |segments| consists of multiple conversion
   // segment. That is, segments like "パスワードは|x7LAGhaR" where '|'
   // represents segment boundary is not considered to be privacy sensitive.
   // TODO(team): Revisit this rule if necessary.
-  if (segments.conversion_segments_size() != 1) {
+  if (results.front().inner_segment_boundary.size() > 1) {
     return kNonSensitive;
   }
 
   // Hereafter, we must have only one conversion segment.
-  const Segment &conversion_segment = segments.conversion_segment(0);
-  absl::string_view segment_key = conversion_segment.key();
+  absl::string_view key = results.front().key;
 
   // The top candidate, which is about to be committed.
-  const Segment::Candidate &candidate = conversion_segment.candidate(0);
-  absl::string_view candidate_value = candidate.value;
+  absl::string_view candidate_value = results.front().value;
 
   // If |candidate_value| contains any non-ASCII character, do not treat
   // it as privacy sensitive information.
@@ -223,7 +215,7 @@ bool UserHistoryPredictor::IsPrivacySensitive(const Segments &segments) const {
 
   // If the key consists of number characters only, treat it as privacy
   // sensitive.
-  if (Util::GetScriptType(segment_key) == Util::NUMBER) {
+  if (Util::GetScriptType(key) == Util::NUMBER) {
     return kSensitive;
   }
 
@@ -252,11 +244,6 @@ bool UserHistoryStorage::Load() {
 }
 
 bool UserHistoryStorage::Save() {
-  if (proto_.entries_size() == 0) {
-    LOG(WARNING) << "etries size is 0. Not saved";
-    return false;
-  }
-
   const int num_deleted = DeleteEntriesUntouchedFor62Days();
   LOG_IF(INFO, num_deleted > 0)
       << num_deleted << " old entries were removed before save";
@@ -265,6 +252,13 @@ bool UserHistoryStorage::Save() {
   if (!proto_.AppendToString(&output)) {
     LOG(ERROR) << "AppendToString failed";
     return false;
+  }
+
+  // Remove the storage file when proto is empty because
+  // storing empty file causes an error.
+  if (output.empty()) {
+    FileUtil::UnlinkIfExists(storage_.filename()).IgnoreError();
+    return true;
   }
 
   if (!storage_.Save(output)) {
@@ -281,9 +275,7 @@ int UserHistoryStorage::DeleteEntriesBefore(uint64_t timestamp) {
   int i = 0;
   int new_size = proto_.entries_size();
   while (i < new_size) {
-    if (proto_.entries(i).entry_type() !=
-            UserHistoryPredictor::Entry::DEFAULT_ENTRY ||
-        proto_.entries(i).last_access_time() >= timestamp) {
+    if (proto_.entries(i).last_access_time() >= timestamp) {
       ++i;
       continue;
     }
@@ -438,7 +430,8 @@ bool UserHistoryPredictor::Load(const UserHistoryStorage &history) {
   for (const Entry &entry : history.GetProto().entries()) {
     // Workaround for b/116826494: Some garbled characters are suggested
     // from user history. This filters such entries.
-    if (!Util::IsValidUtf8(entry.value())) {
+    if (entry.value().empty() || entry.key().empty() ||
+        !Util::IsValidUtf8(entry.value())) {
       LOG(ERROR) << "Invalid UTF8 found in user history: " << entry;
       continue;
     }
@@ -456,18 +449,11 @@ bool UserHistoryPredictor::Save() {
     return true;
   }
 
-  // Do not check incognito_mode or use_history_suggest in Config here.
-  // The input data should not have been inserted when those flags are on.
-
-  const DicElement *tail = dic_->Tail();
-  if (tail == nullptr) {
-    return true;
-  }
-
   const std::string filename = GetUserHistoryFileName();
 
   UserHistoryStorage history(filename);
-  for (const DicElement *elm = tail; elm != nullptr; elm = elm->prev) {
+
+  for (const DicElement *elm = dic_->Tail(); elm != nullptr; elm = elm->prev) {
     *history.GetProto().add_entries() = elm->value;
   }
 
@@ -475,6 +461,7 @@ bool UserHistoryPredictor::Save() {
     LOG(ERROR) << "UserHistoryStorage::Save() failed";
     return false;
   }
+
   Load(history);
 
   updated_ = false;
@@ -490,9 +477,6 @@ bool UserHistoryPredictor::ClearAllHistory() {
   // Renews DicCache as LruCache tries to reuse the internal value by
   // using FreeList
   dic_ = std::make_unique<DicCache>(UserHistoryPredictor::cache_size());
-
-  // insert a dummy event entry.
-  InsertEvent(Entry::CLEAN_ALL_EVENT);
 
   updated_ = true;
 
@@ -525,9 +509,6 @@ bool UserHistoryPredictor::ClearUnusedHistory() {
       LOG(ERROR) << "cannot erase " << key;
     }
   }
-
-  // Inserts a dummy event entry.
-  InsertEvent(Entry::CLEAN_UNUSED_EVENT);
 
   updated_ = true;
 
@@ -1621,8 +1602,7 @@ bool UserHistoryPredictor::IsValidEntry(const Entry &entry) const {
 
 bool UserHistoryPredictor::IsValidEntryIgnoringRemovedField(
     const Entry &entry) const {
-  if (entry.entry_type() != Entry::DEFAULT_ENTRY ||
-      user_dictionary_.IsSuppressedEntry(entry.key(), entry.value())) {
+  if (user_dictionary_.IsSuppressedEntry(entry.key(), entry.value())) {
     return false;
   }
 
@@ -1636,28 +1616,6 @@ bool UserHistoryPredictor::IsValidEntryIgnoringRemovedField(
   }
 
   return true;
-}
-
-void UserHistoryPredictor::InsertEvent(EntryType type) {
-  if (type == Entry::DEFAULT_ENTRY) {
-    return;
-  }
-
-  const uint64_t last_access_time = absl::ToUnixSeconds(Clock::GetAbslTime());
-  const uint32_t dic_key = Fingerprint("", "", type);
-
-  DCHECK(dic_.get());
-  DicElement *e = dic_->Insert(dic_key);
-  if (e == nullptr) {
-    MOZC_VLOG(2) << "insert failed";
-    return;
-  }
-
-  Entry *entry = &(e->value);
-  DCHECK(entry);
-  entry->Clear();
-  entry->set_entry_type(type);
-  entry->set_last_access_time(last_access_time);
 }
 
 bool UserHistoryPredictor::ShouldInsert(
@@ -1750,20 +1708,13 @@ void UserHistoryPredictor::Insert(
 }
 
 void UserHistoryPredictor::MaybeRemoveUnselectedHistory(
-    const Segments &segments,
+    absl::Span<const Result> results,
     UserHistoryPredictor::RevertEntries *revert_entries) {
-  const Segment &segment = segments.conversion_segment(0);
-  if (segment.candidates_size() < 1 ||
-      segment.segment_type() != Segment::FIXED_VALUE) {
-    return;
-  }
-
   static constexpr size_t kMaxHistorySize = 5;
   static constexpr float kMinSelectedRatio = 0.05;
-  for (size_t i = 0; i < std::min(segment.candidates_size(), kMaxHistorySize);
-       ++i) {
-    const Segment::Candidate &candidate = segment.candidate(i);
-    const uint64_t dic_key = Fingerprint(candidate.key, candidate.value);
+
+  for (size_t i = 0; i < std::min(results.size(), kMaxHistorySize); ++i) {
+    const uint64_t dic_key = Fingerprint(results[i].key, results[i].value);
     Entry *entry = dic_->MutableLookupWithoutInsert(dic_key);
     if (entry == nullptr) {
       continue;
@@ -1791,12 +1742,8 @@ void UserHistoryPredictor::MaybeRemoveUnselectedHistory(
 }
 
 void UserHistoryPredictor::Finish(const ConversionRequest &request,
-                                  const Segments &segments) {
-  if (request.request_type() == ConversionRequest::REVERSE_CONVERSION) {
-    // Do nothing for REVERSE_CONVERSION.
-    return;
-  }
-
+                                  absl::Span<const Result> results,
+                                  uint32_t revert_id) {
   if (request.incognito_mode()) {
     MOZC_VLOG(2) << "incognito mode";
     return;
@@ -1819,94 +1766,88 @@ void UserHistoryPredictor::Finish(const ConversionRequest &request,
     return;
   }
 
-  // Checks every segment is valid.
-  for (const Segment &segment : segments.conversion_segments()) {
-    if (segment.candidates_size() < 1) {
-      MOZC_VLOG(2) << "candidates size < 1";
-      return;
-    }
-    if (segment.segment_type() != Segment::FIXED_VALUE) {
-      MOZC_VLOG(2) << "segment is not FIXED_VALUE";
-      return;
-    }
-    const Segment::Candidate &candidate = segment.candidate(0);
-    if (candidate.attributes & Segment::Candidate::NO_SUGGEST_LEARNING) {
-      MOZC_VLOG(2) << "NO_SUGGEST_LEARNING";
-      return;
-    }
+  if (results.empty() || results.front().candidate_attributes &
+                             Segment::Candidate::NO_SUGGEST_LEARNING) {
+    MOZC_VLOG(2) << "NO_SUGGEST_LEARNING";
+    return;
   }
 
-  if (IsPrivacySensitive(segments)) {
+  if (IsPrivacySensitive(results)) {
     MOZC_VLOG(2) << "do not remember privacy sensitive input";
     return;
   }
 
-  const bool is_suggestion =
-      request.request_type() != ConversionRequest::CONVERSION;
-  const uint64_t last_access_time = absl::ToUnixSeconds(Clock::GetAbslTime());
-
   RevertEntries revert_entries;
 
-  InsertHistory(request, is_suggestion, last_access_time, segments,
-                &revert_entries);
+  const SegmentsForLearning learning_segments =
+      MakeLearningSegments(request, results);
 
-  MaybeRemoveUnselectedHistory(segments, &revert_entries);
+  InsertHistory(request, learning_segments, &revert_entries);
+
+  MaybeRemoveUnselectedHistory(results, &revert_entries);
 
   if (!revert_entries.empty()) {
-    if (auto *element = revert_cache_.Insert(segments.revert_id()); element) {
+    if (auto *element = revert_cache_.Insert(revert_id); element) {
       element->value = std::move(revert_entries);
     }
   }
 }
 
 UserHistoryPredictor::SegmentsForLearning
-UserHistoryPredictor::MakeLearningSegments(const Segments &segments) const {
+UserHistoryPredictor::MakeLearningSegments(
+    const ConversionRequest &request, absl::Span<const Result> results) const {
   SegmentsForLearning learning_segments;
 
-  for (const Segment &segment : segments.history_segments()) {
-    DCHECK_LE(1, segment.candidates_size());
-    auto &candidate = segment.candidate(0);
+  if (results.empty()) return learning_segments;
+
+  for (const auto &candidate : request.GetConverterHistorySegments()) {
     learning_segments.history_segments.push_back(
         {candidate.key, candidate.value, candidate.content_key,
-         candidate.content_value, GetDescription(candidate)});
+         candidate.content_value, ""});
   }
 
-  std::string all_key, all_value;
-  for (const Segment &segment : segments.conversion_segments()) {
-    const Segment::Candidate &candidate = segment.candidate(0);
-    absl::StrAppend(&all_key, candidate.key);
-    absl::StrAppend(&all_value, candidate.value);
-    if (candidate.inner_segment_boundary.empty()) {
+  const Result &result = results.front();
+  learning_segments.conversion_segments_key = result.key;
+  learning_segments.conversion_segments_value = result.value;
+  if (result.inner_segment_boundary.empty()) {
+    learning_segments.conversion_segments.push_back({result.key, result.value,
+                                                     result.key, result.value,
+                                                     GetDescription(result)});
+  } else {
+    const bool is_single_segment = result.inner_segment_boundary.size() == 1;
+    for (converter::Candidate::InnerSegmentIterator iter(
+             result.inner_segment_boundary, result.key, result.value);
+         !iter.Done(); iter.Next()) {
       learning_segments.conversion_segments.push_back(
-          {candidate.key, candidate.value, candidate.content_key,
-           candidate.content_value, GetDescription(candidate)});
-    } else {
-      for (Segment::Candidate::InnerSegmentIterator iter(&candidate);
-           !iter.Done(); iter.Next()) {
-        learning_segments.conversion_segments.push_back(
-            {std::string(iter.GetKey()), std::string(iter.GetValue()),
-             std::string(iter.GetContentKey()),
-             std::string(iter.GetContentValue()), ""});
-      }
+          {iter.GetKey(), iter.GetValue(), iter.GetContentKey(),
+           iter.GetContentValue(),
+           is_single_segment ? GetDescription(result) : ""});
     }
   }
-
-  learning_segments.conversion_segments_key = std::move(all_key);
-  learning_segments.conversion_segments_value = std::move(all_value);
 
   return learning_segments;
 }
 
 void UserHistoryPredictor::InsertHistory(
-    const ConversionRequest &request, bool is_suggestion_selected,
-    uint64_t last_access_time, const Segments &segments,
+    const ConversionRequest &request,
+    const UserHistoryPredictor::SegmentsForLearning &learning_segments,
     UserHistoryPredictor::RevertEntries *revert_entries) {
-  const SegmentsForLearning learning_segments = MakeLearningSegments(segments);
+  const bool is_suggestion_selected =
+      request.request_type() != ConversionRequest::CONVERSION;
+  const uint64_t last_access_time = absl::ToUnixSeconds(Clock::GetAbslTime());
 
   InsertHistoryForConversionSegments(request, is_suggestion_selected,
                                      last_access_time, learning_segments,
                                      revert_entries);
+  InsertHistoryForHistorySegments(request, is_suggestion_selected,
+                                  last_access_time, learning_segments,
+                                  revert_entries);
+}
 
+void UserHistoryPredictor::InsertHistoryForHistorySegments(
+    const ConversionRequest &request, bool is_suggestion_selected,
+    uint64_t last_access_time, const SegmentsForLearning &learning_segments,
+    UserHistoryPredictor::RevertEntries *revert_entries) {
   absl::string_view all_key = learning_segments.conversion_segments_key;
   absl::string_view all_value = learning_segments.conversion_segments_value;
 
@@ -1924,10 +1865,9 @@ void UserHistoryPredictor::InsertHistory(
   if (!learning_segments.history_segments.empty() &&
       !learning_segments.conversion_segments.empty()) {
     const SegmentForLearning &history_segment =
-        learning_segments
-            .history_segments[segments.history_segments_size() - 1];
+        learning_segments.history_segments.back();
     const SegmentForLearning &conversion_segment =
-        learning_segments.conversion_segments[0];
+        learning_segments.conversion_segments.front();
     absl::string_view history_value = history_segment.value;
     if (history_value.empty() || conversion_segment.value.empty()) {
       return;
@@ -2018,14 +1958,14 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
   }
 }
 
-void UserHistoryPredictor::Revert(const Segments &segments) {
+void UserHistoryPredictor::Revert(uint32_t revert_id) {
   if (!CheckSyncerAndDelete()) {
     LOG(WARNING) << "Syncer is running";
     return;
   }
 
   const RevertEntries *revert_entries =
-      revert_cache_.LookupWithoutInsert(segments.revert_id());
+      revert_cache_.LookupWithoutInsert(revert_id);
   if (!revert_entries) {
     return;
   }
@@ -2123,34 +2063,13 @@ UserHistoryPredictor::MatchType UserHistoryPredictor::GetMatchTypeFromInput(
 
 // static
 uint32_t UserHistoryPredictor::Fingerprint(const absl::string_view key,
-                                           const absl::string_view value,
-                                           EntryType type) {
-  if (type == Entry::DEFAULT_ENTRY) {
-    // Since we have already used the fingerprint function for next entries and
-    // next entries are saved in user's local machine, we are not able
-    // to change the Fingerprint function for the old key/value type.
-    return Fingerprint32(absl::StrCat(key, kDelimiter, value));
-  } else {
-    return Fingerprint32(static_cast<uint8_t>(type));
-  }
+                                           const absl::string_view value) {
+  return Fingerprint32(absl::StrCat(key, kDelimiter, value));
 }
 
 // static
-uint32_t UserHistoryPredictor::Fingerprint(const absl::string_view key,
-                                           const absl::string_view value) {
-  return Fingerprint(key, value, Entry::DEFAULT_ENTRY);
-}
-
 uint32_t UserHistoryPredictor::EntryFingerprint(const Entry &entry) {
   return Fingerprint(entry.key(), entry.value());
-}
-
-// static
-uint32_t UserHistoryPredictor::SegmentFingerprint(const Segment &segment) {
-  if (segment.candidates_size() > 0) {
-    return Fingerprint(segment.candidate(0).key, segment.candidate(0).value);
-  }
-  return 0;
 }
 
 // static
