@@ -43,14 +43,11 @@ import pathlib
 import shutil
 import stat
 import subprocess
-import sys
 import tarfile
-import time
 from typing import Union
-import zipfile
-
-import urllib.request
 import urllib.error
+import urllib.request
+import zipfile
 
 from progress_printer import ProgressPrinter
 
@@ -86,9 +83,9 @@ class ArchiveInfo:
 
 
 QT6 = ArchiveInfo(
-    url='https://download.qt.io/archive/qt/6.8/6.8.0/submodules/qtbase-everywhere-src-6.8.0.tar.xz',
-    size=49819628,
-    sha256='1bad481710aa27f872de6c9f72651f89a6107f0077003d0ebfcc9fd15cba3c75',
+    url='https://download.qt.io/archive/qt/6.9/6.9.1/submodules/qtbase-everywhere-src-6.9.1.tar.xz',
+    size=49755912,
+    sha256='40caedbf83cc9a1959610830563565889878bc95f115868bbf545d1914acf28e',
 )
 
 NDK_LINUX = ArchiveInfo(
@@ -195,7 +192,7 @@ def download(archive: ArchiveInfo, dryrun: bool = False) -> None:
             saved += len(chunk)
             printer.print_line(f'{archive.filename}: {saved}/{archive.size}')
   except urllib.error.URLError as e:
-    raise RuntimeError(f'Failed to download {archive.url}: {e}')
+    raise RuntimeError(f'Failed to download {archive.url}: {e}') from e
 
   if saved != archive.size:
     raise RuntimeError(
@@ -558,7 +555,9 @@ def exec_command(
           continue
         if exitcode == 0:
           return
-        raise ChildProcessError(f'Failed to execute {args}. exitcode={exitcode}')
+        raise ChildProcessError(
+            f'Failed to execute {args}. exitcode={exitcode}'
+        )
     return
   _, _ = process.communicate()
   exitcode = process.wait()
