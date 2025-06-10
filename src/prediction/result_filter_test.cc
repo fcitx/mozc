@@ -27,25 +27,24 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef MOZC_REWRITER_FORTUNE_REWRITER_H_
-#define MOZC_REWRITER_FORTUNE_REWRITER_H_
+#include "prediction/result_filter.h"
 
-#include "converter/segments.h"
-#include "rewriter/rewriter_interface.h"
+// #include <string>
+// #include <utility>
+// #include <vector>
 
-namespace mozc {
+#include "absl/strings/string_view.h"
+#include "testing/gunit.h"
 
-class ConversionRequest;
+namespace mozc::prediction::filter {
 
-class FortuneRewriter : public RewriterInterface {
- public:
-  FortuneRewriter();
-  ~FortuneRewriter() override;
+TEST(ResultFilterTest, GetMissSpelledPosition) {
+  EXPECT_EQ(GetMissSpelledPosition("", ""), 0);
+  EXPECT_EQ(GetMissSpelledPosition("れみおめろん", "レミオロメン"), 3);
+  EXPECT_EQ(GetMissSpelledPosition("とーとばっく", "トートバッグ"), 5);
+  EXPECT_EQ(GetMissSpelledPosition("おーすとりらあ", "オーストラリア"), 4);
+  EXPECT_EQ(GetMissSpelledPosition("おーすとりあ", "おーすとらりあ"), 4);
+  EXPECT_EQ(GetMissSpelledPosition("じきそうしょう", "時期尚早"), 7);
+}
 
-  bool Rewrite(const ConversionRequest &request,
-               converter::Segments *segments) const override;
-};
-
-}  // namespace mozc
-
-#endif  // MOZC_REWRITER_FORTUNE_REWRITER_H_
+}  // namespace mozc::prediction::filter
