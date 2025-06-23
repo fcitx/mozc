@@ -31,9 +31,9 @@
 
 #include <tuple>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "base/absl_nullability.h"
 #include "base/strings/unicode.h"
 #include "composer/query.h"
 #include "converter/candidate.h"
@@ -129,6 +129,40 @@ void PopulateTypeCorrectedQuery(
   const int adjustment = -1150 * typing_corrected_result.bias;
   result->typing_correction_adjustment = adjustment;
   result->wcost += adjustment;
+}
+
+std::string GetPredictionTypeDebugString(PredictionTypes types) {
+  std::string debug_desc;
+  if (types & PredictionType::UNIGRAM) {
+    debug_desc.append(1, 'U');
+  }
+  if (types & PredictionType::BIGRAM) {
+    debug_desc.append(1, 'B');
+  }
+  if (types & PredictionType::REALTIME_TOP) {
+    debug_desc.append("R1");
+  } else if (types & PredictionType::REALTIME) {
+    debug_desc.append(1, 'R');
+  }
+  if (types & PredictionType::SUFFIX) {
+    debug_desc.append(1, 'S');
+  }
+  if (types & PredictionType::ENGLISH) {
+    debug_desc.append(1, 'E');
+  }
+  if (types & PredictionType::TYPING_CORRECTION) {
+    debug_desc.append(1, 'T');
+  }
+  if (types & PredictionType::TYPING_COMPLETION) {
+    debug_desc.append(1, 'C');
+  }
+  if (types & PredictionType::SUPPLEMENTAL_MODEL) {
+    debug_desc.append(1, 'X');
+  }
+  if (types & PredictionType::KEY_EXPANDED_IN_DICTIONARY) {
+    debug_desc.append(1, 'K');
+  }
+  return debug_desc;
 }
 
 }  // namespace prediction

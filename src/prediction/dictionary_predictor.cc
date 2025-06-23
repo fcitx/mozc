@@ -60,7 +60,6 @@
 #include "converter/segmenter.h"
 #include "converter/segments.h"
 #include "dictionary/pos_matcher.h"
-#include "dictionary/single_kanji_dictionary.h"
 #include "engine/modules.h"
 #include "engine/supplemental_model_interface.h"
 #include "prediction/dictionary_prediction_aggregator.h"
@@ -75,8 +74,6 @@
 namespace mozc::prediction {
 namespace {
 
-using ::mozc::commands::Request;
-
 bool IsDebug(const ConversionRequest &request) {
 #ifndef NDEBUG
   return true;
@@ -90,8 +87,8 @@ bool IsLatinInputMode(const ConversionRequest &request) {
          request.composer().GetInputMode() == transliteration::FULL_ASCII;
 }
 
-bool IsMixedConversionEnabled(const Request &request) {
-  return request.mixed_conversion();
+bool IsMixedConversionEnabled(const ConversionRequest &request) {
+  return request.request().mixed_conversion();
 }
 
 bool IsTypingCorrectionEnabled(const ConversionRequest &request) {
@@ -141,13 +138,13 @@ DictionaryPredictor::DictionaryPredictor(
     const engine::Modules &modules, const ConverterInterface &converter,
     const ImmutableConverterInterface &immutable_converter)
     : DictionaryPredictor(
-          "DictionaryPredictor", modules,
+          modules,
           std::make_unique<prediction::DictionaryPredictionAggregator>(
               modules, converter, immutable_converter),
           immutable_converter) {}
 
 DictionaryPredictor::DictionaryPredictor(
-    std::string predictor_name, const engine::Modules &modules,
+    const engine::Modules &modules,
     std::unique_ptr<const DictionaryPredictionAggregatorInterface> aggregator,
     const ImmutableConverterInterface &immutable_converter)
     : aggregator_(std::move(aggregator)),
@@ -155,12 +152,8 @@ DictionaryPredictor::DictionaryPredictor(
       connector_(modules.GetConnector()),
       segmenter_(modules.GetSegmenter()),
       suggestion_filter_(modules.GetSuggestionFilter()),
-      single_kanji_dictionary_(
-          std::make_unique<dictionary::SingleKanjiDictionary>(
-              modules.GetDataManager())),
       pos_matcher_(modules.GetPosMatcher()),
       general_symbol_id_(pos_matcher_.GetGeneralSymbolId()),
-      predictor_name_(std::move(predictor_name)),
       modules_(modules) {}
 
 std::vector<Result> DictionaryPredictor::Predict(
@@ -173,7 +166,7 @@ std::vector<Result> DictionaryPredictor::Predict(
   std::vector<Result> results;
 
   // TODO(taku): Separate DesktopPredictor and MixedDecodingPredictor.
-  if (IsMixedConversionEnabled(request.request())) {
+  if (IsMixedConversionEnabled(request)) {
     std::vector<Result> literal_results =
         aggregator_->AggregateResultsForMixedConversion(request);
     std::vector<Result> tc_results =
@@ -197,7 +190,7 @@ void DictionaryPredictor::RewriteResultsForPrediction(
   // Mixed conversion is the feature that mixes prediction and
   // conversion, meaning that results may include the candidates whose
   // key is exactly the same as the composition.  This mode is used in mobile.
-  const bool is_mixed_conversion = IsMixedConversionEnabled(request.request());
+  const bool is_mixed_conversion = IsMixedConversionEnabled(request);
 
   if (is_mixed_conversion) {
     SetPredictionCostForMixedConversion(request, results);
@@ -276,9 +269,6 @@ std::vector<Result> DictionaryPredictor::RerankAndFilterResults(
       continue;
     }
 
-    // TODO(taku): Add new method to fill the Result::candidate_attributes.
-    single_kanji_dictionary_->GenerateDescription(result.value,
-                                                  &result.description);
     if ((result.candidate_attributes &
          converter::Candidate::PARTIALLY_KEY_CONSUMED) &&
         cursor_at_tail) {
@@ -318,10 +308,8 @@ std::vector<Result> DictionaryPredictor::RerankAndFilterResults(
 void DictionaryPredictor::MaybeApplyPostCorrection(
     const ConversionRequest &request, std::vector<Result> &results) const {
   // b/363902660:
-  // Stop applying post correction when typing correction is disabled.
-  // We may want to use other conditions if we want to enable post correction
-  // separately.
-  if (!IsTypingCorrectionEnabled(request)) {
+  // Stop applying post correction when handwriting mode.
+  if (request_util::IsHandwriting(request)) {
     return;
   }
   modules_.GetSupplementalModel().PostCorrect(request, results);
@@ -389,41 +377,6 @@ int DictionaryPredictor::CalculateSingleKanjiCostOffset(
       std::max(0, single_kanji_max_cost - single_kanji_transition_cost);
   const int kSingleKanjiPredictionCostOffset = 800;  // ~= 500*ln(5)
   return wcost_diff + kSingleKanjiPredictionCostOffset;
-}
-
-std::string DictionaryPredictor::GetPredictionTypeDebugString(
-    PredictionTypes types) {
-  std::string debug_desc;
-  if (types & PredictionType::UNIGRAM) {
-    debug_desc.append(1, 'U');
-  }
-  if (types & PredictionType::BIGRAM) {
-    debug_desc.append(1, 'B');
-  }
-  if (types & PredictionType::REALTIME_TOP) {
-    debug_desc.append("R1");
-  } else if (types & PredictionType::REALTIME) {
-    debug_desc.append(1, 'R');
-  }
-  if (types & PredictionType::SUFFIX) {
-    debug_desc.append(1, 'S');
-  }
-  if (types & PredictionType::ENGLISH) {
-    debug_desc.append(1, 'E');
-  }
-  if (types & PredictionType::TYPING_CORRECTION) {
-    debug_desc.append(1, 'T');
-  }
-  if (types & PredictionType::TYPING_COMPLETION) {
-    debug_desc.append(1, 'C');
-  }
-  if (types & PredictionType::SUPPLEMENTAL_MODEL) {
-    debug_desc.append(1, 'X');
-  }
-  if (types & PredictionType::KEY_EXPANDED_IN_DICTIONARY) {
-    debug_desc.append(1, 'K');
-  }
-  return debug_desc;
 }
 
 // Returns cost for |result| when it's transitioned from |rid|.  Suffix penalty

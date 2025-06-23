@@ -191,7 +191,6 @@ mozc_cc_library(
         "//converter:segmenter",
         "//converter:segments",
         "//dictionary:pos_matcher",
-        "//dictionary:single_kanji_dictionary",
         "//engine:modules",
         "//engine:supplemental_model_interface",
         "//protocol:commands_cc_proto",
@@ -220,11 +219,11 @@ mozc_cc_library(
     ],
     deps = [
         ":zero_query_dict",
-        "//base:absl_nullability",
         "//base/strings:unicode",
         "//composer:query",
         "//converter:segments",
         "//dictionary:dictionary_token",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -587,6 +586,7 @@ mozc_cc_library(
     ],
     deps = [
         "//base/container:trie",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",

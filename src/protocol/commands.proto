@@ -546,14 +546,12 @@ message Capability {
       [default = NO_TEXT_DELETION_CAPABILITY];
 }
 
-// Next ID: 108
+// Next ID: 111
 // Bundles together some Android experiment flags so that they can be easily
 // retrieved throughout the native code.  These flags are generally specific to
 // the decoder, and are made available when the decoder is initialized.
 message DecoderExperimentParams {
   reserved 1;
-
-  optional int32 mobile_history_prediction_size = 2;
 
   enum VariationCharacterType {
     NO_VARIATION = 0;
@@ -636,13 +634,25 @@ message DecoderExperimentParams {
     // Filter all bigram candidates.
     FILTER_ALL = 2;
   }
-  optional int32 bigram_nwp_filtering_mode = 106 [default = 0];
 
   // Threshold for suffix NWP transition cost.
   // If the transition cost is greater than this value, the candidate will be
   // filtered.
   // The candidate will not be filtered if this value is zero.
   optional int32 suffix_nwp_transition_cost_threshold = 107 [default = 0];
+
+  // How many initial LRU entries to look up.
+  // We use a simple linear-search on LRU.
+  // When zero, default value (3000) is used.
+  optional int32 user_history_max_suggestion_trial = 108 [ default = 0];
+
+  // The maximum lifetime of the entries.
+  // When zero, default value (62) is used.
+  optional int32 user_history_entry_lifetime_days = 109 [ default = 0];
+
+  // The maximum size of entries actually saved to disk.
+  // When zero, store all entries in the on-memory LRU.
+  optional int32 user_history_cache_store_size = 110 [ default = 0];
 }
 
 // Clients' request to the server.
