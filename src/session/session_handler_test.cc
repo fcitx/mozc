@@ -142,23 +142,19 @@ class SessionHandlerTest : public SessionHandlerTestBase {
   SessionHandlerTest() {
     const std::string mock_path =
         testing::GetSourcePath({"data_manager", "testing", "mock_mozc.data"});
-    mock_request_.set_engine_type(EngineReloadRequest::MOBILE);
     mock_request_.set_file_path(mock_path);
     mock_request_.set_magic_number(kMockMagicNumber);
 
     const std::string oss_path =
         testing::GetSourcePath({"data_manager", "oss", "mozc.data"});
-    oss_request_.set_engine_type(EngineReloadRequest::MOBILE);
     oss_request_.set_file_path(oss_path);
     oss_request_.set_magic_number(kOssMagicNumber);
 
     const std::string invalid_path =
         testing::GetSourcePath({"data_manager", "invalid", "mozc.data"});
-    invalid_path_request_.set_engine_type(EngineReloadRequest::MOBILE);
     invalid_path_request_.set_file_path(invalid_path);
     invalid_path_request_.set_magic_number(kOssMagicNumber);
 
-    invalid_data_request_.set_engine_type(EngineReloadRequest::MOBILE);
     invalid_data_request_.set_file_path(mock_path);
     invalid_data_request_.set_magic_number(kOssMagicNumber);
 
@@ -185,6 +181,15 @@ class SessionHandlerTest : public SessionHandlerTestBase {
   void TearDown() override {
     Clock::SetClockForUnitTest(nullptr);
     SessionHandlerTestBase::TearDown();
+  }
+
+  void ClearState() override {
+    if (handler_) {
+      commands::Command command;
+      command.mutable_input()->set_type(commands::Input::CLEAR_USER_PREDICTION);
+      handler_->EvalCommand(&command);
+    }
+    SessionHandlerTestBase::ClearState();
   }
 
   static std::unique_ptr<Engine> CreateMockDataEngine() {

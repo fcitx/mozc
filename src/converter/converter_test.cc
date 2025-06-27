@@ -68,11 +68,9 @@
 #include "engine/engine.h"
 #include "engine/mock_data_engine_factory.h"
 #include "engine/modules.h"
-#include "prediction/dictionary_predictor.h"
 #include "prediction/predictor.h"
 #include "prediction/predictor_interface.h"
 #include "prediction/result.h"
-#include "prediction/user_history_predictor.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "protocol/user_dictionary_storage.pb.h"
@@ -107,12 +105,9 @@ using ::mozc::dictionary::MockUserDictionary;
 using ::mozc::dictionary::PosMatcher;
 using ::mozc::dictionary::Token;
 using ::mozc::dictionary::UserDictionary;
-using ::mozc::prediction::DesktopPredictor;
-using ::mozc::prediction::DictionaryPredictor;
-using ::mozc::prediction::MobilePredictor;
+using ::mozc::prediction::Predictor;
 using ::mozc::prediction::PredictorInterface;
 using ::mozc::prediction::Result;
-using ::mozc::prediction::UserHistoryPredictor;
 using ::testing::_;
 using ::testing::AnyNumber;
 using ::testing::Return;
@@ -275,39 +270,8 @@ class ConverterTest : public testing::TestWithTempUserProfile {
     if (predictor_type == STUB_PREDICTOR) {
       return std::make_unique<StubPredictor>();
     }
-
-    std::function<std::unique_ptr<PredictorInterface>(
-        std::unique_ptr<PredictorInterface>,
-        std::unique_ptr<PredictorInterface>, const ConverterInterface &)>
-        predictor_factory = nullptr;
-    switch (predictor_type) {
-      case DEFAULT_PREDICTOR:
-        predictor_factory = DesktopPredictor::CreateDesktopPredictor;
-        break;
-      case MOBILE_PREDICTOR:
-        predictor_factory = MobilePredictor::CreateMobilePredictor;
-        break;
-      default:
-        LOG(ERROR) << "Should not come here: Invalid predictor type.";
-        predictor_factory = DesktopPredictor::CreateDesktopPredictor;
-        break;
-    }
-
-    // Create a predictor with three sub-predictors, dictionary predictor, user
-    // history predictor, and extra predictor.
-    auto dictionary_predictor = std::make_unique<DictionaryPredictor>(
-        modules, converter, immutable_converter);
-    CHECK(dictionary_predictor);
-
-    auto user_history_predictor =
-        std::make_unique<UserHistoryPredictor>(modules);
-    CHECK(user_history_predictor);
-
-    auto ret_predictor =
-        predictor_factory(std::move(dictionary_predictor),
-                          std::move(user_history_predictor), converter);
-    CHECK(ret_predictor);
-    return ret_predictor;
+    return std::make_unique<prediction::Predictor>(modules, converter,
+                                                   immutable_converter);
   }
 
   // Initializes Converter with mock data set using given |user_dictionary|.
@@ -375,9 +339,8 @@ class ConverterTest : public testing::TestWithTempUserProfile {
                            predictor_type);
   }
 
-  std::unique_ptr<Engine> CreateEngineWithMobilePredictor() {
-    return Engine::CreateMobileEngine(
-               std::make_unique<testing::MockDataManager>())
+  std::unique_ptr<Engine> CreateEngine() {
+    return Engine::CreateEngine(std::make_unique<testing::MockDataManager>())
         .value();
   }
 
@@ -936,7 +899,7 @@ TEST_F(ConverterTest, StartPartialSuggestion) {
 }
 
 TEST_F(ConverterTest, StartPartialPredictionMobile) {
-  std::unique_ptr<Engine> engine = CreateEngineWithMobilePredictor();
+  std::unique_ptr<Engine> engine = CreateEngine();
   std::shared_ptr<const ConverterInterface> converter = engine->GetConverter();
   CHECK(converter);
   Segments segments;
@@ -950,7 +913,7 @@ TEST_F(ConverterTest, StartPartialPredictionMobile) {
 }
 
 TEST_F(ConverterTest, StartPartialSuggestionMobile) {
-  std::unique_ptr<Engine> engine = CreateEngineWithMobilePredictor();
+  std::unique_ptr<Engine> engine = CreateEngine();
   std::shared_ptr<const ConverterInterface> converter = engine->GetConverter();
   CHECK(converter);
   Segments segments;
@@ -1096,10 +1059,8 @@ TEST_F(ConverterTest, VariantExpansionForSuggestion) {
       },
       [](const engine::Modules &modules, const ConverterInterface &converter,
          const ImmutableConverterInterface &immutable_converter) {
-        return DesktopPredictor::CreateDesktopPredictor(
-            std::make_unique<DictionaryPredictor>(modules, converter,
-                                                  immutable_converter),
-            std::make_unique<UserHistoryPredictor>(modules), converter);
+        return std::make_unique<prediction::Predictor>(modules, converter,
+                                                       immutable_converter);
       },
       [](const engine::Modules &modules) {
         return std::make_unique<Rewriter>(modules);
@@ -1657,7 +1618,7 @@ TEST_F(ConverterTest, SuggestionOnlyShouldBeIndependentPrediction) {
 }
 
 TEST_F(ConverterTest, RewriterShouldRespectDefaultCandidates) {
-  std::unique_ptr<Engine> engine = CreateEngineWithMobilePredictor();
+  std::unique_ptr<Engine> engine = CreateEngine();
   std::shared_ptr<const ConverterInterface> converter = engine->GetConverter();
   CHECK(converter);
 
@@ -1721,7 +1682,7 @@ TEST_F(ConverterTest, RewriterShouldRespectDefaultCandidates) {
 
 TEST_F(ConverterTest,
        DoNotPromotePrefixOfSingleEntryForEnrichPartialCandidates) {
-  std::unique_ptr<Engine> engine = CreateEngineWithMobilePredictor();
+  std::unique_ptr<Engine> engine = CreateEngine();
   std::shared_ptr<const ConverterInterface> converter = engine->GetConverter();
   CHECK(converter);
 
@@ -1755,7 +1716,7 @@ TEST_F(ConverterTest,
 }
 
 TEST_F(ConverterTest, DoNotAddOverlappingNodesForPrediction) {
-  std::unique_ptr<Engine> engine = CreateEngineWithMobilePredictor();
+  std::unique_ptr<Engine> engine = CreateEngine();
   std::shared_ptr<const ConverterInterface> converter = engine->GetConverter();
   CHECK(converter);
   commands::Request request;

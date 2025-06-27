@@ -31,7 +31,7 @@
 //
 // Usage:
 // session_handler_main --input input.txt --profile /tmp/mozc
-//                      --dictionary oss --engine desktop
+//                      --dictionary oss
 //
 // session_handler_main --test --input input.txt --profile /tmp/mozc
 //
@@ -67,9 +67,10 @@ SHOW_LOG_BY_VALUE       ございました
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
 #include "base/file_stream.h"
+#include "base/file_util.h"
 #include "base/init_mozc.h"
+#include "base/protobuf/message.h"
 #include "base/system_util.h"
 #include "data_manager/oss/oss_data_manager.h"
 #include "data_manager/testing/mock_data_manager.h"
@@ -82,7 +83,6 @@ ABSL_DECLARE_FLAG(bool, use_history_rewriter);
 
 ABSL_FLAG(std::string, input, "", "Input file. ");
 ABSL_FLAG(std::string, profile, "", "User profile directory");
-ABSL_FLAG(std::string, engine, "", "Conversion engine: 'mobile' or 'desktop'");
 ABSL_FLAG(std::string, dictionary, "", "Dictionary: 'oss' or 'test'");
 ABSL_FLAG(bool, test, false, "Run as a test and quit.");
 
@@ -125,30 +125,28 @@ bool ParseLine(session::SessionHandlerInterpreter &handler, std::string line,
   const std::string &command = args[0];
 
   if (command == "SHOW_ALL") {
-    std::cout << absl::StrCat(handler.LastOutput()) << std::endl;
+    std::cout << protobuf::Utf8Format(handler.LastOutput()) << std::endl;
     return true;
   }
   if (command == "SHOW_OUTPUT") {
     commands::Output output = handler.LastOutput();
     output.mutable_removed_candidate_words_for_debug()->Clear();
-    std::cout << absl::StrCat(output.Utf8DebugString()) << std::endl;
+    std::cout << protobuf::Utf8Format(output) << std::endl;
     return true;
   }
   if (command == "SHOW_RESULT") {
     const commands::Output &output = handler.LastOutput();
-    std::cout << absl::StrCat(output.result().Utf8DebugString()) << std::endl;
+    std::cout << protobuf::Utf8Format(output.result()) << std::endl;
     return true;
   }
   if (command == "SHOW_CANDIDATES") {
-    std::cout << absl::StrCat(
-                     handler.LastOutput().candidate_window().Utf8DebugString())
+    std::cout << protobuf::Utf8Format(handler.LastOutput().candidate_window())
               << std::endl;
     return true;
   }
   if (command == "SHOW_REMOVED_CANDIDATES") {
-    std::cout << absl::StrCat(handler.LastOutput()
-                                  .removed_candidate_words_for_debug()
-                                  .Utf8DebugString())
+    std::cout << protobuf::Utf8Format(
+                     handler.LastOutput().removed_candidate_words_for_debug())
               << std::endl;
     return true;
   }
@@ -206,17 +204,8 @@ std::unique_ptr<const DataManager> CreateDataManager(
 }
 
 absl::StatusOr<std::unique_ptr<Engine>> CreateEngine(
-    const std::string &engine, const std::string &dictionary) {
-  if (engine == "desktop") {
-    return Engine::CreateDesktopEngine(CreateDataManager(dictionary));
-  }
-  if (engine == "mobile") {
-    return Engine::CreateMobileEngine(CreateDataManager(dictionary));
-  }
-  if (!engine.empty()) {
-    std::cout << "ERROR: Unknown engine name: " << engine << std::endl;
-  }
-  return Engine::CreateMobileEngine(CreateDataManager(dictionary));
+    const std::string &dictionary) {
+  return Engine::CreateEngine(CreateDataManager(dictionary));
 }
 
 }  // namespace mozc
@@ -224,23 +213,25 @@ absl::StatusOr<std::unique_ptr<Engine>> CreateEngine(
 int main(int argc, char **argv) {
   mozc::InitMozc(argv[0], &argc, &argv);
   if (!absl::GetFlag(FLAGS_profile).empty()) {
-    mozc::SystemUtil::SetUserProfileDirectory(absl::GetFlag(FLAGS_profile));
+    const std::string profile = absl::GetFlag(FLAGS_profile);
+    if (!mozc::FileUtil::CreateDirectory(profile).ok()) {
+      std::cout << "ERROR: Failed to create profile directory: " << profile
+                << std::endl;
+      return 1;
+    }
+    mozc::SystemUtil::SetUserProfileDirectory(profile);
   }
 
-  std::string engine_name = absl::GetFlag(FLAGS_engine);
   std::string dictionary_name = absl::GetFlag(FLAGS_dictionary);
   const bool is_test = absl::GetFlag(FLAGS_test);
   if (is_test) {
     absl::SetFlag(&FLAGS_use_history_rewriter, true);
-    if (engine_name.empty()) {
-      engine_name = "desktop";
-    }
     if (dictionary_name.empty()) {
       dictionary_name = "mock";
     }
   }
 
-  auto engine = mozc::CreateEngine(engine_name, dictionary_name);
+  auto engine = mozc::CreateEngine(dictionary_name);
   if (!engine.ok()) {
     std::cout << "engine init error" << std::endl;
     return 1;
