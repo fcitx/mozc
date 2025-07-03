@@ -138,7 +138,7 @@ bool HasHistoryKeyLongerThanOrEqualTo(const ConversionRequest &request,
 
 bool IsLongKeyForRealtimeCandidates(const ConversionRequest &request) {
   constexpr int kFewResultThreshold = 8;
-  return Util::CharsLen(request.converter_key()) >= kFewResultThreshold;
+  return Util::CharsLen(request.key()) >= kFewResultThreshold;
 }
 
 // Returns true if |segments| contains number history.
@@ -550,7 +550,7 @@ DictionaryPredictionAggregator::AggregateResultsForMixedConversion(
   DCHECK(IsMixedConversionEnabled(request));
 
   std::vector<Result> results;
-  absl::string_view key = request.converter_key();
+  absl::string_view key = request.key();
 
   // Zero query prediction.
   if (request.IsZeroQuerySuggestion()) {
@@ -617,7 +617,7 @@ std::vector<Result> DictionaryPredictionAggregator::AggregateResultsForDesktop(
 
   std::vector<Result> results;
 
-  absl::string_view key = request.converter_key();
+  absl::string_view key = request.key();
 
   if (request.request_type() == ConversionRequest::SUGGESTION &&
       (!request.config().use_dictionary_suggest() || IsZipCodeRequest(key))) {
@@ -679,12 +679,12 @@ std::vector<Result> DictionaryPredictionAggregator::
     ConversionRequest::Options options = request.options();
     options.kana_modifier_insensitive_conversion = false;
     options.use_already_typing_corrected_key = true;
-    options.key = key;
     const ConversionRequest corrected_request =
         ConversionRequestBuilder()
             .SetConversionRequestView(request)
             .SetOptions(std::move(options))
             .SetHistorySegmentsView(corrected_segments)
+            .SetKey(key)
             .Build();
 
     std::vector<Result> corrected_results;
@@ -743,7 +743,7 @@ void DictionaryPredictionAggregator::AggregateUnigram(
   DCHECK(min_unigram_key_len);
   *min_unigram_key_len = 0;
 
-  const size_t key_len = Util::CharsLen(request.converter_key());
+  const size_t key_len = Util::CharsLen(request.key());
   if (key_len == 0) {
     return;
   }
@@ -1118,7 +1118,7 @@ void DictionaryPredictionAggregator::AggregateEnglish(
   const ResultsSizeAdjuster adjuster(request, results);
 
   GetPredictiveResultsForEnglishKey(dictionary_, request,
-                                    request.converter_key(), ENGLISH,
+                                    request.key(), ENGLISH,
                                     adjuster.cutoff_threshold(), results);
 }
 
@@ -1188,9 +1188,10 @@ void DictionaryPredictionAggregator::AggregateSingleKanji(
     const ConversionRequest &request, std::vector<Result> *results) const {
   DCHECK(results);
 
-  for (Result &result :
-       modules_.GetSingleKanjiPredictionAggregator().AggregateResults(
-           request)) {
+  const SingleKanjiPredictionAggregator aggregator(
+      modules_.GetPosMatcher(), modules_.GetSingleKanjiDictionary());
+
+  for (Result &result : aggregator.AggregateResults(request)) {
     results->emplace_back(std::move(result));
   }
 }
@@ -1201,7 +1202,7 @@ void DictionaryPredictionAggregator::GetPredictiveResultsForUnigram(
     std::vector<Result> *results) const {
   const absl::btree_set<std::string> empty_expanded;
   if (request.use_already_typing_corrected_key()) {
-    absl::string_view input_key = request.converter_key();
+    absl::string_view input_key = request.key();
     PredictiveLookupCallback callback(types, lookup_limit, input_key.size(),
                                       empty_expanded, zip_code_id_, unknown_id_,
                                       results);
@@ -1385,7 +1386,7 @@ size_t DictionaryPredictionAggregator::GetRealtimeCandidateMaxSize(
          request_type == ConversionRequest::SUGGESTION ||
          request_type == ConversionRequest::PARTIAL_PREDICTION ||
          request_type == ConversionRequest::PARTIAL_SUGGESTION);
-  if (request.converter_key().empty()) {
+  if (request.key().empty()) {
     return 0;
   }
   if (request_util::IsHandwriting(request)) {
@@ -1653,7 +1654,7 @@ void DictionaryPredictionAggregator::CheckBigramResult(
 bool DictionaryPredictionAggregator::ShouldAggregateRealTimeConversionResults(
     const ConversionRequest &request) {
   constexpr size_t kMaxRealtimeKeySize = 300;  // 300 bytes in UTF8
-  absl::string_view key = request.converter_key();
+  absl::string_view key = request.key();
   if (key.empty() || key.size() >= kMaxRealtimeKeySize) {
     // 1) If key is empty, realtime conversion doesn't work.
     // 2) If the key is too long, we'll hit a performance issue.

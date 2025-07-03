@@ -34,6 +34,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -154,16 +155,13 @@ class ConversionRequest {
     // of possible hiragana.
   };
 
+  // Options must be trivially copyable to get hash value directly.
   struct Options {
     RequestType request_type = CONVERSION;
 
     // Which composer's method to use for conversion key; see the comment around
     // the definition of ComposerKeySelection above.
     ComposerKeySelection composer_key_selection = CONVERSION_KEY;
-
-    // Key used for conversion.
-    // This is typically a Hiragana text to be converted to Kanji words.
-    std::string key;
 
     int max_conversion_candidates_size = kMaxConversionCandidatesSize;
     int max_user_history_prediction_candidates_size = 3;
@@ -202,6 +200,9 @@ class ConversionRequest {
     // the incognito_mode per client request.
     bool incognito_mode = false;
   };
+
+  static_assert(std::is_trivially_copyable<Options>::value,
+                "Options must be trivially copyable");
 
   // Default constructor stores the view.
   // All default variable returns global reference.
@@ -264,15 +265,7 @@ class ConversionRequest {
            options_.kana_modifier_insensitive_conversion;
   }
 
-  bool IsZeroQuerySuggestion() const {
-    // Checks segments_ first for compatibility.
-    if (segments_) {
-      return segments_->conversion_segments_size() == 0 ||
-             (segments_->conversion_segments_size() > 0 &&
-              segments_->conversion_segment(0).key().empty());
-    }
-    return key().empty();
-  }
+  bool IsZeroQuerySuggestion() const { return key().empty(); }
 
   size_t max_conversion_candidates_size() const {
     return options_.max_conversion_candidates_size;
@@ -302,21 +295,7 @@ class ConversionRequest {
            request_->is_incognito_mode();
   }
 
-  absl::string_view key() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return options_.key;
-  }
-
-  // Temporal API to return conversion key (conversion_segment(0).key()).
-  // Since converter sets request.key() to conversion_segment.key(),
-  // conversion_key() must be the same as key().
-  // TODO(b/409183257): remove this API. Uses always key().
-  absl::string_view converter_key() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    if (segments_ && segments_->conversion_segments_size() > 0) {
-      DCHECK_EQ(key(), segments_->conversion_segment(0).key());
-      return segments_->conversion_segment(0).key();
-    }
-    return key();
-  }
+  absl::string_view key() const ABSL_ATTRIBUTE_LIFETIME_BOUND { return key_; }
 
   // Takes the last `size` history key. return all key when size = -1.
   std::string converter_history_key(int size = -1) const {
@@ -432,6 +411,10 @@ class ConversionRequest {
 
   // Options for conversion request.
   Options options_;
+
+  // Key used for conversion.
+  // This is typically a Hiragana text to be converted to Kanji words.
+  std::string key_;
 };
 
 class ConversionRequestBuilder {
@@ -441,8 +424,8 @@ class ConversionRequestBuilder {
     // NOTE: Specifying Composer is preferred over specifying key directly.
     DCHECK_LE(stage_, 3);
     stage_ = 100;
-    if (request_.options_.key.empty()) {
-      request_.options_.key =
+    if (request_.key_.empty()) {
+      request_.key_ =
           GetKey(*request_.composer_data_, request_.options_.request_type,
                  request_.options_.composer_key_selection);
     }
@@ -462,6 +445,7 @@ class ConversionRequestBuilder {
     request_.config_ = base_convreq.config_;
     request_.segments_ = base_convreq.segments_;
     request_.options_ = base_convreq.options_;
+    request_.key_ = base_convreq.key_;
     return *this;
   }
   ConversionRequestBuilder &SetConversionRequestView(
@@ -474,6 +458,7 @@ class ConversionRequestBuilder {
     request_.context_.set_view(*base_convreq.context_);
     request_.config_.set_view(*base_convreq.config_);
     request_.options_ = base_convreq.options_;
+    request_.key_ = base_convreq.key_;
     if (base_convreq.segments_) {
       request_.segments_.set_view(*base_convreq.segments_);
     }
@@ -567,7 +552,7 @@ class ConversionRequestBuilder {
   ConversionRequestBuilder &SetKey(absl::string_view key) {
     DCHECK_LE(stage_, 3);
     stage_ = 3;
-    strings::Assign(request_.options_.key, key);
+    strings::Assign(request_.key_, key);
     return *this;
   }
 

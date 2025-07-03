@@ -139,6 +139,12 @@ TEST(ConversionRequestTest, SetKeyTest) {
                                               .SetKey("foo")
                                               .Build();
   EXPECT_EQ("foo", conversion_request2.key());
+
+  ConversionRequest conversion_request3 =
+      ConversionRequestBuilder()
+          .SetConversionRequestView(conversion_request2)
+          .Build();
+  EXPECT_EQ("foo", conversion_request3.key());
 }
 
 TEST(ConversionRequestTest, SetHistorySegmentsTest) {
@@ -223,60 +229,9 @@ TEST(ConversionRequestTest, SetHistorySegmentsTest) {
 }
 
 TEST(ConversionRequestTest, IsZeroQuerySuggestionTest) {
-  // Segments are not set => use key().
   EXPECT_TRUE(ConversionRequestBuilder().Build().IsZeroQuerySuggestion());
   EXPECT_FALSE(
       ConversionRequestBuilder().SetKey("key").Build().IsZeroQuerySuggestion());
-
-  // Segments are specified => use segments.key()
-  Segments segments;
-  segments.InitForConvert("");
-  EXPECT_TRUE(ConversionRequestBuilder()
-                  .SetHistorySegmentsView(segments)
-                  .Build()
-                  .IsZeroQuerySuggestion());
-
-  EXPECT_TRUE(ConversionRequestBuilder()
-                  .SetHistorySegmentsView(segments)
-                  .SetKey("key")
-                  .Build()
-                  .IsZeroQuerySuggestion());
-
-  segments.InitForConvert("key");
-  EXPECT_FALSE(ConversionRequestBuilder()
-                   .SetHistorySegmentsView(segments)
-                   .SetKey("")
-                   .Build()
-                   .IsZeroQuerySuggestion());
-
-  EXPECT_FALSE(ConversionRequestBuilder()
-                   .SetHistorySegmentsView(segments)
-                   .SetKey("key")
-                   .Build()
-                   .IsZeroQuerySuggestion());
-}
-
-TEST(ConversionRequestTest, ConverterKeyTest) {
-  EXPECT_EQ(ConversionRequestBuilder().SetKey("foo").Build().converter_key(),
-            "foo");
-  EXPECT_EQ(ConversionRequestBuilder().Build().converter_key(), "");
-
-  Segments segments;
-  segments.InitForConvert("bar");
-  EXPECT_EQ(ConversionRequestBuilder()
-                .SetHistorySegmentsView(segments)
-                .SetKey("bar")  // key must be the same as Segment key.
-                .Build()
-                .converter_key(),
-            "bar");
-
-#ifdef NDEBUG
-  EXPECT_EQ(ConversionRequestBuilder()
-                .SetHistorySegmentsView(segments)
-                .Build()
-                .converter_key(),
-            "bar");
-#endif  // NDEBUG
 }
 
 TEST(ConversionRequestTest, IncognitoModeTest) {
