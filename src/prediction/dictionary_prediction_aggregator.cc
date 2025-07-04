@@ -40,6 +40,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -66,7 +67,7 @@
 #include "engine/supplemental_model_interface.h"
 #include "prediction/number_decoder.h"
 #include "prediction/result.h"
-#include "prediction/single_kanji_prediction_aggregator.h"
+#include "prediction/single_kanji_decoder.h"
 #include "prediction/zero_query_dict.h"
 #include "protocol/commands.pb.h"
 #include "request/conversion_request.h"
@@ -532,7 +533,6 @@ DictionaryPredictionAggregator::DictionaryPredictionAggregator(
       counter_suffix_word_id_(modules.GetPosMatcher().GetCounterSuffixWordId()),
       kanji_number_id_(modules.GetPosMatcher().GetKanjiNumberId()),
       zip_code_id_(modules.GetPosMatcher().GetZipcodeId()),
-      number_id_(modules.GetPosMatcher().GetNumberId()),
       unknown_id_(modules.GetPosMatcher().GetUnknownId()),
       zero_query_dict_(modules.GetZeroQueryDict()),
       zero_query_number_dict_(modules.GetZeroQueryNumberDict()) {}
@@ -1117,9 +1117,9 @@ void DictionaryPredictionAggregator::AggregateEnglish(
 
   const ResultsSizeAdjuster adjuster(request, results);
 
-  GetPredictiveResultsForEnglishKey(dictionary_, request,
-                                    request.key(), ENGLISH,
-                                    adjuster.cutoff_threshold(), results);
+  GetPredictiveResultsForEnglishKey(dictionary_, request, request.key(),
+                                    ENGLISH, adjuster.cutoff_threshold(),
+                                    results);
 }
 
 void DictionaryPredictionAggregator::AggregateEnglishUsingRawInput(
@@ -1136,31 +1136,9 @@ void DictionaryPredictionAggregator::AggregateEnglishUsingRawInput(
 void DictionaryPredictionAggregator::AggregateNumber(
     const ConversionRequest &request, std::vector<Result> *results) const {
   DCHECK(results);
-
-  // NumberDecoder decoder;
-  absl::string_view input_key = request.key();
-
-  for (const auto &decode_result : number_decoder_.Decode(input_key)) {
-    Result result;
-    const bool is_arabic =
-        Util::GetScriptType(decode_result.candidate) == Util::NUMBER;
-    result.types = PredictionType::NUMBER;
-    result.key = input_key.substr(0, decode_result.consumed_key_byte_len);
-    result.value = std::move(decode_result.candidate);
-    result.candidate_attributes |= converter::Candidate::NO_SUGGEST_LEARNING;
-    // Heuristic cost:
-    // Large digit number (1億, 1兆, etc) should have larger cost
-    // 1000 ~= 500 * log(10)
-    result.wcost = 1000 * (1 + decode_result.digit_num);
-    result.lid = is_arabic ? number_id_ : kanji_number_id_;
-    result.rid = is_arabic ? number_id_ : kanji_number_id_;
-    if (decode_result.consumed_key_byte_len < input_key.size()) {
-      result.candidate_attributes |=
-          converter::Candidate::PARTIALLY_KEY_CONSUMED;
-      result.consumed_key_size = Util::CharsLen(result.key);
-    }
-    results->emplace_back(std::move(result));
-  }
+  std::vector<Result> number_results =
+      NumberDecoder(modules_.GetPosMatcher()).Decode(request);
+  absl::c_move(number_results, std::back_inserter(*results));
 }
 
 void DictionaryPredictionAggregator::AggregatePrefix(
@@ -1188,12 +1166,11 @@ void DictionaryPredictionAggregator::AggregateSingleKanji(
     const ConversionRequest &request, std::vector<Result> *results) const {
   DCHECK(results);
 
-  const SingleKanjiPredictionAggregator aggregator(
-      modules_.GetPosMatcher(), modules_.GetSingleKanjiDictionary());
-
-  for (Result &result : aggregator.AggregateResults(request)) {
-    results->emplace_back(std::move(result));
-  }
+  const std::vector<Result> single_kaji_results =
+      SingleKanjiDecoder(modules_.GetPosMatcher(),
+                         modules_.GetSingleKanjiDictionary())
+          .Decode(request);
+  absl::c_move(single_kaji_results, std::back_inserter(*results));
 }
 
 void DictionaryPredictionAggregator::GetPredictiveResultsForUnigram(
