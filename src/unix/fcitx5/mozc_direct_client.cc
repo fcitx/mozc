@@ -26,8 +26,8 @@ namespace fcitx {
 namespace {
 
 std::unique_ptr<mozc::SessionHandler> CreateSessionHandler() {
-  auto engine = mozc::Engine::CreateDesktopEngine(
-      std::make_unique<mozc::oss::OssDataManager>());
+  auto engine =
+      mozc::Engine::CreateEngine(std::make_unique<mozc::oss::OssDataManager>());
   DCHECK_OK(engine);
   auto result =
       std::make_unique<mozc::SessionHandler>(std::move(engine.value()));
