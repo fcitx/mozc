@@ -40,7 +40,9 @@ load(
     "//:config.bzl",
     "BRANDING",
     "MACOS_BUNDLE_ID_PREFIX",
-    "MACOS_CODESIGN_IDENTITY",
+    "MACOS_CODESIGN_IDENTITY_PSEUDO",
+    "MACOS_CODESIGN_IDENTITY_RELEASE",
+    "MACOS_CODESIGN_IDENTITY_TESTING",
 )
 
 package(default_visibility = ["//visibility:private"])
@@ -52,33 +54,31 @@ BUILD_TYPE_SELECT = select({
     "//conditions:default": "stable",
 })
 
+# CODESIGN_IDENTITY_SELECT is treated as a function. This cannot be a value of join().
+# `--define CODESIGN=testing` is the command line option to select testing codesign.
+CODESIGN_IDENTITY_SELECT = select({
+    "//:codesign_release": MACOS_CODESIGN_IDENTITY_RELEASE,
+    "//:codesign_testing": MACOS_CODESIGN_IDENTITY_TESTING,
+    "//conditions:default": MACOS_CODESIGN_IDENTITY_PSEUDO,
+})
+
 mozc_macos_application(
     name = "mozc_macos",
     additional_contents = mozc_select(
         default = {},
+        # macos is used for Google internal build.
         macos = {
             "//renderer:mozc_renderer_macos": "Resources",
             "//server:mozc_server_macos": "Resources",
         },
+        # prod_macos also refers to oss_macos settings.
         oss_macos = {
-            "//gui/about_dialog:about_dialog_macos": (
-                "Resources"
-            ),
-            "//gui/config_dialog:config_dialog_macos": (
-                "Resources"
-            ),
-            "//gui/dictionary_tool:dictionary_tool_macos": (
-                "Resources"
-            ),
-            "//gui/error_message_dialog:error_message_dialog_macos": (
-                "Resources"
-            ),
-            "//gui/tool:mozc_prelauncher_macos": (
-                "Resources"
-            ),
-            "//gui/word_register_dialog:word_register_dialog_macos": (
-                "Resources"
-            ),
+            "//gui/about_dialog:about_dialog_macos": "Resources",
+            "//gui/config_dialog:config_dialog_macos": "Resources",
+            "//gui/dictionary_tool:dictionary_tool_macos": "Resources",
+            "//gui/error_message_dialog:error_message_dialog_macos": "Resources",
+            "//gui/tool:mozc_prelauncher_macos": "Resources",
+            "//gui/word_register_dialog:word_register_dialog_macos": "Resources",
             "//renderer:mozc_renderer_macos": "Resources",
             "//server:mozc_server_macos": "Resources",
         },
@@ -386,8 +386,8 @@ mozc_macos_application(
 genrule(
     name = "tweak_preflight",
     srcs = mozc_select(
-        default = ["installer/preflight_template.sh"],
-        oss = ["installer/preflight_template.sh"],
+        default = ["//mac/installer:preflight_template.sh"],
+        oss = ["//mac/installer:preflight_template.sh"],
     ),
     outs = ["preflight.sh"],
     cmd = " ".join([
@@ -403,8 +403,8 @@ genrule(
 genrule(
     name = "tweak_postflight",
     srcs = mozc_select(
-        default = ["installer/postflight_template.sh"],
-        oss = ["installer/postflight_template.sh"],
+        default = ["//mac/installer:postflight_template.sh"],
+        oss = ["//mac/installer:postflight_template.sh"],
     ),
     outs = ["postflight.sh"],
     cmd = " ".join([
@@ -445,23 +445,23 @@ genrule(
     ) + mozc_select(
         # For macos or oss_macos only
         macos = [
-            "installer/distribution.xml",
-            "installer/InstallerSections.plist",
-            "installer/LaunchAgents/com.google.inputmethod.Japanese.Converter.plist",
-            "installer/LaunchAgents/com.google.inputmethod.Japanese.Renderer.plist",
+            "//mac/installer:distribution.xml",
+            "//mac/installer:InstallerSections.plist",
+            "//mac/installer:LaunchAgents/com.google.inputmethod.Japanese.Converter.plist",
+            "//mac/installer:LaunchAgents/com.google.inputmethod.Japanese.Renderer.plist",
         ],
         oss_macos = [
-            "installer/distribution.xml",
-            "installer/InstallerSections.plist",
-            "installer/LaunchAgents/org.mozc.inputmethod.Japanese.Converter.plist",
-            "installer/LaunchAgents/org.mozc.inputmethod.Japanese.Renderer.plist",
+            "//mac/installer:distribution.xml",
+            "//mac/installer:InstallerSections.plist",
+            "//mac/installer:LaunchAgents/org.mozc.inputmethod.Japanese.Converter.plist",
+            "//mac/installer:LaunchAgents/org.mozc.inputmethod.Japanese.Renderer.plist",
         ],
         prod_macos = [
             "@google_updater//:GoogleUpdater.pkg",
-            "installer/distribution.xml",
-            "installer/InstallerSections.plist",
-            "installer/LaunchAgents/com.google.inputmethod.Japanese.Converter.plist",
-            "installer/LaunchAgents/com.google.inputmethod.Japanese.Renderer.plist",
+            "//mac/installer:distribution.xml",
+            "//mac/installer:InstallerSections.plist",
+            "//mac/installer:LaunchAgents/com.google.inputmethod.Japanese.Converter.plist",
+            "//mac/installer:LaunchAgents/com.google.inputmethod.Japanese.Renderer.plist",
         ],
     ),
     outs = ["installer.zip"],
@@ -490,9 +490,7 @@ genrule(
               oss_macos = " --oss",
               prod_macos = "",
           ) +
-          ' --codesign_identity "' +
-          MACOS_CODESIGN_IDENTITY +
-          '"',
+          ' --codesign_identity "' + CODESIGN_IDENTITY_SELECT + '"',
     # Use local execution instead of sandbox because it uses `codesign` that accesses to keychain.
     local = True,
     tags = ["manual"],
@@ -510,49 +508,10 @@ genrule(
     tools = [":tweak_installer_files"],
 )
 
-# Binary for Packages (i.e. packagesbuild command)
-mozc_py_binary(
-    name = "build_installer",
-    srcs = ["build_installer.py"],
-    test_lib = False,
-    deps = ["//build_tools:util"],
-)
-
-# AUTO_UPDATER_DIR should be replaced with a valid directory.
-AUTO_UPDATER_DIR = "installer/client/mac_universal"  # Placeholder
-
-genrule(
-    name = "installer_oss_macos",
-    srcs = [":tweaked_installer_files"] +
-           mozc_select(
-               oss_macos = ["installer/Mozc_template.pkgproj"],
-               prod_macos = ["installer/Mozc_template.pkgproj"],
-           ),
-    outs = ["Mozc_Packages.pkg"],
-    cmd = " ".join([
-        "$(location :build_installer)",
-        "--input $(location :tweaked_installer_files) --output $@" +
-        "--pkgproj_command" +
-        " $(location //build_tools:tweak_pkgproj)",
-        "--pkgproj_input $(location installer/Mozc_template.pkgproj)",
-        "--pkgproj_output installer.pkgproj",
-        "--version_file" +
-        " $(location //base:mozc_version_txt)",
-        "--auto_updater_dir " + AUTO_UPDATER_DIR,
-        "--build_type ",
-    ]) + BUILD_TYPE_SELECT,  # "dev" or "stable"
-    tags = ["manual"],
-    tools = [
-        ":build_installer",
-        "//base:mozc_version_txt",
-        "//build_tools:tweak_pkgproj",
-    ],
-)
-
 # .keystone_install stored in the installer .dmg file.
 genrule(
     name = "keystone_install",
-    srcs = ["installer/.keystone_install_template"],
+    srcs = ["//mac/installer:.keystone_install_template"],
     outs = [".keystone_install"],
     cmd = " ".join([
         "$(location" +
@@ -629,10 +588,8 @@ genrule(
         "chmod u+w $@ &&",
         "/usr/bin/codesign",
         "--timestamp --options=runtime",  # For notarization
-        '--sign "' + MACOS_CODESIGN_IDENTITY + '"',
         "--keychain login.keychain",
-        "$@",
-    ]),
+    ]) + ' --sign "' + CODESIGN_IDENTITY_SELECT + '"' + " $@",
     exec_compatible_with = ["@platforms//os:macos"],
     # Use local execution instead of sandbox because it uses `codesign` that accesses to keychain.
     local = True,
