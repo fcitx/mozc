@@ -208,7 +208,7 @@ OK:	さいのうをみいだす	才能を見出す	Conversion Expected 2	才能�
 FAILED:	いっぴょう	一瓢	Conversion Expected 2	一票	2.28.4880
 OK:	きそう	競う	Conversion Expected 9	寄贈	2.28.4880
 OK:	なぞめいてて	謎めいてて	Conversion Expected	謎めいてて	2.29.5268
-FAILED:	しょくじをしたにもかかわらず	食事を下にもかかわらず	Conversion Match	食事をした	2.28.5050
+OK:	しょくじをしたにもかかわらず	食事をしたにもかかわらず	Conversion Match	食事をした	2.31.5851
 FAILED:	さんぜんえん	産前円	Conversion Expected 2	三千円	2.28.5050
 OK:	はっせんえん	ハッ千円	Conversion Expected 2	八千円	2.30.5618
 FAILED:	きゅうせんえん	旧千円	Conversion Expected 2	九千円	2.28.4880
@@ -523,3 +523,7 @@ FAILED:	はってん	発展	Conversion Expected 99	8点	2.31.5810
 OK:	はってん	発展	Conversion Expected 99	発展	2.31.5810
 FAILED:	きゅうしゅう	吸収	Conversion Expected 99	9週	2.31.5810
 OK:	きゅうしゅう	吸収	Conversion Expected 99	吸収	2.31.5810
+OK:	せんこう	先行	Conversion Expected 99	閃光	2.31.5851
+OK:	せんこうとともに	先行とともに	Conversion Expected 99	閃光とともに	2.31.5851
+OK:	おふろはいりません	お風呂入りません	Conversion Expected	お風呂入りません	2.31.5851
+FAILED:	おちゃはいりません	お茶入りません	Conversion Expected	お茶はいりません	2.31.5851

@@ -44,6 +44,7 @@
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
@@ -57,7 +58,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "base/bits.h"
 #include "base/clock.h"
 #include "base/config_file_stream.h"
 #include "base/container/freelist.h"
@@ -68,6 +68,7 @@
 #include "base/util.h"
 #include "base/vlog.h"
 #include "composer/composer.h"
+#include "composer/query.h"
 #include "converter/candidate.h"
 #include "dictionary/dictionary_interface.h"
 #include "engine/modules.h"
@@ -270,7 +271,8 @@ bool UserHistoryPredictor::EntryPriorityQueue::Push(Entry *entry) {
   return true;
 }
 
-UserHistoryPredictor::Entry *UserHistoryPredictor::EntryPriorityQueue::Pop() {
+UserHistoryPredictor::Entry *absl_nullable
+UserHistoryPredictor::EntryPriorityQueue::Pop() {
   if (agenda_.empty()) {
     return nullptr;
   }
@@ -1222,8 +1224,8 @@ bool UserHistoryPredictor::ShouldPredict(
   return true;
 }
 
-const UserHistoryPredictor::Entry *UserHistoryPredictor::LookupPrevEntry(
-    const ConversionRequest &request) const {
+const UserHistoryPredictor::Entry *absl_nullable
+UserHistoryPredictor::LookupPrevEntry(const ConversionRequest &request) const {
   // When there are non-zero history segments, lookup an entry
   // from the LRU dictionary, which is corresponding to the last
   // history segment.
@@ -2331,8 +2333,21 @@ void UserHistoryPredictor::MaybeProcessPartialRevertEntry(
         // suffix value/key are same and script type is HIRAGANA.
         ckey_prefix = get_prefix(ckey, cvalue_suffix_len);
       } else {
-        // TODO(taku): Obtain ckey_prefix with char-by-char alignments or
-        // realtime decoder.
+        // Uses the aligner to get the ckey_prefix.
+        // GetReadingAlignment returns the per-char alignment, e.g.
+        // {東京駅, とうきょうえき} -> {{東, とう}, {京, きょう}, {駅, えき}}
+        int32_t key_consumed = 0, value_consumed = 0;
+        for (const auto &[surface, reading] :
+             modules_.GetSupplementalModel().GetReadingAlignment(cvalue,
+                                                                 ckey)) {
+          if (value_consumed > cvalue_prefix.size()) break;
+          if (value_consumed == cvalue_prefix.size()) {
+            ckey_prefix = ckey.substr(0, key_consumed);
+            break;
+          }
+          key_consumed += reading.size();
+          value_consumed += surface.size();
+        }
       }
 
       if (!ckey_prefix.empty() && !cvalue_prefix.empty()) {

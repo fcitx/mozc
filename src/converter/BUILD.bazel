@@ -33,6 +33,7 @@ load(
     "mozc_cc_library",
     "mozc_cc_test",
     "mozc_py_binary",
+    "mozc_select",
     "mozc_select_enable_supplemental_model",
 )
 load("//bazel:stubs.bzl", "bzl_library")
@@ -174,8 +175,6 @@ mozc_cc_library(
     deps = [
         "//data_manager",
         "//storage/louds:simple_succinct_bit_vector_index",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -200,6 +199,7 @@ mozc_cc_test(
         "//testing:mozctest",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -290,13 +290,11 @@ mozc_cc_test(
         ":segments",
         "//base/container:freelist",
         "//data_manager/testing:mock_data_manager",
-        "//dictionary:dictionary_interface",
         "//dictionary:dictionary_mock",
         "//dictionary:pos_matcher",
         "//prediction:suggestion_filter",
         "//protocol:commands_cc_proto",
         "//request:conversion_request",
-        "//request:request_test_util",
         "//testing:gunit_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
@@ -333,6 +331,7 @@ mozc_cc_library(
         ":node_allocator",
         "//base:singleton",
         "//base/strings:unicode",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
@@ -395,6 +394,7 @@ mozc_cc_library(
         "//protocol:config_cc_proto",
         "//request:conversion_request",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -704,6 +704,41 @@ mozc_cc_binary(
         "//supplemental_model:supplemental_model_factory",
         "//supplemental_model:supplemental_model_registration",
     ]),
+)
+
+mozc_cc_binary(
+    name = "immutable_converter_main",
+    testonly = True,
+    srcs = ["immutable_converter_main.cc"],
+    deps = [
+        ":immutable_converter_no_factory",
+        ":lattice",
+        ":node",
+        ":segments",
+        "//base:file_stream",
+        "//base:file_util",
+        "//base:init_mozc",
+        "//base:number_util",
+        "//base:system_util",
+        "//base/container:flat_set",
+        "//data_manager",
+        "//data_manager/oss:oss_data_manager",
+        "//data_manager/testing:mock_data_manager",
+        "//engine:modules",
+        "//request:conversion_request",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ] + mozc_select(
+        default = [
+            "//data_manager/android:android_data_manager",
+            "//data_manager/google:google_data_manager",
+        ],
+        oss = [],
+    ),
 )
 
 mozc_cc_library(
