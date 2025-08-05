@@ -35,9 +35,10 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "converter/candidate.h"
+#include "converter/attribute.h"
 #include "converter/converter_mock.h"
 #include "converter/immutable_converter_interface.h"
+#include "converter/inner_segment.h"
 #include "converter/segments.h"
 #include "prediction/result.h"
 #include "request/conversion_request.h"
@@ -114,13 +115,13 @@ TEST(RealtimeDecoderTest, Decode) {
     segment->set_key("わたしのなまえはなかのです");
     converter::Candidate *candidate = segment->add_candidate();
     candidate->value = "私の名前は中野です";
-    candidate->key = ("わたしのなまえはなかのです");
-    // "わたしの, 私の", "わたし, 私"
-    candidate->PushBackInnerSegmentBoundary(12, 6, 9, 3);
-    // "なまえは, 名前は", "なまえ, 名前"
-    candidate->PushBackInnerSegmentBoundary(12, 9, 9, 6);
-    // "なかのです, 中野です", "なかの, 中野"
-    candidate->PushBackInnerSegmentBoundary(15, 12, 9, 6);
+    candidate->key = "わたしのなまえはなかのです";
+    candidate->inner_segment_boundary = converter::BuildInnerSegmentBoundary(
+        {{12, 6, 9, 3},    // "わたしの, 私の", "わたし, 私"
+         {12, 9, 9, 6},    // "なまえは, 名前は", "なまえ, 名前"
+         {15, 12, 9, 6}},  // "なかのです, 中野です", "なかの, 中野"
+        candidate->key, candidate->value);
+    EXPECT_EQ(candidate->inner_segment_boundary.size(), 3);
     EXPECT_CALL(immutable_converter, ConvertForRequest(_, _))
         .WillRepeatedly(DoAll(SetArgPointee<1>(segments), Return(true)));
   }
@@ -153,7 +154,7 @@ TEST(RealtimeDecoderTest, Decode) {
     EXPECT_EQ(results[0].key, kKey);
     EXPECT_EQ(results[0].inner_segment_boundary.size(), 3);
     EXPECT_TRUE(results[0].candidate_attributes &
-                converter::Candidate::NO_VARIANTS_EXPANSION);
+                converter::Attribute::NO_VARIANTS_EXPANSION);
   }
 
   // A test case with use_actual_converter_for_realtime_conversion being
@@ -184,7 +185,7 @@ TEST(RealtimeDecoderTest, Decode) {
     for (size_t i = 0; i < results.size(); ++i) {
       EXPECT_TRUE(results[i].types & REALTIME);
       EXPECT_TRUE(results[i].candidate_attributes &
-                  converter::Candidate::NO_VARIANTS_EXPANSION);
+                  converter::Attribute::NO_VARIANTS_EXPANSION);
       if (results[i].key == kKey &&
           results[i].value == "WatashinoNamaehaNakanodesu" &&
           results[i].inner_segment_boundary.size() == 3) {

@@ -69,7 +69,7 @@
 #include "base/vlog.h"
 #include "composer/composer.h"
 #include "composer/query.h"
-#include "converter/candidate.h"
+#include "converter/attribute.h"
 #include "dictionary/dictionary_interface.h"
 #include "engine/modules.h"
 #include "prediction/result.h"
@@ -161,9 +161,9 @@ bool IsContentWord(const absl::string_view value) {
 // provided at an appropriate timing and context.
 absl::string_view GetDescription(const Result &result) {
   if (result.candidate_attributes &
-      (converter::Candidate::SPELLING_CORRECTION |
-       converter::Candidate::TYPING_CORRECTION |
-       converter::Candidate::AUTO_PARTIAL_SUGGESTION)) {
+      (converter::Attribute::SPELLING_CORRECTION |
+       converter::Attribute::TYPING_CORRECTION |
+       converter::Attribute::AUTO_PARTIAL_SUGGESTION)) {
     return "";
   }
   return result.description;
@@ -1525,16 +1525,16 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
     result.key = result_entry->key();
     result.value = result_entry->value();
     result.candidate_attributes |=
-        converter::Candidate::USER_HISTORY_PREDICTION |
-        converter::Candidate::NO_VARIANTS_EXPANSION;
+        converter::Attribute::USER_HISTORY_PREDICTION |
+        converter::Attribute::NO_VARIANTS_EXPANSION;
     if (result_entry->spelling_correction()) {
-      result.candidate_attributes |= converter::Candidate::SPELLING_CORRECTION;
+      result.candidate_attributes |= converter::Attribute::SPELLING_CORRECTION;
     }
     absl::string_view description = result_entry->description();
     // If we have stored description, set it exactly.
     if (!description.empty()) {
       result.description = description;
-      result.candidate_attributes |= converter::Candidate::NO_EXTRA_DESCRIPTION;
+      result.candidate_attributes |= converter::Attribute::NO_EXTRA_DESCRIPTION;
     }
     MOZC_WORD_LOG(result, "Added by UserHistoryPredictor::InsertCandidates");
 #if DEBUG
@@ -1765,7 +1765,7 @@ void UserHistoryPredictor::Finish(const ConversionRequest &request,
   last_committed_entries_.reset();
 
   if (results.empty() || results.front().candidate_attributes &
-                             converter::Candidate::NO_SUGGEST_LEARNING) {
+                             converter::Attribute::NO_SUGGEST_LEARNING) {
     MOZC_VLOG(2) << "NO_SUGGEST_LEARNING";
     return;
   }
@@ -1801,23 +1801,16 @@ UserHistoryPredictor::MakeLearningSegments(
 
   auto make_learning_segments = [](const Result &result) {
     std::vector<SegmentForLearning> segments;
-    const bool is_single_segment = result.inner_segment_boundary.size() == 1;
-    if (result.inner_segment_boundary.empty()) {
-      segments.push_back({0, 0, result.key, result.value, result.key,
-                          result.value, GetDescription(result)});
-    } else {
-      for (converter::Candidate::InnerSegmentIterator iter(
-               result.inner_segment_boundary, result.key, result.value);
-           !iter.Done(); iter.Next()) {
-        const int key_begin =
-            std::distance(result.key.data(), iter.GetKey().data());
-        const int value_begin =
-            std::distance(result.value.data(), iter.GetValue().data());
-        segments.push_back({key_begin, value_begin, iter.GetKey(),
-                            iter.GetValue(), iter.GetContentKey(),
-                            iter.GetContentValue(),
-                            is_single_segment ? GetDescription(result) : ""});
-      }
+    const bool is_single_segment = result.inner_segments().size() <= 1;
+    for (const auto &iter : result.inner_segments()) {
+      const int key_begin =
+          std::distance(result.key.data(), iter.GetKey().data());
+      const int value_begin =
+          std::distance(result.value.data(), iter.GetValue().data());
+      segments.push_back({key_begin, value_begin, iter.GetKey(),
+                          iter.GetValue(), iter.GetContentKey(),
+                          iter.GetContentValue(),
+                          is_single_segment ? GetDescription(result) : ""});
     }
     return segments;
   };
