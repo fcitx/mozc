@@ -37,7 +37,6 @@
 #include <tuple>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "base/number_util.h"
@@ -62,11 +61,6 @@ namespace converter {
 class Candidate {
  public:
   Candidate() = default;
-
-  // Allows to refer Attribute via Candidate::XXX
-  // TODO(taku): Remove this alias after full migration.
-  using Attribute = converter::Attribute::Attribute_;
-  using enum converter::Attribute::Attribute_;
 
   enum Command {
     DEFAULT_COMMAND = 0,
@@ -170,11 +164,6 @@ class Candidate {
   // value.substr(content_value.size(), value.size() - content_value.size());
   absl::string_view functional_value() const;
 
-  // inner_segments() always returns valid information, so
-  // IsValid() can return always true.
-  // TODO(taku): Remove this method.
-  ABSL_DEPRECATED("IsValid() always returns true.")
-  bool IsValid() const { return true; }
   std::string DebugString() const;
 
   friend std::ostream &operator<<(std::ostream &os,

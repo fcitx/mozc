@@ -177,36 +177,21 @@ bool ContainsWhiteSpacesOnly(const absl::string_view s) {
 // <number, suffix>
 std::pair<absl::string_view, absl::string_view> DecomposeNumberAndSuffix(
     absl::string_view input) {
-  const char *begin = input.data();
-  const char *end = input.data() + input.size();
-  size_t pos = 0;
-  while (begin < end) {
-    if (IsNumber(*begin)) {
-      ++pos;
-      ++begin;
-    }
-    break;
+  absl::string_view suffix = input;
+  while (!suffix.empty() && IsNumber(suffix.front())) {
+    suffix.remove_prefix(1);
   }
-  return std::make_pair(input.substr(0, pos),
-                        input.substr(pos, input.size() - pos));
+  return std::make_pair(input.substr(0, input.size() - suffix.size()), suffix);
 }
 
 // <prefix, number>
 std::pair<absl::string_view, absl::string_view> DecomposePrefixAndNumber(
     absl::string_view input) {
-  const char *begin = input.data();
-  const char *end = input.data() + input.size() - 1;
-  size_t pos = input.size();
-  while (begin <= end) {
-    if (IsNumber(*end)) {
-      --pos;
-      --end;
-      continue;
-    }
-    break;
+  absl::string_view prefix = input;
+  while (!prefix.empty() && IsNumber(prefix.back())) {
+    prefix.remove_suffix(1);
   }
-  return std::make_pair(input.substr(0, pos),
-                        input.substr(pos, input.size() - pos));
+  return std::make_pair(prefix, input.substr(prefix.size()));
 }
 
 void NormalizeHistorySegments(Segments *segments) {
@@ -402,7 +387,6 @@ void ImmutableConverter::InsertDummyCandidates(Segment *segment,
     new_candidate->attributes = 0;
     // We cannot copy inner_segment_boundary; see b/8109381.
     new_candidate->inner_segment_boundary.clear();
-    DCHECK(new_candidate->IsValid());
     last_candidate = new_candidate;
   }
 
@@ -434,7 +418,6 @@ void ImmutableConverter::InsertDummyCandidates(Segment *segment,
     if (Util::CharsLen(new_candidate->key) <= 1) {
       new_candidate->attributes |= Attribute::CONTEXT_SENSITIVE;
     }
-    DCHECK(new_candidate->IsValid());
   }
 
   // Insert a dummy katakana candidate.
@@ -458,7 +441,6 @@ void ImmutableConverter::InsertDummyCandidates(Segment *segment,
     if (Util::CharsLen(new_candidate->key) <= 1) {
       new_candidate->attributes |= Attribute::CONTEXT_SENSITIVE;
     }
-    DCHECK(new_candidate->IsValid());
   }
 
   DCHECK_GT(segment->candidates_size(), 0);
@@ -1995,8 +1977,8 @@ std::vector<uint16_t> ImmutableConverter::MakeGroup(
   return group;
 }
 
-bool ImmutableConverter::ConvertForRequest(const ConversionRequest &request,
-                                           Segments *segments) const {
+bool ImmutableConverter::Convert(const ConversionRequest &request,
+                                 Segments *segments) const {
   const bool is_prediction =
       (request.request_type() == ConversionRequest::PREDICTION ||
        request.request_type() == ConversionRequest::SUGGESTION);
