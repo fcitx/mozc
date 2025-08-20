@@ -50,27 +50,27 @@ namespace {
 // "んう" -> "んぬ"
 // "んえ" -> "んね"
 // "んお" -> "んの"
-bool RewriteNN(size_t key_pos, const char *begin, const char *end,
-               size_t *mblen, std::string *output) {
+bool RewriteNN(size_t key_pos, absl::string_view prefix, size_t* mblen,
+               std::string* output) {
   if (key_pos == 0) {
     *mblen = 0;
     return false;
   }
 
-  const char32_t codepoint = Util::Utf8ToCodepoint(begin, end, mblen);
+  const char32_t codepoint = Util::Utf8ToCodepoint(prefix, mblen);
   if (codepoint != 0x3093) {  // "ん"
     *mblen = 0;
     return false;
   }
 
-  if (begin + *mblen >= end) {
+  prefix.remove_prefix(*mblen);
+  if (prefix.empty()) {
     *mblen = 0;
     return false;
   }
 
   size_t mblen2 = 0;
-  const uint16_t next_codepoint =
-      Util::Utf8ToCodepoint(begin + *mblen, end, &mblen2);
+  const uint16_t next_codepoint = Util::Utf8ToCodepoint(prefix, &mblen2);
   uint16_t output_codepoint = 0x0000;
   switch (next_codepoint) {
     case 0x3042:                  // "あ"
@@ -109,8 +109,8 @@ bool RewriteNN(size_t key_pos, const char *begin, const char *end,
 // "([^ん])んん[ん]" -> ignore
 // "([^ん])んん[あいうえお]" ->  $1 and leave "ん[あいうえお]"
 // "([^ん])んん[^あいうえお]" -> $1"ん" and leave "[^あいうえお]"
-bool RewriteDoubleNN(size_t key_pos, const char *begin, const char *end,
-                     size_t *mblen, std::string *output) {
+bool RewriteDoubleNN(size_t key_pos, absl::string_view prefix, size_t* mblen,
+                     std::string* output) {
   // 0x3093: "ん"
   static const uint16_t kPattern[] = {0x0000, 0x3093, 0x3093};
 
@@ -118,12 +118,12 @@ bool RewriteDoubleNN(size_t key_pos, const char *begin, const char *end,
   uint16_t first_char = 0x0000;
   size_t first_mblen = 0;
   for (size_t i = 0; i < std::size(kPattern); ++i) {
-    if (begin >= end) {
+    if (prefix.empty()) {
       *mblen = 0;
       return false;
     }
     size_t mblen2 = 0;
-    const char32_t codepoint = Util::Utf8ToCodepoint(begin, end, &mblen2);
+    const char32_t codepoint = Util::Utf8ToCodepoint(prefix, &mblen2);
     if ((kPattern[i] == 0x0000 && codepoint != 0x3093 &&
          Util::GetScriptType(codepoint) == Util::HIRAGANA) ||
         (kPattern[i] == 0x3093 && codepoint == 0x3093)) {
@@ -135,11 +135,11 @@ bool RewriteDoubleNN(size_t key_pos, const char *begin, const char *end,
       *mblen = 0;
       return false;
     }
-    begin += mblen2;
+    prefix.remove_prefix(mblen2);
     *mblen += mblen2;
   }
 
-  if (begin >= end) {
+  if (prefix.empty()) {
     *mblen = 0;
     return false;
   }
@@ -150,7 +150,7 @@ bool RewriteDoubleNN(size_t key_pos, const char *begin, const char *end,
   }
 
   size_t mblen2 = 0;
-  const char32_t codepoint = Util::Utf8ToCodepoint(begin, end, &mblen2);
+  const char32_t codepoint = Util::Utf8ToCodepoint(prefix, &mblen2);
   if (codepoint == 0x3093) {  // "ん" ignore
     *mblen = 0;
     return false;
@@ -176,22 +176,22 @@ bool RewriteDoubleNN(size_t key_pos, const char *begin, const char *end,
 // "にゃ" -> "んや"
 // "にゅ" -> "んゆ"
 // "にょ" -> "んよ"
-bool RewriteNI(size_t key_pos, const char *begin, const char *end,
-               size_t *mblen, std::string *output) {
-  const char32_t codepoint = Util::Utf8ToCodepoint(begin, end, mblen);
+bool RewriteNI(size_t key_pos, absl::string_view prefix, size_t* mblen,
+               std::string* output) {
+  const char32_t codepoint = Util::Utf8ToCodepoint(prefix, mblen);
   if (codepoint != 0x306B) {  // "に"
     *mblen = 0;
     return false;
   }
 
-  if (begin + *mblen >= end) {
+  prefix.remove_prefix(*mblen);
+  if (prefix.empty()) {
     *mblen = 0;
     return false;
   }
 
   size_t mblen2 = 0;
-  const uint16_t next_codepoint =
-      Util::Utf8ToCodepoint(begin + *mblen, end, &mblen2);
+  const uint16_t next_codepoint = Util::Utf8ToCodepoint(prefix, &mblen2);
   uint16_t output_codepoint = 0x0000;
   switch (next_codepoint) {
     case 0x3083:                  // "ゃ"
@@ -223,27 +223,27 @@ bool RewriteNI(size_t key_pos, const char *begin, const char *end,
 
 // "m" Pattern (not BOS)
 // "m[ばびぶべぼぱぴぷぺぽ]" -> "ん[ばびぶべぼぱぴぷぺぽ]"
-bool RewriteM(size_t key_pos, const char *begin, const char *end, size_t *mblen,
-              std::string *output) {
+bool RewriteM(size_t key_pos, absl::string_view prefix, size_t* mblen,
+              std::string* output) {
   if (key_pos == 0) {
     *mblen = 0;
     return false;
   }
-  const char32_t codepoint = Util::Utf8ToCodepoint(begin, end, mblen);
+  const char32_t codepoint = Util::Utf8ToCodepoint(prefix, mblen);
   // "m" or "ｍ" (don't take capitial letter, as "M" might not be a misspelling)
   if (codepoint != 0x006D && codepoint != 0xFF4D) {
     *mblen = 0;
     return false;
   }
 
-  if (begin + *mblen >= end) {
+  prefix.remove_prefix(*mblen);
+  if (prefix.empty()) {
     *mblen = 0;
     return false;
   }
 
   size_t mblen2 = 0;
-  const uint16_t next_codepoint =
-      Util::Utf8ToCodepoint(begin + *mblen, end, &mblen2);
+  const uint16_t next_codepoint = Util::Utf8ToCodepoint(prefix, &mblen2);
   // "[はばぱひびぴふぶぷへべぺほぼぽ]" => [0x306F .. 0X307D]
   // Here we want to take "[は..ぽ]" except for "はひふへほ"
   if (next_codepoint % 3 != 0 &&  // not "はひふへほ"
@@ -264,8 +264,8 @@ bool RewriteM(size_t key_pos, const char *begin, const char *end, size_t *mblen,
 // replace "([^っ])っっ([^っ])" => "$1っ$2"
 // Don't consider more that three "っっっ"
 // e.g., "かっっった" -> "かっっった"
-bool RewriteSmallTSU(size_t key_pos, const char *begin, const char *end,
-                     size_t *mblen, std::string *output) {
+bool RewriteSmallTSU(size_t key_pos, absl::string_view prefix, size_t* mblen,
+                     std::string* output) {
   // 0x0000 is a place holder for "[^っ]"
   // "っ": 0x3063
   static const uint16_t kPattern[] = {0x0000, 0x3063, 0x3063, 0x0000};
@@ -273,12 +273,12 @@ bool RewriteSmallTSU(size_t key_pos, const char *begin, const char *end,
   uint16_t first_char = 0x0000;
   uint16_t last_char = 0x0000;
   for (size_t i = 0; i < std::size(kPattern); ++i) {
-    if (begin >= end) {
+    if (prefix.empty()) {
       *mblen = 0;
       return false;
     }
     size_t mblen2 = 0;
-    const char32_t codepoint = Util::Utf8ToCodepoint(begin, end, &mblen2);
+    const char32_t codepoint = Util::Utf8ToCodepoint(prefix, &mblen2);
     if ((kPattern[i] == 0x0000 && codepoint != 0x3063 &&
          Util::GetScriptType(codepoint) == Util::HIRAGANA) ||
         (kPattern[i] == 0x3063 && codepoint == 0x3063)) {
@@ -291,7 +291,7 @@ bool RewriteSmallTSU(size_t key_pos, const char *begin, const char *end,
       *mblen = 0;
       return false;
     }
-    begin += mblen2;
+    prefix.remove_prefix(mblen2);
     *mblen += mblen2;
   }
 
@@ -315,9 +315,9 @@ bool RewriteSmallTSU(size_t key_pos, const char *begin, const char *end,
 // "にゅ[^う] -> にゅう"
 // "ひゅ[^う] -> ひゅう"
 // "りゅ[^う] -> りゅう"
-bool RewriteYu(size_t key_pos, const char *begin, const char *end,
-               size_t *mblen, std::string *output) {
-  const char32_t first_char = Util::Utf8ToCodepoint(begin, end, mblen);
+bool RewriteYu(size_t key_pos, absl::string_view prefix, size_t* mblen,
+               std::string* output) {
+  const char32_t first_char = Util::Utf8ToCodepoint(prefix, mblen);
   if (first_char != 0x304D && first_char != 0x3057 && first_char != 0x3061 &&
       first_char != 0x306B && first_char != 0x3072 &&
       first_char != 0x308A) {  // !"きしちにひり"
@@ -325,27 +325,27 @@ bool RewriteYu(size_t key_pos, const char *begin, const char *end,
     return false;
   }
 
-  if (begin + *mblen >= end) {
+  prefix.remove_prefix(*mblen);
+  if (prefix.empty()) {
     *mblen = 0;
     return false;
   }
 
   size_t mblen2 = 0;
-  const char32_t next_char =
-      Util::Utf8ToCodepoint(begin + *mblen, end, &mblen2);
+  const char32_t next_char = Util::Utf8ToCodepoint(prefix, &mblen2);
   if (next_char != 0x3085) {  // "ゅ"
     *mblen = 0;
     return false;
   }
 
-  if (begin + *mblen + mblen2 >= end) {
+  prefix.remove_prefix(mblen2);
+  if (prefix.empty()) {
     *mblen = 0;
     return false;
   }
 
   size_t mblen3 = 0;
-  const char32_t last_char =
-      Util::Utf8ToCodepoint(begin + *mblen + mblen2, end, &mblen3);
+  const char32_t last_char = Util::Utf8ToCodepoint(prefix, &mblen3);
   if (last_char == 0x3046) {  // "う"
     *mblen = 0;
     return false;
@@ -375,18 +375,8 @@ size_t KeyCorrector::GetOriginalPosition(const size_t corrected_key_pos) const {
   return kInvalidPos;
 }
 
-void KeyCorrector::Clear() {
-  available_ = false;
-  original_key_.clear();
-  corrected_key_.clear();
-  alignment_.clear();
-  rev_alignment_.clear();
-}
-
-bool KeyCorrector::CorrectKey(absl::string_view key, InputMode mode,
-                              size_t history_size) {
-  Clear();
-
+bool KeyCorrector::Init(absl::string_view key, InputMode mode,
+                        size_t history_size) {
   // TODO(taku)  support KANA
   if (mode == KANA) {
     return false;
@@ -399,22 +389,22 @@ bool KeyCorrector::CorrectKey(absl::string_view key, InputMode mode,
 
   original_key_ = key;
 
-  const char *begin = key.data();
-  const char *end = key.data() + key.size();
-  const char *input_begin = key.data() + history_size;
+  absl::string_view prefix = key;
+  absl::string_view input_begin =
+      prefix.substr(std::min(prefix.size(), history_size));
   size_t key_pos = 0;
 
-  while (begin < end) {
+  while (!prefix.empty()) {
     size_t mblen = 0;
     const size_t org_len = corrected_key_.size();
-    if (begin < input_begin ||
-        (!RewriteDoubleNN(key_pos, begin, end, &mblen, &corrected_key_) &&
-         !RewriteNN(key_pos, begin, end, &mblen, &corrected_key_) &&
-         !RewriteYu(key_pos, begin, end, &mblen, &corrected_key_) &&
-         !RewriteNI(key_pos, begin, end, &mblen, &corrected_key_) &&
-         !RewriteSmallTSU(key_pos, begin, end, &mblen, &corrected_key_) &&
-         !RewriteM(key_pos, begin, end, &mblen, &corrected_key_))) {
-      const char32_t codepoint = Util::Utf8ToCodepoint(begin, end, &mblen);
+    if (prefix.data() < input_begin.data() ||
+        (!RewriteDoubleNN(key_pos, prefix, &mblen, &corrected_key_) &&
+         !RewriteNN(key_pos, prefix, &mblen, &corrected_key_) &&
+         !RewriteYu(key_pos, prefix, &mblen, &corrected_key_) &&
+         !RewriteNI(key_pos, prefix, &mblen, &corrected_key_) &&
+         !RewriteSmallTSU(key_pos, prefix, &mblen, &corrected_key_) &&
+         !RewriteM(key_pos, prefix, &mblen, &corrected_key_))) {
+      const char32_t codepoint = Util::Utf8ToCodepoint(prefix, &mblen);
       Util::CodepointToUtf8Append(codepoint, &corrected_key_);
     }
 
@@ -422,13 +412,12 @@ bool KeyCorrector::CorrectKey(absl::string_view key, InputMode mode,
 
     if (corrected_mblen <= 0 && mblen <= 0) {
       LOG(ERROR) << "Invalid pattern: " << key;
-      Clear();
       return false;
     }
 
     // one to one mapping
     if (mblen == corrected_mblen) {
-      const size_t len = static_cast<size_t>(begin - key.data());
+      const size_t len = static_cast<size_t>(prefix.data() - key.data());
       for (size_t i = 0; i < mblen; ++i) {
         alignment_.push_back(org_len + i);
         rev_alignment_.push_back(len + i);
@@ -439,13 +428,13 @@ bool KeyCorrector::CorrectKey(absl::string_view key, InputMode mode,
       for (size_t i = 1; i < mblen; ++i) {
         alignment_.push_back(kInvalidPos);
       }
-      rev_alignment_.push_back(static_cast<size_t>(begin - key.data()));
+      rev_alignment_.push_back(static_cast<size_t>(prefix.data() - key.data()));
       for (size_t i = 1; i < corrected_mblen; ++i) {
         rev_alignment_.push_back(kInvalidPos);
       }
     }
 
-    begin += mblen;
+    prefix.remove_prefix(mblen);
     ++key_pos;
   }
 
@@ -456,37 +445,30 @@ bool KeyCorrector::CorrectKey(absl::string_view key, InputMode mode,
   return true;
 }
 
-const char *KeyCorrector::GetCorrectedPrefix(const size_t original_key_pos,
-                                             size_t *length) const {
+absl::string_view KeyCorrector::GetCorrectedPrefix(
+    const size_t original_key_pos) const {
   if (!IsAvailable()) {
-    *length = 0;
-    return nullptr;
+    return "";
   }
 
   if (mode_ == KANA) {
-    *length = 0;
-    return nullptr;
+    return "";
   }
 
   const size_t corrected_key_pos = GetCorrectedPosition(original_key_pos);
   if (!IsValidPosition(corrected_key_pos)) {
-    *length = 0;
-    return nullptr;
+    return "";
   }
 
-  const char *corrected_substr = corrected_key_.data() + corrected_key_pos;
-  const size_t corrected_length = corrected_key_.size() - corrected_key_pos;
-  const char *original_substr = original_key_.data() + original_key_pos;
-  const size_t original_length = original_key_.size() - original_key_pos;
-  // substrs are different
-  if (original_length != corrected_length ||
-      memcmp(original_substr, corrected_substr, original_length) != 0) {
-    *length = corrected_length;
+  absl::string_view corrected_substr =
+      absl::string_view(corrected_key_).substr(corrected_key_pos);
+  absl::string_view original_substr =
+      absl::string_view(original_key_).substr(original_key_pos);
+  if (corrected_substr != original_substr) {
     return corrected_substr;
   }
 
-  *length = 0;
-  return nullptr;
+  return "";
 }
 
 size_t KeyCorrector::GetOriginalOffset(const size_t original_key_pos,

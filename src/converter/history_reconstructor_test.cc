@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "converter/attribute.h"
 #include "converter/candidate.h"
 #include "converter/segments.h"
@@ -48,7 +49,7 @@ namespace converter {
 
 class HistoryReconstructorTestPeer : testing::TestPeer<HistoryReconstructor> {
  public:
-  explicit HistoryReconstructorTestPeer(HistoryReconstructor &reconstructor)
+  explicit HistoryReconstructorTestPeer(HistoryReconstructor& reconstructor)
       : testing::TestPeer<HistoryReconstructor>(reconstructor) {}
 
   PEER_METHOD(GetLastConnectivePart);
@@ -141,16 +142,16 @@ TEST(HistoryReconstructorTest, ReconstructHistory) {
   const dictionary::PosMatcher pos_matcher(data_manager.GetPosMatcherData());
   const converter::HistoryReconstructor reconstructor(pos_matcher);
 
-  constexpr char kTen[] = "１０";
+  constexpr absl::string_view kTen = "１０";
 
   Segments segments;
   EXPECT_TRUE(reconstructor.ReconstructHistory(kTen, &segments));
   EXPECT_EQ(segments.segments_size(), 1);
-  const Segment &segment = segments.segment(0);
+  const Segment& segment = segments.segment(0);
   EXPECT_EQ(segment.segment_type(), Segment::HISTORY);
   EXPECT_EQ(segment.key(), "10");
   EXPECT_EQ(segment.candidates_size(), 1);
-  const Candidate &candidate = segment.candidate(0);
+  const Candidate& candidate = segment.candidate(0);
   EXPECT_EQ(candidate.attributes, Attribute::NO_LEARNING);
   EXPECT_EQ(candidate.content_key, "10");
   EXPECT_EQ(candidate.key, "10");
