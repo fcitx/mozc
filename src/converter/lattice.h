@@ -76,23 +76,17 @@ class Lattice {
   // inset nodes (linked list) to the position |pos|.
   void Insert(size_t pos, Node* node);
 
-  // clear all lattice and nodes allocated with NewNode method.
-  void Clear();
-
   // return true if this instance has a valid lattice.
   bool has_lattice() const { return !begin_nodes_.empty(); }
 
   // Dump the best path and the path that contains the designated string.
   std::string DebugString() const;
 
-  // Set the node info that should be used in DebugString() (For debug use).
-  static void SetDebugDisplayNode(size_t begin_pos, size_t end_pos,
-                                  std::string str);
-
-  // Reset the debug info.
-  static void ResetDebugDisplayNode();
-
  private:
+  // clear all lattice and nodes allocated with NewNode method
+  // Only called via Setkey().
+  void Clear();
+
   std::string key_;
   std::vector<Node*> begin_nodes_;
   std::vector<Node*> end_nodes_;
