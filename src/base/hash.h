@@ -33,9 +33,37 @@
 #include <concepts>
 #include <cstdint>
 
+#include "absl/hash/internal/city.h"
 #include "absl/strings/string_view.h"
 
 namespace mozc {
+
+// New fingerprint functions based on CityHash.
+// https://github.com/google/cityhash
+// Currently, it uses absl::hash_internal. Since internal implementation may be
+// updated or deleted in the future, we have compatibility checks in the unit
+// tests. If Abseil switches to a different hash function, we will need to fork
+// it ourselves.
+
+inline uint64_t CityFingerprint(absl::string_view str) {
+  return ::absl::hash_internal::CityHash64(str.data(), str.size());
+}
+
+inline uint64_t CityFingerprintWithSeed(absl::string_view str, uint64_t seed) {
+  return ::absl::hash_internal::CityHash64WithSeed(str.data(), str.size(),
+                                                   seed);
+}
+
+inline uint32_t CityFingerprint32(absl::string_view str) {
+  return ::absl::hash_internal::CityHash32(str.data(), str.size());
+}
+
+// Legacy Fingerprint Functions
+// These are about 5-7 times slower than CityFingerprint.
+// Do not use legacy Fingerprint in new code.
+// TODO(taku): Rename them with LegacyFingerprintXX.
+// TODO(all): Migrate to CityFingerprint except for the case where the
+// fingerprint of user-data is stored.
 
 // Calculates 64-bit fingerprint.
 uint64_t Fingerprint(absl::string_view str);
@@ -43,37 +71,6 @@ uint64_t FingerprintWithSeed(absl::string_view str, uint32_t seed);
 
 // Calculates 32-bit fingerprint.
 uint32_t Fingerprint32(absl::string_view str);
-uint32_t Fingerprint32WithSeed(absl::string_view str, uint32_t seed);
-
-template <class T>
-  requires(std::integral<T>)
-uint64_t Fingerprint(T num) {
-  return Fingerprint(
-      absl::string_view(reinterpret_cast<const char*>(&num), sizeof(num)));
-}
-
-template <class T>
-  requires(std::integral<T>)
-uint64_t FingerprintWithSeed(T num, uint32_t seed) {
-  return FingerprintWithSeed(
-      absl::string_view(reinterpret_cast<const char*>(&num), sizeof(num)),
-      seed);
-}
-
-template <class T>
-  requires(std::integral<T>)
-uint32_t Fingerprint32(T num) {
-  return Fingerprint32(
-      absl::string_view(reinterpret_cast<const char*>(&num), sizeof(num)));
-}
-
-template <class T>
-  requires(std::integral<T>)
-uint32_t Fingerprint32WithSeed(T num, uint32_t seed) {
-  return Fingerprint32WithSeed(
-      absl::string_view(reinterpret_cast<const char*>(&num), sizeof(num)),
-      seed);
-}
 
 }  // namespace mozc
 

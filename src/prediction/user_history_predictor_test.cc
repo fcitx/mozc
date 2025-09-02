@@ -486,9 +486,6 @@ class UserHistoryPredictorTest : public testing::TestWithTempUserProfile {
     (*method)->set_last_access_time(1);
 
     // Check the predictor functionality for the above history structure.
-    // TODO(taku): joined suggestion will not work when
-    // user_history_prediction_disable_joined_prediction is true.
-    // Updates the following tests when this mode is used as default.
     EXPECT_TRUE(IsSuggestedAndPredicted(predictor, "japan", "Japanese"));
     EXPECT_TRUE(IsSuggestedAndPredicted(predictor, "japan", "JapaneseInput"));
     EXPECT_TRUE(
@@ -1825,6 +1822,20 @@ TEST_F(UserHistoryPredictorTest, MultiSegmentsMultiInput) {
   results = predictor->Predict(convreq11);
   EXPECT_FALSE(results.empty());
   EXPECT_EQ(results[0].value, "太郎は良子に");
+
+  segments_proxy.Clear();
+  for (const bool is_mobile : {true, false}) {
+    request_.set_zero_query_suggestion(is_mobile);
+    const ConversionRequest convreq12 = SetUpInputForSuggestion(
+        "たろうははなこに", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq12);
+    EXPECT_FALSE(results.empty());
+    if (is_mobile) {
+      EXPECT_EQ(results[0].value, "太郎は花子に");
+    } else {
+      EXPECT_EQ(results[0].value, "太郎は花子に難しい");
+    }
+  }
 }
 
 TEST_F(UserHistoryPredictorTest, MultiSegmentsSingleInput) {
@@ -1920,6 +1931,19 @@ TEST_F(UserHistoryPredictorTest, MultiSegmentsSingleInput) {
   results = predictor->Predict(convreq11);
   EXPECT_FALSE(results.empty());
   EXPECT_EQ(results[0].value, "太郎は良子に");
+
+  for (const bool is_mobile : {true, false}) {
+    request_.set_zero_query_suggestion(is_mobile);
+    const ConversionRequest convreq12 = SetUpInputForSuggestion(
+        "たろうははなこに", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq12);
+    EXPECT_FALSE(results.empty());
+    if (is_mobile) {
+      EXPECT_EQ(results[0].value, "太郎は花子に");
+    } else {
+      EXPECT_EQ(results[0].value, "太郎は花子に難しい");
+    }
+  }
 }
 
 TEST_F(UserHistoryPredictorTest, Regression2843371Case1) {
@@ -3432,30 +3456,17 @@ TEST_F(UserHistoryPredictorTest, RealtimeConversionInnerSegment) {
     EXPECT_FALSE(results.empty());
     EXPECT_TRUE(FindCandidateByValue("中野です", results));
 
-    for (const bool disable_joined_prediction : {true, false}) {
-      request_.mutable_decoder_experiment_params()
-          ->set_user_history_disable_joined_prediction(
-              disable_joined_prediction);
-      segments_proxy.Clear();
-      const ConversionRequest convreq4 =
-          SetUpInputForPrediction("なまえ", &composer_, &segments_proxy);
-      results = predictor->Predict(convreq4);
-      EXPECT_FALSE(results.empty());
-      if (mixed_conversion) {
-        EXPECT_TRUE(FindCandidateByValue("名前", results));
-        if (!disable_joined_prediction) {
-          // "名前は", "中野" were typed in different segments, but predict
-          // joined phrase.
-          EXPECT_TRUE(FindCandidateByValue("名前は中野", results));
-        }
-      } else {
-        EXPECT_TRUE(FindCandidateByValue("名前は", results));
-        if (!disable_joined_prediction) {
-          // "名前は", "中野です" were typed in different segments, but predict
-          // joined phrase.
-          EXPECT_TRUE(FindCandidateByValue("名前は中野です", results));
-        }
-      }
+    segments_proxy.Clear();
+    const ConversionRequest convreq4 =
+        SetUpInputForPrediction("なまえ", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq4);
+    EXPECT_FALSE(results.empty());
+    if (mixed_conversion) {
+      EXPECT_TRUE(FindCandidateByValue("名前", results));
+      EXPECT_TRUE(FindCandidateByValue("名前は中野", results));
+    } else {
+      EXPECT_TRUE(FindCandidateByValue("名前は", results));
+      EXPECT_TRUE(FindCandidateByValue("名前は中野です", results));
     }
   }
 }
@@ -5290,6 +5301,22 @@ TEST_F(UserHistoryPredictorTest, PartialRevert) {
            entry->last_access_time() > 0;
   };
 
+  auto has_link = [&](absl::string_view prev_key, absl::string_view prev_value,
+                      absl::string_view next_key,
+                      absl::string_view next_value) {
+    UserHistoryPredictorTestPeer predictor_peer(*predictor);
+    const UserHistoryPredictor::Entry* prev_entry =
+        predictor_peer.dic_()->LookupWithoutInsert(
+            UserHistoryPredictor::Fingerprint(prev_key, prev_value));
+    if (!prev_entry) return false;
+    const uint32_t next_fp =
+        UserHistoryPredictor::Fingerprint(next_key, next_value);
+    for (const auto& next_entry : prev_entry->next_entries()) {
+      if (next_entry.entry_fp() == next_fp) return true;
+    }
+    return false;
+  };
+
   auto init_predictor = [&]() {
     predictor->ClearAllHistory();
     UserHistoryPredictorTestPeer(*predictor).WaitForSyncer();
@@ -5419,6 +5446,8 @@ TEST_F(UserHistoryPredictorTest, PartialRevert) {
     EXPECT_TRUE(has_entry("きょうとだいがく", "京都大学"));
     EXPECT_FALSE(has_entry("そつぎょうした", "卒業した"));
     EXPECT_TRUE(has_entry("そつぎょう", "卒業"));  // Newly added.
+    EXPECT_TRUE(
+        has_link("きょうとだいがくを", "京都大学を", "そつぎょう", "卒業"));
   }
 
   {
@@ -5434,6 +5463,8 @@ TEST_F(UserHistoryPredictorTest, PartialRevert) {
     EXPECT_TRUE(has_entry("きょうとだいがく", "京都大学"));
     EXPECT_FALSE(has_entry("そつぎょうした", "卒業した"));
     EXPECT_TRUE(has_entry("そつぎょうし", "卒業し"));  // Newly added.
+    EXPECT_TRUE(
+        has_link("きょうとだいがくを", "京都大学を", "そつぎょうし", "卒業し"));
   }
 
   {

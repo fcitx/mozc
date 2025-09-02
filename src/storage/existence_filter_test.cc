@@ -29,6 +29,7 @@
 
 #include "storage/existence_filter.h"
 
+#include <concepts>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -47,10 +48,18 @@ namespace mozc {
 namespace storage {
 namespace {
 
+template <class T>
+  requires(std::integral<T>)
+uint64_t FingerprintNum(T num) {
+  // Reinterpret the number as a byte string to compute the fingerprint.
+  return CityFingerprint(
+      absl::string_view(reinterpret_cast<const char*>(&num), sizeof(num)));
+}
+
 void CheckValues(const ExistenceFilter& filter, int m, int n) {
   int false_positives = 0;
   for (int i = 0; i < 2 * n; ++i) {
-    uint64_t hash = Fingerprint(i);
+    uint64_t hash = FingerprintNum(i);
     bool should_exist = ((i % 2) == 0);
     bool actual = filter.Exists(hash);
     if (should_exist) {
@@ -77,7 +86,7 @@ void RunTest(int m, int n) {
 
   for (int i = 0; i < n; ++i) {
     int val = i * 2;
-    uint64_t hash = Fingerprint(val);
+    uint64_t hash = FingerprintNum(val);
     builder.Insert(hash);
   }
 
@@ -121,7 +130,7 @@ TEST(ExistenceFilterTest, ReadWriteTest) {
       ExistenceFilterBuilder::CreateOptimal(num_bytes, std::size(kWords)));
 
   for (const absl::string_view& word : kWords) {
-    builder.Insert(Fingerprint(word));
+    builder.Insert(CityFingerprint(word));
   }
 
   const std::string buf = builder.SerializeAsString();
@@ -131,7 +140,7 @@ TEST(ExistenceFilterTest, ReadWriteTest) {
   EXPECT_OK(filter_read);
 
   for (const absl::string_view& word : kWords) {
-    EXPECT_TRUE(filter_read->Exists(Fingerprint(word)));
+    EXPECT_TRUE(filter_read->Exists(CityFingerprint(word)));
   }
 }
 
@@ -147,13 +156,13 @@ TEST(ExistenceFilterTest, InsertAndExistsTest) {
       ExistenceFilterBuilder::CreateOptimal(num_bytes, words.size()));
 
   for (const std::string& word : words) {
-    builder.Insert(Fingerprint(word));
+    builder.Insert(CityFingerprint(word));
   }
 
   ExistenceFilter filter = builder.Build();
 
   for (const std::string& word : words) {
-    EXPECT_TRUE(filter.Exists(Fingerprint(word)));
+    EXPECT_TRUE(filter.Exists(CityFingerprint(word)));
   }
 }
 
