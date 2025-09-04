@@ -40,7 +40,9 @@
 #include "absl/base/attributes.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "base/hash.h"
 
 namespace mozc {
 namespace storage {
@@ -99,22 +101,46 @@ class BlockBitmapBuilder {
   std::vector<std::vector<uint32_t>> blocks_;
 };
 
+inline uint64_t Fingerprint(absl::string_view str, uint16_t fp_type) {
+  return fp_type == 0 ? LegacyFingerprint(str) : CityFingerprint(str);
+}
+
 }  // namespace existence_filter_internal
 
 // ExistenceFilter parameters.
 struct ExistenceFilterParams {
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const ExistenceFilterParams& params) {
-    absl::Format(&sink,
-                 "size: %d bits, estimated insertions: %d, num_hashes: %d",
-                 params.size, params.expected_nelts, params.num_hashes);
+    absl::Format(
+        &sink,
+        "size: %d bits, estimated insertions: %d, num_hashes: %d, fp_type: %d",
+        params.size, params.expected_nelts, params.num_hashes, params.fp_type);
   }
 
-  uint32_t size;            // the number of bits in the bit vector
-  uint32_t expected_nelts;  // the number of values that will be stored
-  int num_hashes;  // the number of hash values to use per insert/lookup.
-                   // num_hashes must be less than 8.
+  enum FpType {
+    MOZC_FP = 0,
+    CITY_FP = 1,
+    FP_TYPE_SIZE = 2,
+  };
+
+  static constexpr uint16_t kDefaultFpType = MOZC_FP;
+
+  uint32_t size = 0;            // the number of bits in the bit vector
+  uint32_t expected_nelts = 0;  // the number of values that will be stored
+
+  // the number of hash values to use per insert/lookup.
+  // num_hashes must be less than 8.
+  uint16_t num_hashes = 0;
+
+  // Fingerprint algorithm type.
+  // The old code defines `num_hashes` as 32 bits int. To store the fp_type,
+  // splits the `num_hashes` into two 16 bits int.
+  uint16_t fp_type = kDefaultFpType;
+
+  static_assert(std::endian::native == std::endian::little);
 };
+
+static_assert(sizeof(ExistenceFilterParams) == sizeof(uint32_t) * 3);
 
 // For Mozc's LOG().
 std::ostream& operator<<(std::ostream& os, const ExistenceFilterParams& params);
@@ -138,11 +164,25 @@ class ExistenceFilter {
   static absl::StatusOr<ExistenceFilter> Read(
       absl::Span<const uint32_t> buf ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
+  // Checks if the given `args` was in the filter.
+  bool Exists(absl::Span<const absl::string_view> keys) const {
+    return Exists(existence_filter_internal::Fingerprint(
+        absl::StrJoin(keys, ""), params_.fp_type));
+  }
+
+  // Checks if the given `key` was in the filter.
+  bool Exists(absl::string_view key) const {
+    return Exists(existence_filter_internal::Fingerprint(key, params_.fp_type));
+  }
+
+  // Returns params.
+  const ExistenceFilterParams& params() const { return params_; }
+
+ private:
   // Checks if the given 'hash' was previously inserted int the filter
   // It may return some false positives
   bool Exists(uint64_t hash) const;
 
- private:
   ExistenceFilterParams params_;
   existence_filter_internal::BlockBitmap rep_;  // points to bitmap
 };
@@ -155,12 +195,20 @@ class ExistenceFilterBuilder {
   explicit ExistenceFilterBuilder(ExistenceFilterParams params)
       : params_(std::move(params)), rep_(params_.size) {}
 
-  static ExistenceFilterBuilder CreateOptimal(size_t size_in_bytes,
-                                              uint32_t estimated_insertions);
+  static ExistenceFilterBuilder CreateOptimal(
+      size_t size_in_bytes, uint32_t estimated_insertions,
+      uint16_t fp_type = ExistenceFilterParams::kDefaultFpType);
 
-  // Inserts a hash value into the filter
-  // We generate 'k' separate internal hash values
-  void Insert(uint64_t hash);
+  // Inserts a list of string into the filter.
+  void Insert(absl::Span<const absl::string_view> keys) {
+    return Insert(existence_filter_internal::Fingerprint(
+        absl::StrJoin(keys, ""), params_.fp_type));
+  }
+
+  // Inserts one string into the filter.
+  void Insert(absl::string_view key) {
+    return Insert(existence_filter_internal::Fingerprint(key, params_.fp_type));
+  }
 
   // Writes the existence filter to a buffer and returns it.
   std::string SerializeAsString();
@@ -174,6 +222,10 @@ class ExistenceFilterBuilder {
                                                  size_t num_elements);
 
  private:
+  // Inserts a hash value into the filter
+  // We generate 'k' separate internal hash values
+  void Insert(uint64_t hash);
+
   ExistenceFilterParams params_;
   existence_filter_internal::BlockBitmapBuilder rep_;
 };
