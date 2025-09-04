@@ -62,7 +62,8 @@ class MozcState : public InputContextProperty {
 
   bool ProcessKeyEvent(KeySym sym, uint32_t keycode, KeyStates state,
                        bool layout_is_jp, bool is_key_up);
-  void SelectCandidate(int idx);
+  void SelectCandidate(int32_t id);
+  void HighlightCandidate(int32_t id);
   void Reset();
   void FocusIn();
   void FocusOut(const InputContextEvent &event);
@@ -118,6 +119,9 @@ class MozcState : public InputContextProperty {
   // Sends 'mouse click on the candidate window' event to the server.
   bool TrySendClick(int32_t unique_id, mozc::commands::Output *out,
                     std::string *out_error) const;
+
+  bool TrySendHighlight(int32_t unique_id, mozc::commands::Output *out,
+                        std::string *out_error) const;
 
   // Sends composition mode to the server.
   bool TrySendCompositionMode(mozc::commands::CompositionMode mode,
