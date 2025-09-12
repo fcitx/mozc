@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: fcitx5-mozc\n"
 "Report-Msgid-Bugs-To: fcitx-dev@googlegroups.com\n"
-"POT-Creation-Date: 2025-09-11 20:24+0000\n"
+"POT-Creation-Date: 2025-09-12 20:24+0000\n"
 "PO-Revision-Date: 2017-11-23 05:28+0000\n"
 "Last-Translator: Popolon_Github, 2025\n"
 "Language-Team: French (https://app.transifex.com/fcitx/teams/12005/fr/)\n"
@@ -50,15 +50,15 @@ msgstr "Direct"
 
 #: mozc_engine.h:91
 msgid "Expand Usage (Requires vertical candidate list)"
-msgstr ""
+msgstr "Étendre l'utilisation (requiert une liste de proposition verticale) "
 
 #: mozc_engine.h:95
 msgid "Fix embedded preedit cursor at the beginning of the preedit"
-msgstr ""
+msgstr "Fixer le curseur de pré-édition embarqué au début de la pré-édition"
 
 #: mozc_engine.h:64
 msgid "Follow Global Configuration"
-msgstr ""
+msgstr "Suivre la configuration globale"
 
 #. Full width ASCII letter A.
 #: mozc_engine.h:72 mozc_engine.cc:95
@@ -90,7 +90,7 @@ msgstr "Raccourci clavier"
 
 #: mozc_engine.h:97
 msgid "Hotkey to expand usage"
-msgstr ""
+msgstr "Raccourci clavier pour étendre l'utilisation"
 
 #: mozc_engine.h:82
 msgid "Initial Mode"
@@ -114,14 +114,14 @@ msgstr "Non"
 
 #: mozc_engine.h:67
 msgid "On Focus"
-msgstr ""
+msgstr "Sur le Focus"
 
 #. We don't have a good library option for this, just do the simple
 #. replace. absl's runtime parsed format string is too copmlex.
 #: mozc_response_parser.cc:189
 #, c-format
 msgid "Press %s to show usages."
-msgstr ""
+msgstr "Presser %s pour montrer les utilisations."
 
 #: mozc_state.cc:460
 msgid "Press Escape to go back"
@@ -133,7 +133,7 @@ msgstr "Programme"
 
 #: mozc_engine.h:85
 msgid "Shared Input State"
-msgstr ""
+msgstr "État de saisie partagé"
 
 #: mozc_engine.h:87
 msgid "Vertical candidate list"
