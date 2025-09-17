@@ -30,6 +30,7 @@
 #ifndef MOZC_STORAGE_EXISTENCE_FILTER_H_
 #define MOZC_STORAGE_EXISTENCE_FILTER_H_
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
@@ -41,6 +42,7 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "base/hash.h"
 
@@ -118,12 +120,12 @@ struct ExistenceFilterParams {
   }
 
   enum FpType {
-    MOZC_FP = 0,
+    LEGACY_FP = 0,
     CITY_FP = 1,
     FP_TYPE_SIZE = 2,
   };
 
-  static constexpr uint16_t kDefaultFpType = MOZC_FP;
+  static constexpr uint16_t kDefaultFpType = CITY_FP;
 
   uint32_t size = 0;            // the number of bits in the bit vector
   uint32_t expected_nelts = 0;  // the number of values that will be stored

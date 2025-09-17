@@ -119,6 +119,9 @@ constexpr absl::string_view kEmojiDescription = "絵文字";
 
 constexpr size_t kRevertCacheSize = 16;
 
+constexpr absl::string_view kPunctuations[] = {"。", ".",  "、", ",",  "？",
+                                               "?",  "！", "!",  "，", "．"};
+
 // Mixed conversion is enabled mainly on mobile device.
 bool IsMixedConversionEnabled(const ConversionRequest& request) {
   return request.request().mixed_conversion();
@@ -145,10 +148,16 @@ bool IsAndroidPuaEmoji(absl::string_view s) {
           s <= kUtf8MaxGooglePuaEmoji);
 }
 
-bool IsPunctuation(absl::string_view value) {
-  return (value == "。" || value == "." || value == "、" || value == "," ||
-          value == "？" || value == "?" || value == "！" || value == "!" ||
-          value == "，" || value == "．");
+bool StartsWithPunctuation(absl::string_view value) {
+  return absl::c_find_if(kPunctuations, [&value](absl::string_view x) {
+           return absl::StartsWith(value, x);
+         }) != std::end(kPunctuations);
+}
+
+bool EndsWithPunctuation(absl::string_view value) {
+  return absl::c_find_if(kPunctuations, [&value](absl::string_view x) {
+           return absl::EndsWith(value, x);
+         }) != std::end(kPunctuations);
 }
 
 // Returns romanaized string.
@@ -944,7 +953,9 @@ bool UserHistoryPredictor::GetKeyValueForExactAndRightPrefixMatch(
       next_entry = latest_entry;
     }
 
-    if (next_entry == nullptr || next_entry->key().empty()) {
+    // Don't predict the next phrase if it starts with punctuation.
+    if (next_entry == nullptr || next_entry->key().empty() ||
+        StartsWithPunctuation(next_entry->value())) {
       break;
     }
 
@@ -1152,6 +1163,7 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
     if (next_entry != nullptr && !next_entry->key().empty() &&
         abs(static_cast<int32_t>(next_entry->last_access_time() -
                                  last_entry->last_access_time())) <= 10 &&
+        !StartsWithPunctuation(next_entry->value()) &&
         IsContentWord(next_entry->value())) {
       Entry* result2 = AddEntryWithNewKeyValue(
           absl::StrCat(result->key(), next_entry->key()),
@@ -1268,7 +1280,7 @@ bool UserHistoryPredictor::ShouldPredict(
     return false;
   }
 
-  if (IsPunctuation(Util::Utf8SubString(request_key, 0, 1))) {
+  if (StartsWithPunctuation(request_key)) {
     MOZC_VLOG(2) << "request_key starts with punctuations";
     return false;
   }
@@ -1450,13 +1462,29 @@ UserHistoryPredictor::ResultType UserHistoryPredictor::GetResultType(
     const ConversionRequest& request, bool is_top_candidate,
     uint32_t request_key_len, const Entry& entry) {
   if (IsMixedConversionEnabled(request)) {
-    if (IsValidSuggestionForMixedConversion(request, request_key_len, entry)) {
-      return ResultType::GOOD_RESULT;
+    // Don't show long history for mixed conversion
+    if (entry.suggestion_freq() < 2 && Util::CharsLen(entry.value()) > 8) {
+      MOZC_VLOG(2) << "long candidate: " << entry.value();
+      return ResultType::BAD_RESULT;
     }
-    return ResultType::BAD_RESULT;
+    return ResultType::GOOD_RESULT;
   }
 
   if (request.request_type() == ConversionRequest::SUGGESTION) {
+    // When bigram_boost is true, that means that previous user input
+    // and current input have bigram relation.
+    if (entry.bigram_boost()) {
+      return ResultType::GOOD_RESULT;
+    }
+
+    // TODO(taku,komatsu): better to make it simpler and easier to be
+    // understood.
+    const uint32_t freq = entry.suggestion_freq();
+    const uint32_t base_prefix_len = 3 - std::min<uint32_t>(2, freq);
+    if (request_key_len >= base_prefix_len) {
+      return ResultType::GOOD_RESULT;
+    }
+
     // The top result of suggestion should be a VALID suggestion candidate.
     // i.e., SuggestionTriggerFunc should return true for the first
     // candidate.
@@ -1465,13 +1493,11 @@ UserHistoryPredictor::ResultType UserHistoryPredictor::GetResultType(
     // "です" after that,  showing "デスノート" is annoying.
     // In this situation, "です" is in the LRU, but SuggestionTriggerFunc
     // returns false for "です", since it is short.
-    if (IsValidSuggestion(request, request_key_len, entry)) {
-      return ResultType::GOOD_RESULT;
-    }
     if (is_top_candidate) {
       MOZC_VLOG(2) << "candidates size is 0";
       return ResultType::STOP_ENUMERATION;
     }
+
     return ResultType::BAD_RESULT;
   }
 
@@ -1677,11 +1703,16 @@ bool UserHistoryPredictor::ShouldInsert(
     return false;
   }
 
-  // For mobile, we do not learn candidates that ends with punctuation.
-  if (IsMixedConversionEnabled(request) && Util::CharsLen(value) > 1 &&
-      IsPunctuation(Util::Utf8SubString(value, Util::CharsLen(value) - 1, 1))) {
+  // Do not remember Japanese text that ends with a punctuation.
+  // Usually Japanese punctuation is an independent segment, so
+  // this case happens when user type "よろしく。" directly via composer.
+  const auto type = Util::GetFirstScriptType(value);
+  if ((type == Util::KANJI || type == Util::HIRAGANA ||
+       type == Util::KATAKANA) &&
+      Util::CharsLen(value) > 1 && EndsWithPunctuation(value)) {
     return false;
   }
+
   return true;
 }
 
@@ -1918,8 +1949,7 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
       return;
     }
     // 1) Don't learn a link from a history which ends with punctuation.
-    if (IsPunctuation(Util::Utf8SubString(
-            history_value, Util::CharsLen(history_value) - 1, 1))) {
+    if (EndsWithPunctuation(history_value)) {
       return;
     }
     // 2) Don't learn a link to a punctuation.
@@ -1928,11 +1958,11 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
     // Example: "よろしく|。" -> OK
     //          "よろしく|。でも" -> NG
     //          "よろしく|。。" -> NG
-    // Note that another piece of code handles learning for
-    // (sentence + punctuation) form; see Finish().
-    if (IsPunctuation(Util::Utf8SubString(conversion_segment.value, 0, 1)) &&
-        (!IsMixedConversionEnabled(request) ||
-         Util::CharsLen(conversion_segment.value) > 1)) {
+    // In the suggestion phase, we do not allow the bigram connection where
+    // right-hand-side words start with a punctuation mark. The prediction
+    // of punctuation marks is only triggered on zero-query suggestions.
+    if (Util::CharsLen(conversion_segment.value) > 1 &&
+        StartsWithPunctuation(conversion_segment.value)) {
       return;
     }
     Entry* history_entry = dic_->MutableLookupWithoutInsert(
@@ -1993,8 +2023,7 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
     TryInsert(request, segment.key_begin, segment.value_begin, segment.key,
               segment.value, segment.description, is_suggestion_selected,
               next_fps_to_set, last_access_time, revert_entries);
-    if (IsMixedConversionEnabled(request) &&
-        segment.content_key != segment.key &&
+    if (segment.content_key != segment.key &&
         segment.content_value != segment.value) {
       TryInsert(request, segment.key_begin, segment.value_begin,
                 segment.content_key, segment.content_value, segment.description,
@@ -2173,36 +2202,6 @@ std::vector<uint64_t> UserHistoryPredictor::LearningSegmentFingerprints(
   return fps;
 }
 
-bool UserHistoryPredictor::IsValidSuggestionForMixedConversion(
-    const ConversionRequest& request, uint32_t prefix_len, const Entry& entry) {
-  if (entry.suggestion_freq() < 2 && Util::CharsLen(entry.value()) > 8) {
-    // Don't show long history for mixed conversion
-    MOZC_VLOG(2) << "long candidate: " << entry.value();
-    return false;
-  }
-
-  return true;
-}
-
-// static
-bool UserHistoryPredictor::IsValidSuggestion(const ConversionRequest& request,
-                                             uint32_t prefix_len,
-                                             const Entry& entry) {
-  // When bigram_boost is true, that means that previous user input
-  // and current input have bigram relation.
-  if (entry.bigram_boost()) {
-    return true;
-  }
-  // For mobile, make the behavior more aggressive.
-  if (IsMixedConversionEnabled(request)) {
-    return true;
-  }
-  const uint32_t freq = entry.suggestion_freq();
-  // TODO(taku,komatsu): better to make it simpler and easier to be understood.
-  const uint32_t base_prefix_len = 3 - std::min<uint32_t>(2, freq);
-  return (prefix_len >= base_prefix_len);
-}
-
 // static
 // 1) sort by last_access_time, which is basically the same as LRU policy.
 // 2) boost shorter candidate, if having the same last_access_time.
@@ -2276,12 +2275,6 @@ void UserHistoryPredictor::MaybeProcessPartialRevertEntry(
 
   auto last_committed_entries = std::move(last_committed_entries_);
   last_committed_entries_.reset();
-
-  const commands::DecoderExperimentParams& params =
-      request.request().decoder_experiment_params();
-  if (params.user_history_partial_revert_mode() == 0) {
-    return;
-  }
 
   // Gets the actual cursor position after committing the result.
   const int32_t actual_value_end = GuessRevertedValueOffset(
