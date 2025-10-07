@@ -35,6 +35,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -70,6 +71,7 @@
 #include "composer/composer.h"
 #include "composer/query.h"
 #include "converter/attribute.h"
+#include "converter/inner_segment.h"
 #include "dictionary/dictionary_interface.h"
 #include "engine/modules.h"
 #include "prediction/result.h"
@@ -185,6 +187,23 @@ absl::string_view GetDescription(const Result& result) {
     return "";
   }
   return result.description;
+}
+
+// Populate `inner_segment_boundary` to the new `entry`.
+void PopulateInnerSegmentBoundary(
+    converter::InnerSegmentBoundarySpan inner_segment_boundary,
+    UserHistoryPredictor::Entry* absl_nonnull entry) {
+  entry->clear_inner_segment_boundary();
+
+  // b/449508982: temporarily disables the inner segment feature.
+  return;
+}
+
+// Add the inner_segment_boundary information in `entry` via `builder`.
+void AppendInnerBoundary(converter::InnerSegmentBoundaryBuilder& builder,
+                         const UserHistoryPredictor::Entry& entry) {
+  // b/449508982: temporarily disables the inner segment feature.
+  return;
 }
 
 }  // namespace
@@ -452,6 +471,10 @@ bool UserHistoryPredictor::Load(UserHistoryStorage&& history) {
         std::max(entry.suggestion_freq(), entry.conversion_freq_deprecated()));
     entry.clear_conversion_freq_deprecated();
     // Avoid std::move() is called before EntryFingerprint.
+
+    // b/449508982: temporarily disables the inner segment feature.
+    entry.clear_inner_segment_boundary();
+
     const uint64_t fp = EntryFingerprint(entry);
     dic_->Insert(fp, std::move(entry));
   }
@@ -563,77 +586,148 @@ void UserHistoryPredictor::EraseNextEntries(uint64_t fp, Entry* entry) {
 // chain like
 //    ("aaa", "AAA") -- ("bbb", "BBB") -- ("ccc", "CCC"),
 // and if target_key == "aaabbbccc" and target_value == "AAABBBCCC", the link
-// from ("bbb", "BBB") to ("ccc", "CCC") is removed. If a link was removed, this
-// method returns DONE. If no history entries can produce the target key
-// value, then NOT_FOUND is returned. TAIL is returned only when the
-// tail was found, e.g., in the above example, when the method finds the tail
-// node ("ccc", "CCC").
-UserHistoryPredictor::RemoveNgramChainResult
-UserHistoryPredictor::RemoveNgramChain(
+// from ("bbb", "BBB") to ("ccc", "CCC") is removed.
+// return true if a link was removed.
+bool UserHistoryPredictor::RemoveNgramChain(
     const absl::string_view target_key, const absl::string_view target_value,
-    Entry* entry, std::vector<absl::string_view>* key_ngrams,
-    size_t key_ngrams_len, std::vector<absl::string_view>* value_ngrams,
-    size_t value_ngrams_len) {
+    Entry* entry) {
   DCHECK(entry);
-  DCHECK(key_ngrams);
-  DCHECK(value_ngrams);
 
-  // Updates the lengths with the current entry node.
-  key_ngrams_len += entry->key().size();
-  value_ngrams_len += entry->value().size();
-
-  // This is the case where ngram key and value are shorter than the target key
-  // and value, respectively. In this case, we need to find further entries to
-  // concatenate in order to make |target_key| and |target_value|.
-  if (key_ngrams_len < target_key.size() &&
-      value_ngrams_len < target_value.size()) {
-    key_ngrams->push_back(entry->key());
-    value_ngrams->push_back(entry->value());
-    for (const uint64_t fp : entry->next_entry_fps()) {
-      Entry* e = dic_->MutableLookupWithoutInsert(fp);
-      if (e == nullptr) {
-        continue;
-      }
-      const RemoveNgramChainResult r =
-          RemoveNgramChain(target_key, target_value, e, key_ngrams,
-                           key_ngrams_len, value_ngrams, value_ngrams_len);
-      switch (r) {
-        case RemoveNgramChainResult::DONE:
-          return RemoveNgramChainResult::DONE;
-        case RemoveNgramChainResult::TAIL:
-          // |entry| is the second-to-the-last node. So cut the link to the
-          // child entry.
-          EraseNextEntries(fp, entry);
-          return RemoveNgramChainResult::DONE;
-        default:
-          break;
-      }
-    }
-    // Recovers the state.
-    key_ngrams->pop_back();
-    value_ngrams->pop_back();
-    return RemoveNgramChainResult::NOT_FOUND;
+  if (!target_key.starts_with(entry->key()) ||
+      !target_value.starts_with(entry->value())) {
+    return false;
   }
 
-  // This is the case where the current ngram key and value have the same
-  // lengths as those of |target_key| and |target_value|, respectively.
-  if (key_ngrams_len == target_key.size() &&
-      value_ngrams_len == target_value.size()) {
-    key_ngrams->push_back(entry->key());
-    value_ngrams->push_back(entry->value());
-    const std::string ngram_key = absl::StrJoin(*key_ngrams, "");
-    const std::string ngram_value = absl::StrJoin(*value_ngrams, "");
-    if (ngram_key == target_key && ngram_value == target_value) {
-      // |entry| is the last node. So return TAIL to tell the caller so
-      // that it can remove the link to this last node.
-      return RemoveNgramChainResult::TAIL;
+  // Returns value of RemoveNgramChain() method. See the comments in
+  // implementation.
+  enum RemoveNgramChainResult {
+    DONE,
+    TAIL,
+    NOT_FOUND,
+  };
+
+  std::vector<absl::string_view> key_ngrams, value_ngrams;
+  std::function<RemoveNgramChainResult(Entry*, size_t, size_t)>
+      remove_ngram_chain_internal =
+          [&](Entry* entry, size_t key_ngrams_len,
+              size_t value_ngrams_len) -> RemoveNgramChainResult {
+    // Updates the lengths with the current entry node.
+    key_ngrams_len += entry->key().size();
+    value_ngrams_len += entry->value().size();
+
+    // This is the case where ngram key and value are shorter than the target
+    // key and value, respectively. In this case, we need to find further
+    // entries to concatenate in order to make |target_key| and |target_value|.
+    if (key_ngrams_len < target_key.size() &&
+        value_ngrams_len < target_value.size()) {
+      key_ngrams.push_back(entry->key());
+      value_ngrams.push_back(entry->value());
+      for (const uint64_t fp : entry->next_entry_fps()) {
+        Entry* e = dic_->MutableLookupWithoutInsert(fp);
+        if (e == nullptr) {
+          continue;
+        }
+        switch (
+            remove_ngram_chain_internal(e, key_ngrams_len, value_ngrams_len)) {
+          case DONE:
+            return DONE;
+          case TAIL:
+            // |entry| is the second-to-the-last node. So cut the link to the
+            // child entry.
+            EraseNextEntries(fp, entry);
+            return DONE;
+          default:
+            break;
+        }
+      }
+      // Recovers the state.
+      key_ngrams.pop_back();
+      value_ngrams.pop_back();
+      return NOT_FOUND;
     }
-    key_ngrams->pop_back();
-    value_ngrams->pop_back();
-    return RemoveNgramChainResult::NOT_FOUND;
+
+    // This is the case where the current ngram key and value have the same
+    // lengths as those of |target_key| and |target_value|, respectively.
+    if (key_ngrams_len == target_key.size() &&
+        value_ngrams_len == target_value.size()) {
+      key_ngrams.push_back(entry->key());
+      value_ngrams.push_back(entry->value());
+      const std::string ngram_key = absl::StrJoin(key_ngrams, "");
+      const std::string ngram_value = absl::StrJoin(value_ngrams, "");
+      if (ngram_key == target_key && ngram_value == target_value) {
+        // |entry| is the last node. So return TAIL to tell the caller so that
+        // it can remove the link to this last node.
+        return TAIL;
+      }
+      key_ngrams.pop_back();
+      value_ngrams.pop_back();
+      return NOT_FOUND;
+    }
+
+    return NOT_FOUND;
+  };
+
+  return remove_ngram_chain_internal(entry, 0, 0) == DONE;
+}
+
+// static
+bool UserHistoryPredictor::RemoveEntryWithInnerSegment(absl::string_view key,
+                                                       absl::string_view value,
+                                                       Entry* entry) {
+  DCHECK(entry);
+
+  if (entry->inner_segment_boundary_size() == 0) {
+    return false;
   }
 
-  return RemoveNgramChainResult::NOT_FOUND;
+  // TODO(taku): Support multiple matches.
+
+  // Checks from value as value is less likely matched.
+  const auto value_start = absl::string_view(entry->value()).find(value);
+  if (value_start == absl::string_view::npos) return false;
+
+  const auto key_start = absl::string_view(entry->key()).find(key);
+  if (key_start == absl::string_view::npos) return false;
+
+  const converter::InnerSegments inner_segments(
+      entry->key(), entry->value(), entry->inner_segment_boundary());
+
+  const uint32_t key_end = key_start + key.size();
+  const uint32_t value_end = value_start + value.size();
+
+  uint32_t key_len = 0;
+  uint32_t value_len = 0;
+  bool start_match = false;
+
+  for (const auto& it : inner_segments) {
+    if (key_len == key_start && value_len == value_start) {
+      start_match = true;
+    }
+
+    // Ends at the key/value or content_key/value boundary.
+    if ((key_len + it.GetKey().size() == key_end &&
+         value_len + it.GetValue().size() == value_end) ||
+        (key_len + it.GetContentKey().size() == key_end &&
+         value_len + it.GetContentValue().size() == value_end)) {
+      if (start_match) {
+        entry->set_suggestion_freq(0);
+        entry->set_shown_freq(0);
+        entry->set_removed(true);
+        return true;
+      }
+      return false;
+    }
+
+    key_len += it.GetKey().size();
+    value_len += it.GetValue().size();
+
+    // Exceeds the boundary.
+    if (!start_match && (key_len > key_start || value_len > value_start)) {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 bool UserHistoryPredictor::ClearHistoryEntry(const absl::string_view key,
@@ -652,26 +746,26 @@ bool UserHistoryPredictor::ClearHistoryEntry(const absl::string_view key,
       deleted = true;
     }
   }
+
   {
-    // Finds a chain of history entries that produces key and value. If exists,
-    // remove the link so that N-gram history prediction never generates this
-    // key value pair..
+    // Two case
+    // 1) Finds a chain of history entries that produces key and value.
+    //   If exists, remove the link so that N-gram history prediction never
+    //   generates this key value pair.
+    // 2) key/value are the substring of entry.
     for (DicElement& elm : *dic_) {
       Entry* entry = &elm.value;
-      if (!key.starts_with(entry->key()) ||
-          !value.starts_with(entry->value())) {
-        continue;
-      }
-      std::vector<absl::string_view> key_ngrams, value_ngrams;
-      if (RemoveNgramChain(key, value, entry, &key_ngrams, 0, &value_ngrams,
-                           0) == RemoveNgramChainResult::DONE) {
+      if (RemoveNgramChain(key, value, entry) ||
+          RemoveEntryWithInnerSegment(key, value, entry)) {
         deleted = true;
       }
     }
   }
+
   if (deleted) {
     updated_ = true;
   }
+
   return deleted;
 }
 
@@ -875,7 +969,8 @@ UserHistoryPredictor::Entry* absl_nonnull UserHistoryPredictor::AddEntry(
 
 UserHistoryPredictor::Entry* absl_nonnull
 UserHistoryPredictor::AddEntryWithNewKeyValue(
-    std::string key, std::string value, Entry entry,
+    std::string key, std::string value,
+    converter::InnerSegmentBoundarySpan inner_segment_boundary, Entry entry,
     EntryPriorityQueue* entry_queue) const {
   // We add an entry even if it was marked as removed so that it can be used to
   // generate prediction by entry chaining. The deleted entry itself is never
@@ -884,6 +979,7 @@ UserHistoryPredictor::AddEntryWithNewKeyValue(
   *new_entry = std::move(entry);
   new_entry->set_key(std::move(key));
   new_entry->set_value(std::move(value));
+  PopulateInnerSegmentBoundary(inner_segment_boundary, new_entry);
 
   // Sets removed field true if the new key and value were removed.
   const Entry* e = dic_->LookupWithoutInsert(
@@ -897,9 +993,13 @@ bool UserHistoryPredictor::GetKeyValueForExactAndRightPrefixMatch(
     const absl::string_view request_key, bool prefer_exact_match,
     const Entry* entry, const Entry** result_last_entry,
     uint64_t* left_last_access_time, uint64_t* left_most_last_access_time,
-    std::string* result_key, std::string* result_value) const {
+    std::string* result_key, std::string* result_value,
+    converter::InnerSegmentBoundary* result_inner_segment_boundary) const {
   std::string key = entry->key();
   std::string value = entry->value();
+  converter::InnerSegmentBoundaryBuilder inner_segment_boundary_builder;
+  AppendInnerBoundary(inner_segment_boundary_builder, *entry);
+
   const Entry* current_entry = entry;
   DCHECK(current_entry);
   absl::flat_hash_set<std::pair<absl::string_view, absl::string_view>> seen;
@@ -969,6 +1069,7 @@ bool UserHistoryPredictor::GetKeyValueForExactAndRightPrefixMatch(
 
     absl::StrAppend(&key, next_entry->key());
     absl::StrAppend(&value, next_entry->value());
+    AppendInnerBoundary(inner_segment_boundary_builder, *next_entry);
     current_entry = next_entry;
     *result_last_entry = next_entry;
 
@@ -995,6 +1096,8 @@ bool UserHistoryPredictor::GetKeyValueForExactAndRightPrefixMatch(
     return false;
   }
 
+  *result_inner_segment_boundary =
+      inner_segment_boundary_builder.Build(key, value);
   *result_key = std::move(key);
   *result_value = std::move(value);
   return true;
@@ -1070,12 +1173,14 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
       // target entry gets longer than request_key.
       // e.g., |request_key|="foobar", |entry->key()|="foo"
       std::string key, value;
+      converter::InnerSegmentBoundary inner_segment_boundary;
       if (GetKeyValueForExactAndRightPrefixMatch(
               request_key, prefer_exact_match, entry, &last_entry,
-              &left_last_access_time, &left_most_last_access_time, &key,
-              &value)) {
+              &left_last_access_time, &left_most_last_access_time, &key, &value,
+              &inner_segment_boundary)) {
         result = AddEntryWithNewKeyValue(std::move(key), std::move(value),
-                                         *entry, entry_queue);
+                                         inner_segment_boundary, *entry,
+                                         entry_queue);
       }
       break;
     }
@@ -1090,12 +1195,14 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
         // target entry gets longer than request_key.
         // e.g., |request_key|="foobar", |entry->key()|="foo"
         std::string key, value;
+        converter::InnerSegmentBoundary inner_segment_boundary;
         if (GetKeyValueForExactAndRightPrefixMatch(
                 request_key, prefer_exact_match, entry, &last_entry,
                 &left_last_access_time, &left_most_last_access_time, &key,
-                &value)) {
+                &value, &inner_segment_boundary)) {
           result = AddEntryWithNewKeyValue(std::move(key), std::move(value),
-                                           *entry, entry_queue);
+                                           inner_segment_boundary, *entry,
+                                           entry_queue);
         }
       }
       break;
@@ -1165,10 +1272,16 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
                                  last_entry->last_access_time())) <= 10 &&
         !StartsWithPunctuation(next_entry->value()) &&
         IsContentWord(next_entry->value())) {
-      Entry* result2 = AddEntryWithNewKeyValue(
-          absl::StrCat(result->key(), next_entry->key()),
-          absl::StrCat(result->value(), next_entry->value()), *result,
-          entry_queue);
+      converter::InnerSegmentBoundaryBuilder inner_segment_boundary_builder;
+      AppendInnerBoundary(inner_segment_boundary_builder, *result);
+      AppendInnerBoundary(inner_segment_boundary_builder, *next_entry);
+      std::string key = absl::StrCat(result->key(), next_entry->key());
+      std::string value = absl::StrCat(result->value(), next_entry->value());
+      const converter::InnerSegmentBoundary inner_segment_boundary =
+          inner_segment_boundary_builder.Build(key, value);
+      Entry* result2 =
+          AddEntryWithNewKeyValue(std::move(key), std::move(value),
+                                  inner_segment_boundary, *result, entry_queue);
       if (!result2->removed()) {
         entry_queue->Push(result2);
       }
@@ -1458,50 +1571,26 @@ void UserHistoryPredictor::GetInputKeyFromRequest(
   }
 }
 
-UserHistoryPredictor::ResultType UserHistoryPredictor::GetResultType(
-    const ConversionRequest& request, bool is_top_candidate,
-    uint32_t request_key_len, const Entry& entry) {
+bool UserHistoryPredictor::IsValidResult(const ConversionRequest& request,
+                                         uint32_t request_key_len,
+                                         const Entry& entry) {
   if (IsMixedConversionEnabled(request)) {
     // Don't show long history for mixed conversion
-    if (entry.suggestion_freq() < 2 && Util::CharsLen(entry.value()) > 8) {
+    // TODO(taku, b/447705421): Deprecates the length-based filtering.
+    int suppress_min_length = request.request()
+                                  .decoder_experiment_params()
+                                  .user_history_suppress_min_length();
+    suppress_min_length = suppress_min_length <= 0 ? 9 : suppress_min_length;
+    if (entry.suggestion_freq() <= 1 &&
+        Util::CharsLen(entry.value()) >= suppress_min_length) {
       MOZC_VLOG(2) << "long candidate: " << entry.value();
-      return ResultType::BAD_RESULT;
+      return false;
     }
-    return ResultType::GOOD_RESULT;
+    return true;
   }
 
-  if (request.request_type() == ConversionRequest::SUGGESTION) {
-    // When bigram_boost is true, that means that previous user input
-    // and current input have bigram relation.
-    if (entry.bigram_boost()) {
-      return ResultType::GOOD_RESULT;
-    }
-
-    // TODO(taku,komatsu): better to make it simpler and easier to be
-    // understood.
-    const uint32_t freq = entry.suggestion_freq();
-    const uint32_t base_prefix_len = 3 - std::min<uint32_t>(2, freq);
-    if (request_key_len >= base_prefix_len) {
-      return ResultType::GOOD_RESULT;
-    }
-
-    // The top result of suggestion should be a VALID suggestion candidate.
-    // i.e., SuggestionTriggerFunc should return true for the first
-    // candidate.
-    // If user types "デスノート" too many times, "デスノート" will be
-    // suggested when user types "で". It is expected, but if user types
-    // "です" after that,  showing "デスノート" is annoying.
-    // In this situation, "です" is in the LRU, but SuggestionTriggerFunc
-    // returns false for "です", since it is short.
-    if (is_top_candidate) {
-      MOZC_VLOG(2) << "candidates size is 0";
-      return ResultType::STOP_ENUMERATION;
-    }
-
-    return ResultType::BAD_RESULT;
-  }
-
-  return ResultType::GOOD_RESULT;
+  // No suppression rule on desktop for the sake of simplicity.
+  return true;
 }
 
 std::vector<Result> UserHistoryPredictor::MakeResults(
@@ -1516,7 +1605,6 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
   }
   const uint32_t request_key_len = Util::CharsLen(request.key());
 
-  size_t inserted_num = 0;
   size_t inserted_char_coverage = 0;
 
   std::vector<const UserHistoryPredictor::Entry*> entries;
@@ -1559,7 +1647,7 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
     return true;
   };
 
-  while (inserted_num < max_prediction_size) {
+  while (entries.size() < max_prediction_size) {
     // |entry_queue| is a priority queue where the element
     // in the queue is sorted by the score defined in GetScore().
     const Entry* result_entry = entry_queue->Pop();
@@ -1568,11 +1656,7 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
       break;
     }
 
-    const ResultType result =
-        GetResultType(request, entries.empty(), request_key_len, *result_entry);
-    if (result == ResultType::STOP_ENUMERATION) {
-      break;
-    } else if (result == ResultType::BAD_RESULT) {
+    if (!IsValidResult(request, request_key_len, *result_entry)) {
       continue;
     }
 
@@ -1585,14 +1669,12 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
     // Break when the accumulated character length exceeds the
     // `max_prediction_char_coverage`. Allows to add at least one candidate.
     const size_t value_len = Util::CharsLen(result_entry->value());
-    if (max_prediction_char_coverage > 0 && inserted_num > 0 &&
+    if (max_prediction_char_coverage > 0 && !entries.empty() &&
         inserted_char_coverage + value_len > max_prediction_char_coverage) {
       break;
     }
 
     entries.emplace_back(result_entry);
-
-    ++inserted_num;
     inserted_char_coverage += value_len;
   }
 
@@ -1605,6 +1687,8 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
     result.candidate_attributes |=
         converter::Attribute::USER_HISTORY_PREDICTION |
         converter::Attribute::NO_VARIANTS_EXPANSION;
+    absl::c_copy(result_entry->inner_segment_boundary(),
+                 std::back_inserter(result.inner_segment_boundary));
     if (result_entry->spelling_correction()) {
       result.candidate_attributes |= converter::Attribute::SPELLING_CORRECTION;
     }
@@ -1694,13 +1778,23 @@ bool UserHistoryPredictor::IsValidEntryIgnoringRemovedField(
   return true;
 }
 
-bool UserHistoryPredictor::ShouldInsert(
-    const ConversionRequest& request, absl::string_view key,
-    absl::string_view value, const absl::string_view description) const {
+void UserHistoryPredictor::Insert(
+    const ConversionRequest& request, int32_t key_begin, int32_t value_begin,
+    absl::string_view key, absl::string_view value,
+    absl::string_view description,
+    converter::InnerSegmentBoundarySpan inner_segment_boundary,
+    bool is_suggestion_selected, absl::Span<const uint64_t> next_fps,
+    uint64_t last_access_time,
+    UserHistoryPredictor::RevertEntries* revert_entries) {
+  // b/279560433: Preprocess key value
+  // (key|value)_begin don't change after StripTrailingAsciiWhitespace.
+  key = absl::StripTrailingAsciiWhitespace(key);
+  value = absl::StripTrailingAsciiWhitespace(value);
+
   if (key.empty() || value.empty() || key.size() > kMaxStringLength ||
       value.size() > kMaxStringLength ||
       description.size() > kMaxStringLength) {
-    return false;
+    return;
   }
 
   // Do not remember Japanese text that ends with a punctuation.
@@ -1710,34 +1804,10 @@ bool UserHistoryPredictor::ShouldInsert(
   if ((type == Util::KANJI || type == Util::HIRAGANA ||
        type == Util::KATAKANA) &&
       Util::CharsLen(value) > 1 && EndsWithPunctuation(value)) {
-    return false;
+    return;
   }
 
-  return true;
-}
-
-void UserHistoryPredictor::TryInsert(
-    const ConversionRequest& request, int32_t key_begin, int32_t value_begin,
-    absl::string_view key, absl::string_view value,
-    absl::string_view description, bool is_suggestion_selected,
-    absl::Span<const uint64_t> next_fps, uint64_t last_access_time,
-    UserHistoryPredictor::RevertEntries* revert_entries) {
-  // b/279560433: Preprocess key value
-  // (key|value)_begin don't change after StripTrailingAsciiWhitespace.
-  key = absl::StripTrailingAsciiWhitespace(key);
-  value = absl::StripTrailingAsciiWhitespace(value);
-  if (ShouldInsert(request, key, value, description)) {
-    Insert(key_begin, value_begin, key, value, description,
-           is_suggestion_selected, next_fps, last_access_time, revert_entries);
-  }
-}
-
-void UserHistoryPredictor::Insert(
-    int32_t key_begin, int32_t value_begin, absl::string_view key,
-    absl::string_view value, absl::string_view description,
-    bool is_suggestion_selected, absl::Span<const uint64_t> next_fps,
-    uint64_t last_access_time,
-    UserHistoryPredictor::RevertEntries* revert_entries) {
+  // Okay ready to insert.
   const uint64_t fp = Fingerprint(key, value);
 
   const bool has_fp = dic_->HasKey(fp);
@@ -1764,6 +1834,10 @@ void UserHistoryPredictor::Insert(
     entry->clear_description();
   } else {
     entry->set_description(description);
+  }
+
+  if (!inner_segment_boundary.empty()) {
+    PopulateInnerSegmentBoundary(inner_segment_boundary, entry);
   }
 
   revert_entries->entries.emplace_back(key_begin, value_begin, *entry);
@@ -1900,6 +1974,7 @@ UserHistoryPredictor::MakeLearningSegments(
   learning_segments.history_segments =
       make_learning_segments(request.history_result());
   learning_segments.conversion_segments = make_learning_segments(result);
+  learning_segments.inner_segment_boundary = result.inner_segment_boundary;
 
   return learning_segments;
 }
@@ -1924,65 +1999,62 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
     const ConversionRequest& request, bool is_suggestion_selected,
     uint64_t last_access_time, const SegmentsForLearning& learning_segments,
     UserHistoryPredictor::RevertEntries* revert_entries) {
-  absl::string_view all_key = learning_segments.conversion_segments_key;
-  absl::string_view all_value = learning_segments.conversion_segments_value;
-
-  // Inserts all_key/all_value.
-  // We don't insert it for mobile.
-  if (!IsMixedConversionEnabled(request) &&
-      learning_segments.conversion_segments.size() > 1 && !all_key.empty() &&
-      !all_value.empty()) {
-    TryInsert(request, 0, 0, all_key, all_value, "", is_suggestion_selected, {},
-              last_access_time, revert_entries);
+  // Makes a link from the last history_segment to the first conversion
+  // segment or to the entire user input.
+  if (learning_segments.history_segments.empty() ||
+      learning_segments.conversion_segments.empty()) {
+    return;
   }
 
-  // Makes a link from the last history_segment to the first conversion segment
-  // or to the entire user input.
-  if (!learning_segments.history_segments.empty() &&
-      !learning_segments.conversion_segments.empty()) {
-    const SegmentForLearning& history_segment =
-        learning_segments.history_segments.back();
-    const SegmentForLearning& conversion_segment =
-        learning_segments.conversion_segments.front();
-    absl::string_view history_value = history_segment.value;
-    if (history_value.empty() || conversion_segment.value.empty()) {
-      return;
-    }
-    // 1) Don't learn a link from a history which ends with punctuation.
-    if (EndsWithPunctuation(history_value)) {
-      return;
-    }
-    // 2) Don't learn a link to a punctuation.
-    // Exception: For zero query suggestion, we learn a link to a single
-    //            punctuation segment.
-    // Example: "よろしく|。" -> OK
-    //          "よろしく|。でも" -> NG
-    //          "よろしく|。。" -> NG
-    // In the suggestion phase, we do not allow the bigram connection where
-    // right-hand-side words start with a punctuation mark. The prediction
-    // of punctuation marks is only triggered on zero-query suggestions.
-    if (Util::CharsLen(conversion_segment.value) > 1 &&
-        StartsWithPunctuation(conversion_segment.value)) {
-      return;
-    }
-    Entry* history_entry = dic_->MutableLookupWithoutInsert(
-        LearningSegmentFingerprint(history_segment));
-    if (history_entry) {
-      revert_entries->history_entry = *history_entry;
-      if (!is_suggestion_selected) {
-        for (const auto next_fp :
-             LearningSegmentFingerprints(conversion_segment)) {
-          InsertNextEntry(next_fp, history_entry);
-        }
-      }
+  const SegmentForLearning& history_segment =
+      learning_segments.history_segments.back();
+  const SegmentForLearning& conversion_segment =
+      learning_segments.conversion_segments.front();
+  absl::string_view history_value = history_segment.value;
+  if (history_value.empty() || conversion_segment.value.empty()) {
+    return;
+  }
 
-      // Entire user input or SUGGESTION
-      if (is_suggestion_selected ||
-          learning_segments.conversion_segments.size() > 1) {
-        const uint64_t next_fp = Fingerprint(all_key, all_value);
-        InsertNextEntry(next_fp, history_entry);
-      }
+  // 1) Don't learn a link from a history which ends with punctuation.
+  if (EndsWithPunctuation(history_value)) {
+    return;
+  }
+
+  // 2) Don't learn a link to a punctuation.
+  // Exception: For zero query suggestion, we learn a link to a single
+  //            punctuation segment.
+  // Example: "よろしく|。" -> OK
+  //          "よろしく|。でも" -> NG
+  //          "よろしく|。。" -> NG
+  // In the suggestion phase, we do not allow the bigram connection where
+  // right-hand-side words start with a punctuation mark. The prediction
+  // of punctuation marks is only triggered on zero-query suggestions.
+  if (Util::CharsLen(conversion_segment.value) > 1 &&
+      StartsWithPunctuation(conversion_segment.value)) {
+    return;
+  }
+
+  Entry* history_entry = dic_->MutableLookupWithoutInsert(
+      LearningSegmentFingerprint(history_segment));
+  if (!history_entry) {
+    return;
+  }
+
+  revert_entries->history_entry = *history_entry;
+  if (!is_suggestion_selected) {
+    for (const auto next_fp : LearningSegmentFingerprints(conversion_segment)) {
+      InsertNextEntry(next_fp, history_entry);
     }
+  }
+
+  // Entire user input or SUGGESTION
+  if (is_suggestion_selected ||
+      learning_segments.conversion_segments.size() > 1) {
+    // This fp would not be available on mobile, as key/value is not stored.
+    const uint64_t next_fp =
+        Fingerprint(learning_segments.conversion_segments_key,
+                    learning_segments.conversion_segments_value);
+    InsertNextEntry(next_fp, history_entry);
   }
 }
 
@@ -1990,9 +2062,22 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
     const ConversionRequest& request, bool is_suggestion_selected,
     uint64_t last_access_time, const SegmentsForLearning& learning_segments,
     UserHistoryPredictor::RevertEntries* revert_entries) {
+  const commands::DecoderExperimentParams& params =
+      request.request().decoder_experiment_params();
+
+  // Inserts all_key/all_value.
+  // We don't insert it for mobile.
+  if ((params.user_history_cache_full_sentence() ||
+       !IsMixedConversionEnabled(request)) &&
+      learning_segments.conversion_segments.size() > 1) {
+    Insert(request, 0, 0, learning_segments.conversion_segments_key,
+           learning_segments.conversion_segments_value, "",
+           learning_segments.inner_segment_boundary, is_suggestion_selected, {},
+           last_access_time, revert_entries);
+  }
+
   absl::flat_hash_set<std::vector<uint64_t>> seen;
   bool this_was_seen = false;
-
   for (size_t i = 0; i < learning_segments.conversion_segments.size(); ++i) {
     const SegmentForLearning& segment =
         learning_segments.conversion_segments[i];
@@ -2020,15 +2105,23 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
     } else {
       this_was_seen = false;
     }
-    TryInsert(request, segment.key_begin, segment.value_begin, segment.key,
-              segment.value, segment.description, is_suggestion_selected,
-              next_fps_to_set, last_access_time, revert_entries);
+
+    converter::InnerSegmentBoundary inner_segment_boundary;
     if (segment.content_key != segment.key &&
         segment.content_value != segment.value) {
-      TryInsert(request, segment.key_begin, segment.value_begin,
-                segment.content_key, segment.content_value, segment.description,
-                is_suggestion_selected, {}, last_access_time, revert_entries);
+      inner_segment_boundary = converter::BuildInnerSegmentBoundary(
+          {{segment.key.size(), segment.value.size(),
+            segment.content_key.size(), segment.content_value.size()}},
+          segment.key, segment.value);
+      Insert(request, segment.key_begin, segment.value_begin,
+             segment.content_key, segment.content_value, segment.description,
+             {}, is_suggestion_selected, {}, last_access_time, revert_entries);
     }
+
+    Insert(request, segment.key_begin, segment.value_begin, segment.key,
+           segment.value, segment.description, inner_segment_boundary,
+           is_suggestion_selected, next_fps_to_set, last_access_time,
+           revert_entries);
   }
 }
 
@@ -2412,7 +2505,7 @@ void UserHistoryPredictor::MaybeProcessPartialRevertEntry(
       } else {
         // Uses the aligner to get the ckey_prefix.
         // GetReadingAlignment returns the per-char alignment, e.g.
-        // {東京駅, とうきょうえき} -> {{東, とう}, {京, きょう}, {駅, えき}}
+        // {東京駅, とうきょうえき} -> {{東, とう},{京, きょう}, {駅, えき}}
         int32_t key_consumed = 0, value_consumed = 0;
         for (const auto& [surface, reading] :
              modules_.GetSupplementalModel().GetReadingAlignment(cvalue,

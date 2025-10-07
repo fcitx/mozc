@@ -32,6 +32,13 @@
 #import <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
 
+// Set kUseUsageStats to control usage stats.
+#ifdef GOOGLE_JAPANESE_INPUT_BUILD
+constexpr bool kUseUsageStats = true;
+#else   // GOOGLE_JAPANESE_INPUT_BUILD
+constexpr bool kUseUsageStats = false;
+#endif  // GOOGLE_JAPANESE_INPUT_BUILD
+
 #ifdef GOOGLE_JAPANESE_INPUT_BUILD
 static const unsigned char kInstalledLocation[] = "/Library/Input Methods/GoogleJapaneseInput.app";
 static NSString *kLaunchdPlistFiles[] = {
@@ -138,9 +145,10 @@ static BOOL HasUsageStatsDB() {
 // directory.  This function should be called only if the user checks
 // the |_putUsageStatsDB| button.
 static BOOL StoreDefaultConfigWithSendingUsageStats() {
-#ifndef GOOGLE_JAPANESE_INPUT_BUILD
-  return NO;
-#endif  // !GOOGLE_JAPANESE_INPUT_BUILD
+  if (!kUseUsageStats) {
+    return NO;
+  }
+
   NSArray *libraryPaths =
       NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES);
   NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -262,9 +270,11 @@ static BOOL StoreDefaultConfigWithSendingUsageStats() {
   }
 
   // usage stats message
+  // Note, setHidden is used instead of removeFromSuperview because removeFromSuperview requires
+  // additional logic for memory management. Otherwise it may result crash of installer.
 #ifndef GOOGLE_JAPANESE_INPUT_BUILD
-  [_putUsageStatsDB removeFromSuperview];
-  [_putUsageStatsDBMessage removeFromSuperview];
+  [_putUsageStatsDB setHidden:YES];
+  [_putUsageStatsDBMessage setHidden:YES];
 #else   // GOOGLE_JAPANESE_INPUT_BUILD
   if (!_hasUsageStatsDB) {
     NSString *usageStatsMessage = [self localizedStringForKey:@"usageStatsMessage"];
@@ -272,8 +282,8 @@ static BOOL StoreDefaultConfigWithSendingUsageStats() {
       [_putUsageStatsDBMessage setStringValue:usageStatsMessage];
     }
   } else {
-    [_putUsageStatsDB removeFromSuperview];
-    [_putUsageStatsDBMessage removeFromSuperview];
+    [_putUsageStatsDB setHidden:YES];
+    [_putUsageStatsDBMessage setHidden:YES];
   }
 #endif  // GOOGLE_JAPANESE_INPUT_BUILD
 
@@ -299,11 +309,10 @@ static BOOL StoreDefaultConfigWithSendingUsageStats() {
       ActivateGoogleJapaneseInput();
       _alreadyActivated = YES;
     }
-#ifdef GOOGLE_JAPANESE_INPUT_BUILD
-    if (!_hasUsageStatsDB && [_putUsageStatsDB state] == NSControlStateValueOn) {
+
+    if (kUseUsageStats && !_hasUsageStatsDB && [_putUsageStatsDB state] == NSControlStateValueOn) {
       StoreDefaultConfigWithSendingUsageStats();
     }
-#endif  // GOOGLE_JAPANESE_INPUT_BUILD
   }
 }
 

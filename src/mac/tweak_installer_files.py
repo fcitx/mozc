@@ -49,6 +49,7 @@ def ParseArguments() -> argparse.Namespace:
   parser.add_argument('--productbuild', action='store_true')
   parser.add_argument('--noqt', action='store_true')
   parser.add_argument('--oss', action='store_true')
+  parser.add_argument('--channel', default='dev')
   parser.add_argument('--work_dir')
   # '-' means pseudo identity.
   # https://github.com/bazelbuild/rules_apple/blob/3.5.1/apple/internal/codesigning_support.bzl#L42
@@ -132,15 +133,19 @@ def TweakQtApps(top_dir: str, oss: bool) -> None:
   SymlinkQtFrameworks(qt_app)
 
 
-def TweakForProductbuild(top_dir: str, tweak_qt: bool, oss: bool) -> None:
+def TweakForProductbuild(
+    top_dir: str, tweak_qt: bool, oss: bool, channel: str
+) -> None:
   """Tweak file paths for the productbuild command."""
   orig_dir = os.getcwd()
   os.chdir(top_dir)
 
   if oss:
+    is_dev_channel = False
     name = 'Mozc'
     folder = 'Mozc'
   else:
+    is_dev_channel = channel == 'dev'
     name = 'GoogleJapaneseInput'
     folder = 'GoogleJapaneseInput.localized'
 
@@ -153,8 +158,21 @@ def TweakForProductbuild(top_dir: str, tweak_qt: bool, oss: bool) -> None:
       ('postflight.sh', 'scripts/postinstall'),
       ('preflight.sh', 'scripts/preinstall'),
   ]
-  if not oss:
+
+  # For the dev channel, add the dev confirm section to the installer.
+  if is_dev_channel:
     renames += [('DevConfirmPane.bundle', 'Plugins/')]
+  else:
+    shutil.rmtree('DevConfirmPane.bundle')
+    # Remove the dev confirm section from InstallerSections.plist
+    contents = []
+    with open('InstallerSections.plist', 'r') as f:
+      for line in f:
+        if 'DevConfirmPane' in line:
+          continue
+        contents.append(line)
+    with open('InstallerSections.plist', 'w') as f:
+      f.write(''.join(contents))
 
   for src, dst in renames:
     if dst.endswith('/'):
@@ -188,7 +206,14 @@ def Codesign(top_dir: str, identity: str) -> None:
       shutil.rmtree(os.path.join(cur_dir, dir_name))
       dirs.remove(dir_name)  # skip walking the removed directory.
 
-  args = ['--force', '--sign', identity, '--keychain', 'login.keychain']
+  args = [
+      '--force',
+      '--options=runtime',
+      '--sign',
+      identity,
+      '--keychain',
+      'login.keychain',
+  ]
 
   # codesign libqcocoa.dylib
   file_name = 'libqcocoa.dylib'
@@ -199,10 +224,15 @@ def Codesign(top_dir: str, identity: str) -> None:
       util.RunOrDie(codesign)
 
   # codesign apps
-  for cur_dir, dirs, _ in os.walk(top_dir):  # symbolic links are not followed.
+  # Walk the directory from the bottom to the top. This is necessary because
+  # the sub apps should be signed before the main app.
+  # Note, os.walk does not folow symbolic links.
+  for cur_dir, dirs, _ in os.walk(top_dir, topdown=False):
     for dir_name in dirs:
       path = os.path.join(cur_dir, dir_name)
-      if dir_name.endswith('.app') and not os.path.islink(path):
+      ext = os.path.splitext(dir_name)[1]
+      is_app = ext in ['.app', '.bundle', '.framework']
+      if is_app and not os.path.islink(path):
         codesign = ['/usr/bin/codesign', *args, path]
         util.RunOrDie(codesign)
 
@@ -223,7 +253,7 @@ def TweakInstallerFiles(args: argparse.Namespace, work_dir: str) -> None:
     TweakQtApps(top_dir, args.oss)
 
   if args.productbuild:
-    TweakForProductbuild(top_dir, tweak_qt, args.oss)
+    TweakForProductbuild(top_dir, tweak_qt, args.oss, args.channel)
     Codesign(top_dir, args.codesign_identity)
 
   # Create a zip file with the zip command.

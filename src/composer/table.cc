@@ -568,13 +568,13 @@ std::shared_ptr<const Table> Table::GetSharedDefaultTable() {
 // TableContainer
 // ========================================
 TableManager::TableManager()
-    : custom_roman_table_fingerprint_(CityFingerprint32("")) {}
+    : custom_roman_table_fingerprint_(CityFingerprint("")) {}
 
 std::shared_ptr<const Table> TableManager::GetTable(
     const mozc::commands::Request& request,
     const mozc::config::Config& config) {
   // calculate the hash depending on the request and the config
-  const uint32_t hash =
+  const size_t hash =
       absl::HashOf(request.special_romanji_table(), config.preedit_method(),
                    config.punctuation_method(), config.symbol_method());
 
@@ -582,8 +582,8 @@ std::shared_ptr<const Table> TableManager::GetTable(
   bool update_custom_roman_table = false;
   if ((config.preedit_method() == config::Config::ROMAN) &&
       config.has_custom_roman_table() && !config.custom_roman_table().empty()) {
-    const uint32_t custom_roman_table_fingerprint =
-        CityFingerprint32(config.custom_roman_table());
+    const uint64_t custom_roman_table_fingerprint =
+        CityFingerprint(config.custom_roman_table());
     if (custom_roman_table_fingerprint != custom_roman_table_fingerprint_) {
       update_custom_roman_table = true;
       custom_roman_table_fingerprint_ = custom_roman_table_fingerprint;

@@ -51,6 +51,7 @@
 #include "base/container/trie.h"
 #include "base/thread.h"
 #include "composer/query.h"
+#include "converter/inner_segment.h"
 #include "dictionary/dictionary_interface.h"
 #include "engine/modules.h"
 #include "prediction/predictor_interface.h"
@@ -176,6 +177,7 @@ class UserHistoryPredictor : public PredictorInterface {
   struct SegmentsForLearning {
     std::string conversion_segments_key;
     std::string conversion_segments_value;
+    converter::InnerSegmentBoundary inner_segment_boundary;
 
     std::vector<SegmentForLearning> history_segments;
     std::vector<SegmentForLearning> conversion_segments;
@@ -190,21 +192,6 @@ class UserHistoryPredictor : public PredictorInterface {
     RIGHT_PREFIX_MATCH,  // right string is a prefix of left string
     LEFT_EMPTY_MATCH,    // left string is empty (for zero_query_suggestion)
     EXACT_MATCH,         // right string == left string
-  };
-
-  // Returns value of RemoveNgramChain() method. See the comments in
-  // implementation.
-  enum class RemoveNgramChainResult {
-    DONE,
-    TAIL,
-    NOT_FOUND,
-  };
-
-  // Result type for IsValidCandidate() check.
-  enum class ResultType {
-    GOOD_RESULT,
-    BAD_RESULT,
-    STOP_ENUMERATION,  // Do not insert and stop enumerations
   };
 
   // Returns true if this predictor should return results for the input.
@@ -242,9 +229,9 @@ class UserHistoryPredictor : public PredictorInterface {
   // Returns true if prev_entry has a next_fp link to entry
   static bool HasBigramEntry(const Entry& entry, const Entry& prev_entry);
 
-  static ResultType GetResultType(const ConversionRequest& request,
-                                  bool is_top_candidate,
-                                  uint32_t request_key_len, const Entry& entry);
+  // Returns true if `entry` is valid.
+  static bool IsValidResult(const ConversionRequest& request,
+                            uint32_t request_key_len, const Entry& entry);
 
   // Returns true if entry is DEFAULT_ENTRY, satisfies certain conditions, and
   // doesn't have removed flag.
@@ -314,7 +301,8 @@ class UserHistoryPredictor : public PredictorInterface {
       absl::string_view request_key, bool prefer_exact_match,
       const Entry* entry, const Entry** result_last_entry,
       uint64_t* left_last_access_time, uint64_t* left_most_last_access_time,
-      std::string* result_key, std::string* result_value) const;
+      std::string* result_key, std::string* result_value,
+      converter::InnerSegmentBoundary* result_inner_segment_boundary) const;
 
   const Entry* absl_nullable LookupPrevEntry(
       const ConversionRequest& request) const;
@@ -325,7 +313,8 @@ class UserHistoryPredictor : public PredictorInterface {
 
   // Adds the entry whose key and value are modified to a priority queue.
   Entry* absl_nonnull AddEntryWithNewKeyValue(
-      std::string key, std::string value, Entry entry,
+      std::string key, std::string value,
+      converter::InnerSegmentBoundarySpan inner_segment_boundary, Entry entry,
       EntryPriorityQueue* entry_queue) const;
 
   EntryPriorityQueue GetEntry_QueueFromHistoryDictionary(
@@ -415,28 +404,18 @@ class UserHistoryPredictor : public PredictorInterface {
       RevertEntries* revert_entries);
 
   // Inserts |key,value,description| to the internal dictionary database.
+  // |inner_segment_boundary| inner segment boundary information.
   // |key_begin,value_begin|: string byte offset on result.(key|value).
   // |is_suggestion_selected|: key/value is suggestion or conversion.
   // |next_fp|: fingerprints of the next segment.
-  // |last_access_time|: the time when this entry was created
-  void Insert(int32_t key_begin, int32_t value_begin, absl::string_view key,
+  // |last_access_time|: the time when this entry was created.
+  // Entry's contents and request_type will be checked before insertion.
+  void Insert(const ConversionRequest& request, int32_t key_begin,
+              int32_t value_begin, absl::string_view key,
               absl::string_view value, absl::string_view description,
+              converter::InnerSegmentBoundarySpan inner_segment_boundary,
               bool is_suggestion_selected, absl::Span<const uint64_t> next_fps,
               uint64_t last_access_time, RevertEntries* revert_entries);
-
-  // Called by TryInsert to check the Entry to insert.
-  bool ShouldInsert(const ConversionRequest& request, absl::string_view key,
-                    absl::string_view value,
-                    absl::string_view description) const;
-
-  // Tries to insert entry.
-  // Entry's contents and request_type will be checked before insertion.
-  void TryInsert(const ConversionRequest& request, int32_t key_begin,
-                 int32_t value_begin, absl::string_view key,
-                 absl::string_view value, absl::string_view description,
-                 bool is_suggestion_selected,
-                 absl::Span<const uint64_t> next_fps, uint64_t last_access_time,
-                 RevertEntries* revert_entries);
 
   // Inserts a new |fp| into |entry|.
   // it makes a bigram connection from entry to next_entry.
@@ -444,13 +423,16 @@ class UserHistoryPredictor : public PredictorInterface {
 
   static void EraseNextEntries(uint64_t fp, Entry* entry);
 
-  // Recursively removes a chain of Entries in |dic_|. See the comment in
-  // implementation for details.
-  RemoveNgramChainResult RemoveNgramChain(
-      absl::string_view target_key, absl::string_view target_value,
-      Entry* entry, std::vector<absl::string_view>* key_ngrams,
-      size_t key_ngrams_len, std::vector<absl::string_view>* value_ngrams,
-      size_t value_ngrams_len);
+  // Recursively removes a chain of Entries in |dic_|.
+  // Returns true if at least one chain is removed.
+  bool RemoveNgramChain(absl::string_view target_key,
+                        absl::string_view target_value, Entry* entry);
+
+  // Removes entry when key/value are the prefix of entry with
+  // the inner boundary constraint. entry->removed() gets true when removed.
+  static bool RemoveEntryWithInnerSegment(absl::string_view key,
+                                          absl::string_view value,
+                                          Entry* entry);
 
   // Returns true if the input first candidate seems to be a privacy sensitive
   // such like password.

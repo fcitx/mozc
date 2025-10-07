@@ -40,9 +40,13 @@ load(
     "//:config.bzl",
     "BRANDING",
     "MACOS_BUNDLE_ID_PREFIX",
+    "MACOS_CODESIGN_IDENTITY_INSTALLER_RELEASE",
+    "MACOS_CODESIGN_IDENTITY_INSTALLER_TESTING",
     "MACOS_CODESIGN_IDENTITY_PSEUDO",
     "MACOS_CODESIGN_IDENTITY_RELEASE",
     "MACOS_CODESIGN_IDENTITY_TESTING",
+    "MACOS_KEYCHAIN_INSTALLER_RELEASE",
+    "MACOS_KEYCHAIN_INSTALLER_TESTING",
 )
 
 package(default_visibility = ["//visibility:private"])
@@ -60,6 +64,18 @@ CODESIGN_IDENTITY_SELECT = select({
     "//:codesign_release": MACOS_CODESIGN_IDENTITY_RELEASE,
     "//:codesign_testing": MACOS_CODESIGN_IDENTITY_TESTING,
     "//conditions:default": MACOS_CODESIGN_IDENTITY_PSEUDO,
+})
+
+CODESIGN_IDENTITY_INSTALLER_SELECT = select({
+    "//:codesign_release": MACOS_CODESIGN_IDENTITY_INSTALLER_RELEASE,
+    "//:codesign_testing": MACOS_CODESIGN_IDENTITY_INSTALLER_TESTING,
+    "//conditions:default": MACOS_CODESIGN_IDENTITY_PSEUDO,
+})
+
+KEYCHAIN_INSTALLER_SELECT = select({
+    "//:codesign_release": MACOS_KEYCHAIN_INSTALLER_RELEASE,
+    "//:codesign_testing": MACOS_KEYCHAIN_INSTALLER_TESTING,
+    "//conditions:default": "",
 })
 
 mozc_macos_application(
@@ -478,11 +494,11 @@ mozc_py_binary(
     deps = ["//build_tools:util"],
 )
 
-# Create a zip file for productbuild. The files in the zip file are codesigned.
+# Create a zip file for package. The files in the zip file are codesigned.
 genrule(
-    name = "productbuild_files",
+    name = "package_files",
     srcs = [":zipped_installer_files"],
-    outs = ["productbuild_files.zip"],
+    outs = ["package_files.zip"],
     cmd = "$(location :tweak_installer_files) --productbuild --input $(SRCS)" +
           " --output $@" +
           mozc_select(
@@ -490,21 +506,11 @@ genrule(
               oss_macos = " --oss",
               prod_macos = "",
           ) +
-          ' --codesign_identity "' + CODESIGN_IDENTITY_SELECT + '"',
+          ' --codesign_identity "' + CODESIGN_IDENTITY_SELECT + '"' +
+          " --channel " + BUILD_TYPE_SELECT,
     exec_compatible_with = ["@platforms//os:macos"],
     # Use local execution instead of sandbox because it uses `codesign` that accesses to keychain.
     local = True,
-    tags = ["manual"],
-    tools = [":tweak_installer_files"],
-)
-
-# TODO(b/357456172): The rules from tweaked_installer_files till installer_oss_macos are deprecated.
-# Those rules will be removed after the migration to the new build system.
-genrule(
-    name = "tweaked_installer_files",
-    srcs = [":zipped_installer_files"],
-    outs = ["tweaked_installer.zip"],
-    cmd = "$(location :tweak_installer_files) --input $(SRCS) --output $@",
     tags = ["manual"],
     tools = [":tweak_installer_files"],
 )
@@ -537,16 +543,20 @@ mozc_py_binary(
 
 genrule(
     name = "package",
-    srcs = [":productbuild_files"],
+    srcs = [":package_files"],
     outs = ["Mozc.pkg"],
-    cmd = "$(location :build_package) --input $(location :productbuild_files)" +
+    cmd = "$(location :build_package) --input $(location :package_files)" +
           " --output $@" +
+          ' --codesign_identity "' + CODESIGN_IDENTITY_INSTALLER_SELECT + '"' +
+          ' --keychain "' + KEYCHAIN_INSTALLER_SELECT + '"' +
           mozc_select(
               default = "",
               oss = " --oss",
               prod = "",
           ),
     exec_compatible_with = ["@platforms//os:macos"],
+    # Set local for `productsign` with the local KeyChain.
+    local = True,
     # TODO(b/269007577): version_file, auto_updater_dir and build_type should be supported.
     tags = ["manual"],
     tools = [":build_package"],
@@ -588,6 +598,8 @@ genrule(
         "cp $(location :diskimage) $@ &&",
         "chmod u+w $@ &&",
         "/usr/bin/codesign",
+        "--force --verbose",
+        "--deep",  # Recursive signs
         "--timestamp --options=runtime",  # For notarization
         "--keychain login.keychain",
     ]) +
