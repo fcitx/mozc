@@ -170,6 +170,13 @@ bool IsContentWord(const absl::string_view value) {
          Util::GetScriptType(value) != Util::UNKNOWN_SCRIPT;
 }
 
+// Returns true if `value` starts with a valid letter character.
+bool StartsWithValidLetter(const absl::string_view value) {
+  const auto type = Util::GetFirstScriptType(value);
+  return type == Util::KANJI || type == Util::HIRAGANA ||
+         type == Util::KATAKANA || type == Util::ALPHABET;
+}
+
 // Returns candidate description.
 // If candidate is spelling correction, typing correction
 // or auto partial suggestion,
@@ -190,16 +197,12 @@ void PopulateInnerSegmentBoundary(
     converter::InnerSegmentBoundarySpan inner_segment_boundary,
     UserHistoryPredictor::Entry* absl_nonnull entry) {
   entry->clear_inner_segment_boundary();
-
-  // b/449508982: temporarily disables the inner segment feature.
-  return;
 }
 
 // Add the inner_segment_boundary information in `entry` via `builder`.
 void AppendInnerBoundary(converter::InnerSegmentBoundaryBuilder& builder,
                          const UserHistoryPredictor::Entry& entry) {
   // b/449508982: temporarily disables the inner segment feature.
-  return;
 }
 
 }  // namespace
@@ -900,9 +903,7 @@ bool UserHistoryPredictor::ZeroQueryLookupEntry(
     // suffix must starts with Japanese characters.
     std::string key = entry->key().substr(prev_entry->key().size());
     std::string value = entry->value().substr(prev_entry->value().size());
-    const auto type = Util::GetFirstScriptType(value);
-    if (type != Util::KANJI && type != Util::HIRAGANA &&
-        type != Util::KATAKANA) {
+    if (!StartsWithValidLetter(value)) {
       return false;
     }
     Entry* result = entry_queue->NewEntry();
@@ -1533,6 +1534,11 @@ void UserHistoryPredictor::GetInputKeyFromRequest(
 bool UserHistoryPredictor::IsValidResult(const ConversionRequest& request,
                                          uint32_t request_key_len,
                                          const Entry& entry) {
+  // Suppress broken utf8 string just in case.
+  if (!Util::IsValidUtf8(entry.value())) {
+    return false;
+  }
+
   if (IsMixedConversionEnabled(request)) {
     // Don't show long history for mixed conversion
     // TODO(taku, b/447705421): Deprecates the length-based filtering.
@@ -1752,17 +1758,14 @@ void UserHistoryPredictor::Insert(
 
   if (key.empty() || value.empty() || key.size() > kMaxStringLength ||
       value.size() > kMaxStringLength ||
-      description.size() > kMaxStringLength) {
+      description.size() > kMaxStringLength || !Util::IsValidUtf8(value)) {
     return;
   }
 
-  // Do not remember Japanese text that ends with a punctuation.
-  // Usually Japanese punctuation is an independent segment, so
-  // this case happens when user type "よろしく。" directly via composer.
-  const auto type = Util::GetFirstScriptType(value);
-  if ((type == Util::KANJI || type == Util::HIRAGANA ||
-       type == Util::KATAKANA) &&
-      Util::CharsLen(value) > 1 && EndsWithPunctuation(value)) {
+  // Do not remember text that ends with a punctuation.
+  // This case happens when user type "よろしく。" or "hello," directly via
+  // composer.
+  if (StartsWithValidLetter(value) && EndsWithPunctuation(value)) {
     return;
   }
 
@@ -2021,13 +2024,9 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
     const ConversionRequest& request, bool is_suggestion_selected,
     uint64_t last_access_time, const SegmentsForLearning& learning_segments,
     UserHistoryPredictor::RevertEntries* revert_entries) {
-  const commands::DecoderExperimentParams& params =
-      request.request().decoder_experiment_params();
-
   // Inserts all_key/all_value.
   // We don't insert it for mobile.
-  if ((params.user_history_cache_full_sentence() ||
-       !IsMixedConversionEnabled(request)) &&
+  if (!IsMixedConversionEnabled(request) &&
       learning_segments.conversion_segments.size() > 1) {
     Insert(request, 0, 0, learning_segments.conversion_segments_key,
            learning_segments.conversion_segments_value, "",
@@ -2435,6 +2434,10 @@ void UserHistoryPredictor::MaybeProcessPartialRevertEntry(
        last_committed_entries->entries) {
     absl::string_view cvalue = committed_entry.value();
     absl::string_view ckey = committed_entry.key();
+    // temporal workaround for b/450398740
+    if (!Util::IsValidUtf8(cvalue) || !Util::IsValidUtf8(ckey)) {
+      continue;
+    }
     const int32_t value_end = value_begin + cvalue.size();
     const int32_t key_end = key_begin + ckey.size();
 

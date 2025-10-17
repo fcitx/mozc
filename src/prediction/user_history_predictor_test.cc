@@ -1401,19 +1401,24 @@ TEST_F(UserHistoryPredictorTest, TrailingPunctuationMobile) {
   request_test_util::FillMobileRequest(&request_);
   SegmentsProxy segments_proxy;
 
-  const ConversionRequest convreq1 =
-      SetUpInputForConversion("です。", &composer_, &segments_proxy);
+  // [query, whether the query is remembered]
+  const std::vector<std::pair<absl::string_view, bool>> kTestCase = {
+      {"です。", false}, {"です", true}, {"hello,", false},
+      {"hello", true},   {"123,", true}, {"+@#!,", true}};
 
-  segments_proxy.AddCandidate(0, "です。");
+  for (const auto& [query, expected] : kTestCase) {
+    const ConversionRequest convreq1 =
+        SetUpInputForConversion(query, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, query);
+    predictor->Finish(convreq1, segments_proxy.MakeLearningResults(),
+                      kRevertId);
 
-  predictor->Finish(convreq1, segments_proxy.MakeLearningResults(), kRevertId);
-
-  segments_proxy.Clear();
-
-  const ConversionRequest convreq2 =
-      SetUpInputForPrediction("です", &composer_, &segments_proxy);
-  const std::vector<Result> results = predictor->Predict(convreq2);
-  EXPECT_TRUE(results.empty());
+    segments_proxy.Clear();
+    const ConversionRequest convreq2 = SetUpInputForPrediction(
+        Util::Utf8SubString(query, 0, 2), &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq2);
+    EXPECT_EQ(results.empty(), !expected);
+  }
 }
 
 TEST_F(UserHistoryPredictorTest, HistoryToPunctuation) {
@@ -3429,77 +3434,71 @@ TEST_F(UserHistoryPredictorTest, GetInputKeyFromSegmentsKana) {
 }
 
 TEST_F(UserHistoryPredictorTest, RealtimeConversionInnerSegment) {
-  for (bool cache_full_sentence : {true, false}) {
-    for (bool mixed_conversion : {true, false}) {
-      UserHistoryPredictor* predictor =
-          GetUserHistoryPredictorWithClearedHistory();
+  for (bool mixed_conversion : {true, false}) {
+    UserHistoryPredictor* predictor =
+        GetUserHistoryPredictorWithClearedHistory();
 
-      SegmentsProxy segments_proxy;
-      std::vector<Result> results;
+    SegmentsProxy segments_proxy;
+    std::vector<Result> results;
 
-      request_.set_mixed_conversion(mixed_conversion);
-      request_.mutable_decoder_experiment_params()
-          ->set_user_history_cache_full_sentence(cache_full_sentence);
+    request_.set_mixed_conversion(mixed_conversion);
+    const bool cache_full_sentence_expected = !mixed_conversion;
 
-      const bool cache_full_sentence_expected =
-          (!mixed_conversion || cache_full_sentence);
+    {
+      constexpr absl::string_view kKey = "わたしのなまえはなかのです";
+      constexpr absl::string_view kValue = "私の名前は中野です";
+      const ConversionRequest convreq1 =
+          SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
+      segments_proxy.AddCandidate(0, kValue);
+      // "わたしの, 私の", "わたし, 私"
+      segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 6, 9, 3);
+      // "なまえは, 名前は", "なまえ, 名前"
+      segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 9, 9, 6);
+      // "なかのです, 中野です", "なかの, 中野"
+      segments_proxy.PushBackInnerSegmentBoundary(0, 0, 15, 12, 9, 6);
+      predictor->Finish(convreq1, segments_proxy.MakeLearningResults(),
+                        kRevertId);
 
-      {
-        constexpr absl::string_view kKey = "わたしのなまえはなかのです";
-        constexpr absl::string_view kValue = "私の名前は中野です";
-        const ConversionRequest convreq1 =
-            SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
-        segments_proxy.AddCandidate(0, kValue);
-        // "わたしの, 私の", "わたし, 私"
-        segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 6, 9, 3);
-        // "なまえは, 名前は", "なまえ, 名前"
-        segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 9, 9, 6);
-        // "なかのです, 中野です", "なかの, 中野"
-        segments_proxy.PushBackInnerSegmentBoundary(0, 0, 15, 12, 9, 6);
-        predictor->Finish(convreq1, segments_proxy.MakeLearningResults(),
-                          kRevertId);
-
-        UserHistoryPredictorTestPeer predictor_peer(*predictor);
-        auto* entry = predictor_peer.dic_()->MutableLookupWithoutInsert(
-            UserHistoryPredictor::Fingerprint(kKey, kValue));
-        if (cache_full_sentence_expected) {
-          EXPECT_TRUE(entry);
-        } else {
-          EXPECT_FALSE(entry);
-        }
-      }
-      segments_proxy.Clear();
-
-      const ConversionRequest convreq2 =
-          SetUpInputForPrediction("なかの", &composer_, &segments_proxy);
-      results = predictor->Predict(convreq2);
-      EXPECT_FALSE(results.empty());
-      EXPECT_TRUE(FindCandidateByValue("中野", results));
-      EXPECT_FALSE(FindCandidateByValue("中野です", results));
-      segments_proxy.Clear();
-
-      const ConversionRequest convreq3 =
-          SetUpInputForPrediction("なかので", &composer_, &segments_proxy);
-      results = predictor->Predict(convreq3);
-      EXPECT_FALSE(results.empty());
-      EXPECT_TRUE(FindCandidateByValue("中野です", results));
-
-      segments_proxy.Clear();
-      const ConversionRequest convreq4 =
-          SetUpInputForPrediction("なまえ", &composer_, &segments_proxy);
-      results = predictor->Predict(convreq4);
-      EXPECT_FALSE(results.empty());
-      EXPECT_TRUE(FindCandidateByValue("名前", results));
-      // Do not suggest the phrase ends with [content_word + function_word].
-      EXPECT_FALSE(FindCandidateByValue("名前は", results));
-      EXPECT_FALSE(FindCandidateByValue("名前は中野です", results));
-      if (mixed_conversion) {
-        // prefer exact match.
-        EXPECT_FALSE(FindCandidateByValue("名前は中野", results));
+      UserHistoryPredictorTestPeer predictor_peer(*predictor);
+      auto* entry = predictor_peer.dic_()->MutableLookupWithoutInsert(
+          UserHistoryPredictor::Fingerprint(kKey, kValue));
+      if (cache_full_sentence_expected) {
+        EXPECT_TRUE(entry);
       } else {
-        // prefer prediction.
-        EXPECT_TRUE(FindCandidateByValue("名前は中野", results));
+        EXPECT_FALSE(entry);
       }
+    }
+    segments_proxy.Clear();
+
+    const ConversionRequest convreq2 =
+        SetUpInputForPrediction("なかの", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq2);
+    EXPECT_FALSE(results.empty());
+    EXPECT_TRUE(FindCandidateByValue("中野", results));
+    EXPECT_FALSE(FindCandidateByValue("中野です", results));
+    segments_proxy.Clear();
+
+    const ConversionRequest convreq3 =
+        SetUpInputForPrediction("なかので", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq3);
+    EXPECT_FALSE(results.empty());
+    EXPECT_TRUE(FindCandidateByValue("中野です", results));
+
+    segments_proxy.Clear();
+    const ConversionRequest convreq4 =
+        SetUpInputForPrediction("なまえ", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq4);
+    EXPECT_FALSE(results.empty());
+    EXPECT_TRUE(FindCandidateByValue("名前", results));
+    // Do not suggest the phrase ends with [content_word + function_word].
+    EXPECT_FALSE(FindCandidateByValue("名前は", results));
+    EXPECT_FALSE(FindCandidateByValue("名前は中野です", results));
+    if (mixed_conversion) {
+      // prefer exact match.
+      EXPECT_FALSE(FindCandidateByValue("名前は中野", results));
+    } else {
+      // prefer prediction.
+      EXPECT_TRUE(FindCandidateByValue("名前は中野", results));
     }
   }
 }
