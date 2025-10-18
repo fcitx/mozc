@@ -89,6 +89,8 @@ class MozcCandidateWord final : public CandidateWord {
     mozc_state->SelectCandidate(id_);
   }
 
+  int32_t getId() const { return id_; }
+
  private:
   int id_;
   MozcEngine *engine_;
@@ -232,10 +234,12 @@ class MozcCandidateList final : public CandidateList,
   void prev() override {
     auto *mozc_state = engine_->mozcState(ic_);
     mozc_state->Paging(true);
+    highlightFirstCandidate(mozc_state);
   }
   void next() override {
     auto *mozc_state = engine_->mozcState(ic_);
     mozc_state->Paging(false);
+    highlightFirstCandidate(mozc_state);
   }
 
   bool usedNextBefore() const override { return true; }
@@ -244,6 +248,15 @@ class MozcCandidateList final : public CandidateList,
   void checkIndex(int idx) const {
     if (idx < 0 && idx >= size()) {
       throw std::invalid_argument("invalid index");
+    }
+  }
+
+  void highlightFirstCandidate(MozcState *mozc_state) {
+    auto candidates = ic_->inputPanel().candidateList();
+    if (!candidates->empty()) {
+      const auto &candidate =
+          dynamic_cast<const MozcCandidateWord &>(candidates->candidate(0));
+      mozc_state->HighlightCandidate(candidate.getId());
     }
   }
 
