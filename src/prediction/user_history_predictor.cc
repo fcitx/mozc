@@ -52,6 +52,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -458,11 +459,14 @@ bool UserHistoryPredictor::Load() {
 bool UserHistoryPredictor::Load(UserHistoryStorage&& history) {
   dic_->Clear();
   for (Entry& entry : *history.GetProto().mutable_entries()) {
+    if (entry.value().empty() || entry.key().empty()) {
+      continue;
+    }
     // Workaround for b/116826494: Some garbled characters are suggested
     // from user history. This filters such entries.
-    if (entry.value().empty() || entry.key().empty() ||
-        !Util::IsValidUtf8(entry.value())) {
-      LOG(ERROR) << "Invalid UTF8 found in user history: " << entry;
+    if (!Util::IsValidUtf8(entry.value())) {
+      LOG(ERROR) << "Invalid UTF8 found in user history: "
+                 << absl::BytesToHexString(entry.value());
       continue;
     }
     // conversion_freq is migrated to suggestion_freq.
@@ -1214,7 +1218,7 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
 
   // result with zero frequency is generated via revert operation.
   // zero frequency entry is suggested and the frequency is incremented
-  // in Finsih method.
+  // in Finish method.
   if (!result->removed() && result->suggestion_freq() > 0) {
     entry_queue->Push(result);
   }
@@ -1536,6 +1540,7 @@ bool UserHistoryPredictor::IsValidResult(const ConversionRequest& request,
                                          const Entry& entry) {
   // Suppress broken utf8 string just in case.
   if (!Util::IsValidUtf8(entry.value())) {
+    DLOG(ERROR) << "Invalid UTF8: " << absl::BytesToHexString(entry.value());
     return false;
   }
 
@@ -1748,17 +1753,22 @@ void UserHistoryPredictor::Insert(
     absl::string_view key, absl::string_view value,
     absl::string_view description,
     converter::InnerSegmentBoundarySpan inner_segment_boundary,
-    bool is_suggestion_selected, absl::Span<const uint64_t> next_fps,
-    uint64_t last_access_time,
+    absl::Span<const uint64_t> next_fps, uint64_t last_access_time,
     UserHistoryPredictor::RevertEntries* revert_entries) {
   // b/279560433: Preprocess key value
   // (key|value)_begin don't change after StripTrailingAsciiWhitespace.
   key = absl::StripTrailingAsciiWhitespace(key);
   value = absl::StripTrailingAsciiWhitespace(value);
 
+  if (!Util::IsValidUtf8(key) || !Util::IsValidUtf8(value)) {
+    DLOG(ERROR) << "Invalid UTF8: " << absl::BytesToHexString(key) << " "
+                << absl::BytesToHexString(value);
+    return;
+  }
+
   if (key.empty() || value.empty() || key.size() > kMaxStringLength ||
       value.size() > kMaxStringLength ||
-      description.size() > kMaxStringLength || !Util::IsValidUtf8(value)) {
+      description.size() > kMaxStringLength) {
     return;
   }
 
@@ -1945,21 +1955,17 @@ void UserHistoryPredictor::InsertHistory(
     const ConversionRequest& request,
     const UserHistoryPredictor::SegmentsForLearning& learning_segments,
     UserHistoryPredictor::RevertEntries* revert_entries) {
-  const bool is_suggestion_selected =
-      request.request_type() != ConversionRequest::CONVERSION;
   const uint64_t last_access_time = absl::ToUnixSeconds(Clock::GetAbslTime());
 
-  InsertHistoryForConversionSegments(request, is_suggestion_selected,
-                                     last_access_time, learning_segments,
-                                     revert_entries);
-  InsertHistoryForHistorySegments(request, is_suggestion_selected,
-                                  last_access_time, learning_segments,
+  InsertHistoryForConversionSegments(request, last_access_time,
+                                     learning_segments, revert_entries);
+  InsertHistoryForHistorySegments(request, last_access_time, learning_segments,
                                   revert_entries);
 }
 
 void UserHistoryPredictor::InsertHistoryForHistorySegments(
-    const ConversionRequest& request, bool is_suggestion_selected,
-    uint64_t last_access_time, const SegmentsForLearning& learning_segments,
+    const ConversionRequest& request, uint64_t last_access_time,
+    const SegmentsForLearning& learning_segments,
     UserHistoryPredictor::RevertEntries* revert_entries) {
   // Makes a link from the last history_segment to the first conversion
   // segment or to the entire user input.
@@ -2003,26 +2009,15 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
   }
 
   revert_entries->history_entry = *history_entry;
-  if (!is_suggestion_selected) {
-    for (const auto next_fp : LearningSegmentFingerprints(conversion_segment)) {
-      InsertNextEntry(next_fp, history_entry);
-    }
-  }
 
-  // Entire user input or SUGGESTION
-  if (is_suggestion_selected ||
-      learning_segments.conversion_segments.size() > 1) {
-    // This fp would not be available on mobile, as key/value is not stored.
-    const uint64_t next_fp =
-        Fingerprint(learning_segments.conversion_segments_key,
-                    learning_segments.conversion_segments_value);
+  for (const auto next_fp : LearningSegmentFingerprints(conversion_segment)) {
     InsertNextEntry(next_fp, history_entry);
   }
 }
 
 void UserHistoryPredictor::InsertHistoryForConversionSegments(
-    const ConversionRequest& request, bool is_suggestion_selected,
-    uint64_t last_access_time, const SegmentsForLearning& learning_segments,
+    const ConversionRequest& request, uint64_t last_access_time,
+    const SegmentsForLearning& learning_segments,
     UserHistoryPredictor::RevertEntries* revert_entries) {
   // Inserts all_key/all_value.
   // We don't insert it for mobile.
@@ -2030,8 +2025,8 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
       learning_segments.conversion_segments.size() > 1) {
     Insert(request, 0, 0, learning_segments.conversion_segments_key,
            learning_segments.conversion_segments_value, "",
-           learning_segments.inner_segment_boundary, is_suggestion_selected, {},
-           last_access_time, revert_entries);
+           learning_segments.inner_segment_boundary, {}, last_access_time,
+           revert_entries);
   }
 
   absl::flat_hash_set<std::vector<uint64_t>> seen;
@@ -2073,13 +2068,12 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
           segment.key, segment.value);
       Insert(request, segment.key_begin, segment.value_begin,
              segment.content_key, segment.content_value, segment.description,
-             {}, is_suggestion_selected, {}, last_access_time, revert_entries);
+             {}, {}, last_access_time, revert_entries);
     }
 
     Insert(request, segment.key_begin, segment.value_begin, segment.key,
            segment.value, segment.description, inner_segment_boundary,
-           is_suggestion_selected, next_fps_to_set, last_access_time,
-           revert_entries);
+           next_fps_to_set, last_access_time, revert_entries);
   }
 }
 
@@ -2436,6 +2430,8 @@ void UserHistoryPredictor::MaybeProcessPartialRevertEntry(
     absl::string_view ckey = committed_entry.key();
     // temporal workaround for b/450398740
     if (!Util::IsValidUtf8(cvalue) || !Util::IsValidUtf8(ckey)) {
+      DLOG(ERROR) << "Invalid UTF8: " << absl::BytesToHexString(cvalue) << " "
+                  << absl::BytesToHexString(ckey);
       continue;
     }
     const int32_t value_end = value_begin + cvalue.size();
