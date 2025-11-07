@@ -94,6 +94,7 @@ using ::mozc::config::Config;
 using ::mozc::dictionary::MockDictionary;
 using ::mozc::dictionary::UserDictionaryInterface;
 using ::testing::_;
+using ::testing::ElementsAre;
 using ::testing::Invoke;
 using ::testing::Return;
 
@@ -110,11 +111,13 @@ class UserHistoryPredictorTestPeer
   PEER_STATIC_METHOD(GetScore);
   PEER_STATIC_METHOD(GetMatchType);
   PEER_STATIC_METHOD(IsValidResult);
+  PEER_STATIC_METHOD(MaybeRewritePrefixSpace);
   PEER_STATIC_METHOD(RomanFuzzyPrefixMatch);
   PEER_STATIC_METHOD(MaybeRomanMisspelledKey);
   PEER_STATIC_METHOD(GetRomanMisspelledKey);
   PEER_STATIC_METHOD(GetMatchTypeFromInput);
   PEER_STATIC_METHOD(GetInputKeyFromRequest);
+  PEER_STATIC_METHOD(InsertNextEntry);
   PEER_STATIC_METHOD(EraseNextEntries);
   PEER_STATIC_METHOD(GuessRevertedValueOffset);
   PEER_STATIC_METHOD(RemoveEntryWithInnerSegment);
@@ -1723,6 +1726,112 @@ TEST_F(UserHistoryPredictorTest, ZeroQuerySuggestionTest) {
   }
 }
 
+TEST_F(UserHistoryPredictorTest, ZeroQueryPreferenceTest) {
+  ScopedClockMock clock(absl::FromUnixSeconds(1));
+  UserHistoryPredictor* predictor = GetUserHistoryPredictorWithClearedHistory();
+
+  request_.set_zero_query_suggestion(true);
+  request_.set_mixed_conversion(true);
+
+  SegmentsProxy segments_proxy;
+  std::vector<Result> results;
+
+  auto convert_unigram = [&](absl::string_view key1, absl::string_view value1) {
+    const ConversionRequest convreq1 =
+        SetUpInputForConversion(key1, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, value1);
+    predictor->Finish(convreq1, segments_proxy.MakeLearningResults(),
+                      kRevertId);
+  };
+
+  auto convert_bigram = [&](absl::string_view key1, absl::string_view value1,
+                            absl::string_view key2, absl::string_view value2) {
+    const ConversionRequest convreq1 =
+        SetUpInputForConversion(key1, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, value1);
+    predictor->Finish(convreq1, segments_proxy.MakeLearningResults(),
+                      kRevertId);
+    clock->Advance(absl::Seconds(10));
+    const ConversionRequest convreq2 = SetUpInputForConversionWithHistory(
+        key2, key1, value1, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(1, value2);
+    predictor->Finish(convreq2, segments_proxy.MakeLearningResults(),
+                      kRevertId);
+    clock->Advance(absl::Seconds(10));
+  };
+
+  {
+    predictor->ClearAllHistory();
+    WaitForSyncer(predictor);
+
+    // Fixes https://b/453507817
+    convert_bigram("おおさか", "大阪", "だいがく", "大学");
+    convert_bigram("きょうと", "京都", "だいがく", "大学");
+    convert_bigram("おおさか", "大阪", "ちゅうがく", "中学");
+    convert_bigram("きょうと", "京都", "だいがく", "大学");
+
+    const ConversionRequest convreq = SetUpInputForSuggestionWithHistory(
+        "", "おおさか", "大阪", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq);
+    ASSERT_EQ(results.size(), 2);
+    EXPECT_EQ(results[0].value, "中学");
+    EXPECT_EQ(results[1].value, "大学");
+
+    // This unigram timestamp is not considered.
+    clock->Advance(absl::Hours(1));
+    convert_unigram("だいがく", "大学");
+
+    // Prefers the actual bigram.
+    convert_bigram("おおさか", "大阪", "こうこう", "高校");
+
+    results = predictor->Predict(convreq);
+    ASSERT_EQ(results.size(), 3);
+    EXPECT_EQ(results[0].value, "高校");
+    EXPECT_EQ(results[1].value, "中学");
+    EXPECT_EQ(results[2].value, "大学");
+  }
+
+  // NWP is generated from bigram and unigram.
+  // The preferences are determined by the LRU principle.
+  {
+    predictor->ClearAllHistory();
+    WaitForSyncer(predictor);
+
+    convert_bigram("とうきょう", "東京", "だいがく", "大学");
+    clock->Advance(absl::Hours(1));
+    convert_unigram("とうきょうたわー", "東京タワー");
+
+    const ConversionRequest convreq = SetUpInputForSuggestionWithHistory(
+        "", "とうきょう", "東京", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq);
+    ASSERT_EQ(results.size(), 2);
+    EXPECT_EQ(results[0].value, "タワー");
+    EXPECT_EQ(results[1].value, "大学");
+
+    // Unigram timestamp doesn't affect the bigram preference.
+    convert_unigram("だいがく", "大学");
+    ASSERT_EQ(results.size(), 2);
+    EXPECT_EQ(results[0].value, "タワー");
+    EXPECT_EQ(results[1].value, "大学");
+  }
+
+  {
+    predictor->ClearAllHistory();
+    WaitForSyncer(predictor);
+
+    convert_unigram("とうきょうたわー", "東京タワー");
+    clock->Advance(absl::Hours(1));
+    convert_bigram("とうきょう", "東京", "だいがく", "大学");
+
+    const ConversionRequest convreq = SetUpInputForSuggestionWithHistory(
+        "", "とうきょう", "東京", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq);
+    ASSERT_EQ(results.size(), 2);
+    EXPECT_EQ(results[0].value, "大学");
+    EXPECT_EQ(results[1].value, "タワー");
+  }
+}
+
 TEST_F(UserHistoryPredictorTest, MultiSegmentsMultiInput) {
   UserHistoryPredictor* predictor = GetUserHistoryPredictorWithClearedHistory();
 
@@ -2439,10 +2548,9 @@ TEST_F(UserHistoryPredictorTest, IsValidEntry) {
 }
 
 TEST_F(UserHistoryPredictorTest, IsValidResult) {
-  UserHistoryPredictor::Entry entry;
-
   // desktop
   {
+    UserHistoryPredictor::Entry entry;
     Request request;
     request.set_mixed_conversion(false);
     const ConversionRequest convreq =
@@ -2453,16 +2561,16 @@ TEST_F(UserHistoryPredictorTest, IsValidResult) {
 
     // Always return GOOD_RESULT
     entry.set_bigram_boost(true);
-    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, 1, entry));
+    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, entry));
 
     entry.set_bigram_boost(false);
     entry.set_suggestion_freq(1);
-    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, 3, entry));
-    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, 1, entry));
+    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, entry));
   }
 
   // mobile
   {
+    UserHistoryPredictor::Entry entry;
     Request request;
     request.set_mixed_conversion(true);
     const ConversionRequest convreq =
@@ -2471,27 +2579,68 @@ TEST_F(UserHistoryPredictorTest, IsValidResult) {
     // entry.suggestion_freq() < 2 && Util::CharsLen(entry.value()) > 8
     entry.set_suggestion_freq(1);
     entry.set_value("よろしく");
-    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, 1, entry));
+    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, entry));
 
     entry.set_suggestion_freq(2);                 // high freq
     entry.set_value("よろしくおねがいします。");  // too long
-    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, 1, entry));
+    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, entry));
 
     entry.set_suggestion_freq(1);                 // low freq
     entry.set_value("よろしくおねがいします。");  // too long
-    EXPECT_FALSE(
-        UserHistoryPredictorTestPeer::IsValidResult(convreq, 1, entry));
+    EXPECT_FALSE(UserHistoryPredictorTestPeer::IsValidResult(convreq, entry));
 
     // Allows long value.
     request.mutable_decoder_experiment_params()
         ->set_user_history_suppress_min_length(20);
-    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, 1, entry));
+    EXPECT_TRUE(UserHistoryPredictorTestPeer::IsValidResult(convreq, entry));
 
     // Default values
     request.mutable_decoder_experiment_params()
         ->set_user_history_suppress_min_length(0);
-    EXPECT_FALSE(
-        UserHistoryPredictorTestPeer::IsValidResult(convreq, 1, entry));
+    EXPECT_FALSE(UserHistoryPredictorTestPeer::IsValidResult(convreq, entry));
+  }
+
+  // entry with cache-inner-segment mode.
+  {
+    UserHistoryPredictor::Entry entry;
+    Request request;
+    request.mutable_decoder_experiment_params()
+        ->set_user_history_cache_inner_segment_boundary(true);
+    request.set_mixed_conversion(true);
+
+    entry.set_value("今日は晴れ");
+    entry.set_key("きょうははれ");
+
+    // 今日は|晴れ
+    entry.add_inner_segment_boundary(
+        converter::EncodeLengths(12, 9, 9, 6).value());
+    entry.add_inner_segment_boundary(
+        converter::EncodeLengths(6, 6, 6, 6).value());
+
+    auto is_valid = [&](absl::string_view key, int suggestion_freq) {
+      entry.set_suggestion_freq(suggestion_freq);
+      const ConversionRequest convreq = ConversionRequestBuilder()
+                                            .SetRequestView(request)
+                                            .SetKey(key)
+                                            .Build();
+      return UserHistoryPredictorTestPeer::IsValidResult(convreq, entry);
+    };
+
+    // when the freq == 1, valid if the query exceeds the last segment.
+    EXPECT_FALSE(is_valid("き", 1));
+    EXPECT_FALSE(is_valid("きょ", 1));
+    EXPECT_FALSE(is_valid("きょう", 1));
+    EXPECT_FALSE(is_valid("きょうは", 1));
+    EXPECT_TRUE(is_valid("きょうはは", 1));
+    EXPECT_TRUE(is_valid("きょうははれ", 1));
+
+    // When the freq >= 2, always true.
+    EXPECT_TRUE(is_valid("き", 2));
+    EXPECT_TRUE(is_valid("きょ", 2));
+    EXPECT_TRUE(is_valid("きょう", 2));
+    EXPECT_TRUE(is_valid("きょうは", 2));
+    EXPECT_TRUE(is_valid("きょうはは", 2));
+    EXPECT_TRUE(is_valid("きょうははれ", 2));
   }
 }
 
@@ -3434,71 +3583,77 @@ TEST_F(UserHistoryPredictorTest, GetInputKeyFromSegmentsKana) {
 }
 
 TEST_F(UserHistoryPredictorTest, RealtimeConversionInnerSegment) {
-  for (bool mixed_conversion : {true, false}) {
-    UserHistoryPredictor* predictor =
-        GetUserHistoryPredictorWithClearedHistory();
+  for (bool cache_inner_segment_boundary : {true, false}) {
+    for (bool mixed_conversion : {true, false}) {
+      UserHistoryPredictor* predictor =
+          GetUserHistoryPredictorWithClearedHistory();
 
-    SegmentsProxy segments_proxy;
-    std::vector<Result> results;
+      SegmentsProxy segments_proxy;
+      std::vector<Result> results;
 
-    request_.set_mixed_conversion(mixed_conversion);
-    const bool cache_full_sentence_expected = !mixed_conversion;
+      request_.set_mixed_conversion(mixed_conversion);
+      request_.mutable_decoder_experiment_params()
+          ->set_user_history_cache_inner_segment_boundary(
+              cache_inner_segment_boundary);
+      const bool cache_full_sentence_expected =
+          !mixed_conversion || cache_inner_segment_boundary;
 
-    {
-      constexpr absl::string_view kKey = "わたしのなまえはなかのです";
-      constexpr absl::string_view kValue = "私の名前は中野です";
-      const ConversionRequest convreq1 =
-          SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
-      segments_proxy.AddCandidate(0, kValue);
-      // "わたしの, 私の", "わたし, 私"
-      segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 6, 9, 3);
-      // "なまえは, 名前は", "なまえ, 名前"
-      segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 9, 9, 6);
-      // "なかのです, 中野です", "なかの, 中野"
-      segments_proxy.PushBackInnerSegmentBoundary(0, 0, 15, 12, 9, 6);
-      predictor->Finish(convreq1, segments_proxy.MakeLearningResults(),
-                        kRevertId);
+      {
+        constexpr absl::string_view kKey = "わたしのなまえはなかのです";
+        constexpr absl::string_view kValue = "私の名前は中野です";
+        const ConversionRequest convreq1 =
+            SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
+        segments_proxy.AddCandidate(0, kValue);
+        // "わたしの, 私の", "わたし, 私"
+        segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 6, 9, 3);
+        // "なまえは, 名前は", "なまえ, 名前"
+        segments_proxy.PushBackInnerSegmentBoundary(0, 0, 12, 9, 9, 6);
+        // "なかのです, 中野です", "なかの, 中野"
+        segments_proxy.PushBackInnerSegmentBoundary(0, 0, 15, 12, 9, 6);
+        predictor->Finish(convreq1, segments_proxy.MakeLearningResults(),
+                          kRevertId);
 
-      UserHistoryPredictorTestPeer predictor_peer(*predictor);
-      auto* entry = predictor_peer.dic_()->MutableLookupWithoutInsert(
-          UserHistoryPredictor::Fingerprint(kKey, kValue));
-      if (cache_full_sentence_expected) {
-        EXPECT_TRUE(entry);
-      } else {
-        EXPECT_FALSE(entry);
+        UserHistoryPredictorTestPeer predictor_peer(*predictor);
+        auto* entry = predictor_peer.dic_()->MutableLookupWithoutInsert(
+            UserHistoryPredictor::Fingerprint(kKey, kValue));
+        if (cache_full_sentence_expected) {
+          EXPECT_TRUE(entry);
+        } else {
+          EXPECT_FALSE(entry);
+        }
       }
-    }
-    segments_proxy.Clear();
+      segments_proxy.Clear();
 
-    const ConversionRequest convreq2 =
-        SetUpInputForPrediction("なかの", &composer_, &segments_proxy);
-    results = predictor->Predict(convreq2);
-    EXPECT_FALSE(results.empty());
-    EXPECT_TRUE(FindCandidateByValue("中野", results));
-    EXPECT_FALSE(FindCandidateByValue("中野です", results));
-    segments_proxy.Clear();
+      const ConversionRequest convreq2 =
+          SetUpInputForPrediction("なかの", &composer_, &segments_proxy);
+      results = predictor->Predict(convreq2);
+      EXPECT_FALSE(results.empty());
+      EXPECT_TRUE(FindCandidateByValue("中野", results));
+      EXPECT_FALSE(FindCandidateByValue("中野です", results));
+      segments_proxy.Clear();
 
-    const ConversionRequest convreq3 =
-        SetUpInputForPrediction("なかので", &composer_, &segments_proxy);
-    results = predictor->Predict(convreq3);
-    EXPECT_FALSE(results.empty());
-    EXPECT_TRUE(FindCandidateByValue("中野です", results));
+      const ConversionRequest convreq3 =
+          SetUpInputForPrediction("なかので", &composer_, &segments_proxy);
+      results = predictor->Predict(convreq3);
+      EXPECT_FALSE(results.empty());
+      EXPECT_TRUE(FindCandidateByValue("中野です", results));
 
-    segments_proxy.Clear();
-    const ConversionRequest convreq4 =
-        SetUpInputForPrediction("なまえ", &composer_, &segments_proxy);
-    results = predictor->Predict(convreq4);
-    EXPECT_FALSE(results.empty());
-    EXPECT_TRUE(FindCandidateByValue("名前", results));
-    // Do not suggest the phrase ends with [content_word + function_word].
-    EXPECT_FALSE(FindCandidateByValue("名前は", results));
-    EXPECT_FALSE(FindCandidateByValue("名前は中野です", results));
-    if (mixed_conversion) {
-      // prefer exact match.
-      EXPECT_FALSE(FindCandidateByValue("名前は中野", results));
-    } else {
-      // prefer prediction.
-      EXPECT_TRUE(FindCandidateByValue("名前は中野", results));
+      segments_proxy.Clear();
+      const ConversionRequest convreq4 =
+          SetUpInputForPrediction("なまえ", &composer_, &segments_proxy);
+      results = predictor->Predict(convreq4);
+      EXPECT_FALSE(results.empty());
+      EXPECT_TRUE(FindCandidateByValue("名前", results));
+      // Do not suggest the phrase ends with [content_word + function_word].
+      EXPECT_FALSE(FindCandidateByValue("名前は", results));
+      EXPECT_FALSE(FindCandidateByValue("名前は中野です", results));
+      if (mixed_conversion) {
+        // prefer exact match.
+        EXPECT_FALSE(FindCandidateByValue("名前は中野", results));
+      } else {
+        // prefer prediction.
+        EXPECT_TRUE(FindCandidateByValue("名前は中野", results));
+      }
     }
   }
 }
@@ -3561,6 +3716,31 @@ TEST_F(UserHistoryPredictorTest, LongCandidateForMobile) {
   results = predictor->Predict(convreq);
   EXPECT_FALSE(results.empty());
   EXPECT_TRUE(FindCandidateByValue("よろしくお願いします", results));
+}
+
+TEST_F(UserHistoryPredictorTest, InsertNextEntry) {
+  auto insert_next_entry = [](absl::Span<const uint64_t> fps, uint64_t new_fp) {
+    UserHistoryPredictor::Entry e;
+    for (const uint64_t fp : fps) {
+      e.add_next_entry_fps(fp);
+    }
+    UserHistoryPredictorTestPeer::InsertNextEntry(new_fp, &e);
+    return e.next_entry_fps();
+  };
+
+  EXPECT_THAT(insert_next_entry({}, 10), ElementsAre(10));
+  EXPECT_THAT(insert_next_entry({1}, 10), ElementsAre(1, 10));
+  EXPECT_THAT(insert_next_entry({1, 10}, 10), ElementsAre(1, 10));
+  EXPECT_THAT(insert_next_entry({1, 10, 20}, 10), ElementsAre(1, 20, 10));
+
+  // Remove dups.
+  EXPECT_THAT(insert_next_entry({1, 10, 10, 20}, 10), ElementsAre(1, 20, 10));
+  EXPECT_THAT(insert_next_entry({1, 10, 20, 10}, 10), ElementsAre(1, 20, 10));
+  EXPECT_THAT(insert_next_entry({10, 10, 10}, 10), ElementsAre(10));
+
+  // Exceeds the capacity.
+  EXPECT_THAT(insert_next_entry({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, 10),
+              ElementsAre(5, 6, 7, 8, 9, 10));
 }
 
 TEST_F(UserHistoryPredictorTest, EraseNextEntries) {
@@ -5498,6 +5678,248 @@ TEST_F(UserHistoryPredictorTest, MigrateNextEntriesTest) {
       EXPECT_EQ(entry.next_entry_fps(s++), fp);
     }
     EXPECT_EQ(entry.next_entry_fps_size(), s);
+  }
+}
+
+TEST_F(UserHistoryPredictorTest, PredictPrefixSpace) {
+  UserHistoryPredictor* predictor = GetUserHistoryPredictorWithClearedHistory();
+
+  SegmentsProxy segments_proxy;
+  std::vector<Result> results;
+
+  request_.set_zero_query_suggestion(true);
+  request_.set_mixed_conversion(true);
+
+  // Remembers full sentence with inner boundary. "渋谷は"
+  request_.mutable_decoder_experiment_params()
+      ->set_user_history_cache_inner_segment_boundary(true);
+
+  auto convert_unigram = [&](absl::string_view key, absl::string_view value) {
+    segments_proxy.Clear();
+    const ConversionRequest convreq =
+        SetUpInputForConversion(key, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, value);
+    predictor->Finish(convreq, segments_proxy.MakeLearningResults(), kRevertId);
+  };
+
+  auto convert_unigram_with_boundary = [&](absl::string_view key,
+                                           absl::string_view value, int key_len,
+                                           int value_len, int content_key_len,
+                                           int content_value_len) {
+    segments_proxy.Clear();
+    const ConversionRequest convreq =
+        SetUpInputForConversion(key, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, value);
+    segments_proxy.PushBackInnerSegmentBoundary(
+        0, 0, key_len, value_len, content_key_len, content_value_len);
+    predictor->Finish(convreq, segments_proxy.MakeLearningResults(), kRevertId);
+  };
+
+  // predict_space_prefix is disabled.
+  {
+    convert_unigram("らーめん", "ラーメン");
+    // user puts space after ラーメン
+    context_.set_preceding_text("ラーメン　");
+    convert_unigram("しぶや", "渋谷");
+
+    const ConversionRequest convreq1 = SetUpInputForSuggestionWithHistory(
+        "", "らーめん", "ラーメン", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq1);
+    EXPECT_TRUE(results.empty());
+  }
+
+  // predict_space_prefix is enabled.
+  {
+    request_.mutable_decoder_experiment_params()
+        ->set_user_history_predict_space_prefix(true);
+    request_.set_display_value_capability(commands::Request::PLAIN_TEXT);
+
+    predictor->ClearAllHistory();
+    UserHistoryPredictorTestPeer(*predictor).WaitForSyncer();
+
+    convert_unigram("らーめん", "ラーメン");
+    // user puts space after ラーメン
+    context_.set_preceding_text("ラーメン　");
+    convert_unigram("しぶや", "渋谷");
+
+    const ConversionRequest convreq = SetUpInputForSuggestionWithHistory(
+        "", "らーめん", "ラーメン", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].value, "　渋谷");
+    EXPECT_EQ(results[0].key, "　しぶや");
+    EXPECT_EQ(results[0].display_value, "␣渋谷");
+
+    config_.set_space_character_form(config::Config::FUNDAMENTAL_HALF_WIDTH);
+    results = predictor->Predict(convreq);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].value, " 渋谷");
+    EXPECT_EQ(results[0].key, " しぶや");
+    EXPECT_EQ(results[0].display_value, "␣渋谷");
+
+    request_.set_display_value_capability(commands::Request::NOT_SUPPORTED);
+    results = predictor->Predict(convreq);
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].value, " 渋谷");
+    EXPECT_EQ(results[0].key, " しぶや");
+    EXPECT_TRUE(results[0].display_value.empty());
+
+    predictor->ClearAllHistory();
+    convert_unigram("らーめん", "ラーメン");
+    context_.set_preceding_text("テスト");  // invalid history.
+    convert_unigram("しぶや", "渋谷");
+
+    results = predictor->Predict(convreq);
+    EXPECT_TRUE(results.empty());
+
+    predictor->ClearAllHistory();
+    convert_unigram("らーめん", "ラーメン");
+    context_.set_preceding_text("ラーメン    ");  // multiple spaces.
+    convert_unigram("しぶや", "渋谷");
+
+    results = predictor->Predict(convreq);
+    EXPECT_TRUE(results.empty());
+  }
+
+  // No NWP from functional word.
+  {
+    predictor->ClearAllHistory();
+    UserHistoryPredictorTestPeer(*predictor).WaitForSyncer();
+
+    convert_unigram_with_boundary("らーめんの", "ラーメンの", 15, 15, 12, 12);
+    context_.set_preceding_text("ラーメンの　");
+    convert_unigram("しぶや", "渋谷");
+
+    const ConversionRequest convreq1 = SetUpInputForSuggestionWithHistory(
+        "", "の", "の", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq1);
+    EXPECT_TRUE(results.empty());
+
+    const ConversionRequest convreq2 = SetUpInputForSuggestionWithHistory(
+        "", "らーめんの", "ラーメンの", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq2);
+    EXPECT_TRUE(results.empty());
+  }
+
+  // No NWP to segments with functional word.
+  {
+    predictor->ClearAllHistory();
+    UserHistoryPredictorTestPeer(*predictor).WaitForSyncer();
+
+    convert_unigram("らーめん", "ラーメン");
+    context_.set_preceding_text("ラーメン　");
+    convert_unigram_with_boundary("しぶやは", "渋谷は", 12, 9, 9, 6);
+
+    const ConversionRequest convreq = SetUpInputForSuggestionWithHistory(
+        "", "らーめん", "ラーメン", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq);
+    EXPECT_TRUE(results.empty());
+  }
+}
+
+TEST_F(UserHistoryPredictorTest, MaybeRewritePrefixSpace) {
+  config::Config config;
+  commands::Request request;
+
+  request.set_display_value_capability(commands::Request::PLAIN_TEXT);
+
+  {
+    const ConversionRequest conv_req =
+        ConversionRequestBuilder().SetRequestView(request).Build();
+    Result result;
+    result.key = "key";
+    result.value = "value";
+    result.inner_segment_boundary = {0};
+    UserHistoryPredictorTestPeer::MaybeRewritePrefixSpace(conv_req, result);
+    EXPECT_EQ(result.key, "key");
+    EXPECT_EQ(result.value, "value");
+    EXPECT_TRUE(result.display_value.empty());
+    EXPECT_FALSE(result.inner_segment_boundary.empty());
+  }
+
+  {
+    const ConversionRequest conv_req = ConversionRequestBuilder()
+                                           .SetConfigView(config)
+                                           .SetRequestView(request)
+                                           .Build();
+    Result result;
+    result.key = "　key";
+    result.value = "　value";
+    result.inner_segment_boundary = {0};
+    UserHistoryPredictorTestPeer::MaybeRewritePrefixSpace(conv_req, result);
+    EXPECT_EQ(result.key, "　key");
+    EXPECT_EQ(result.value, "　value");
+    EXPECT_EQ(result.display_value, "␣value");
+    EXPECT_TRUE(result.inner_segment_boundary.empty());
+  }
+
+  {
+    config.set_space_character_form(config::Config::FUNDAMENTAL_HALF_WIDTH);
+    const ConversionRequest conv_req = ConversionRequestBuilder()
+                                           .SetConfigView(config)
+                                           .SetRequestView(request)
+                                           .Build();
+    Result result;
+    result.key = "　key";
+    result.value = "　value";
+    result.inner_segment_boundary = {0};
+    UserHistoryPredictorTestPeer::MaybeRewritePrefixSpace(conv_req, result);
+    EXPECT_EQ(result.key, " key");
+    EXPECT_EQ(result.value, " value");
+    EXPECT_EQ(result.display_value, "␣value");
+    EXPECT_TRUE(result.inner_segment_boundary.empty());
+  }
+
+  {
+    config.set_space_character_form(config::Config::FUNDAMENTAL_FULL_WIDTH);
+    const ConversionRequest conv_req = ConversionRequestBuilder()
+                                           .SetConfigView(config)
+                                           .SetRequestView(request)
+                                           .Build();
+    Result result;
+    result.key = "　key";
+    result.value = "　value";
+    result.inner_segment_boundary = {0};
+    UserHistoryPredictorTestPeer::MaybeRewritePrefixSpace(conv_req, result);
+    EXPECT_EQ(result.key, "　key");
+    EXPECT_EQ(result.value, "　value");
+    EXPECT_EQ(result.display_value, "␣value");
+    EXPECT_TRUE(result.inner_segment_boundary.empty());
+  }
+
+  {
+    config.set_space_character_form(config::Config::FUNDAMENTAL_FULL_WIDTH);
+    const ConversionRequest conv_req = ConversionRequestBuilder()
+                                           .SetConfigView(config)
+                                           .SetRequestView(request)
+                                           .Build();
+    Result result;
+    result.key = " key";
+    result.value = " value";
+    result.inner_segment_boundary = {0};
+    UserHistoryPredictorTestPeer::MaybeRewritePrefixSpace(conv_req, result);
+    EXPECT_EQ(result.key, "　key");
+    EXPECT_EQ(result.value, "　value");
+    EXPECT_EQ(result.display_value, "␣value");
+    EXPECT_TRUE(result.inner_segment_boundary.empty());
+  }
+
+  {
+    request.set_display_value_capability(commands::Request::NOT_SUPPORTED);
+    config.set_space_character_form(config::Config::FUNDAMENTAL_FULL_WIDTH);
+    const ConversionRequest conv_req = ConversionRequestBuilder()
+                                           .SetConfigView(config)
+                                           .SetRequestView(request)
+                                           .Build();
+    Result result;
+    result.key = "　key";
+    result.value = "　value";
+    result.inner_segment_boundary = {0};
+    UserHistoryPredictorTestPeer::MaybeRewritePrefixSpace(conv_req, result);
+    EXPECT_EQ(result.key, "　key");
+    EXPECT_EQ(result.value, "　value");
+    EXPECT_TRUE(result.display_value.empty());
+    EXPECT_TRUE(result.inner_segment_boundary.empty());
   }
 }
 

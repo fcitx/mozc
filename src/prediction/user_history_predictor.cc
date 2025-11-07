@@ -41,6 +41,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -116,10 +117,21 @@ constexpr char kFileName[] = "user://.history.db";
 constexpr absl::string_view kDelimiter = "\t";
 constexpr absl::string_view kEmojiDescription = "絵文字";
 
+// Spaces added as a prefix of NWP.
+constexpr absl::string_view kPrefixFullSpace = "　";  // full width
+constexpr absl::string_view kPrefixHalfSpace = " ";   // half width.
+constexpr absl::string_view kPrefixDisplaySpace = "␣";
+
 constexpr size_t kRevertCacheSize = 16;
 
 constexpr absl::string_view kPunctuations[] = {"。", ".",  "、", ",",  "？",
                                                "?",  "！", "!",  "，", "．"};
+
+bool CacheInnerSegmentBoundaryEnabled(const ConversionRequest& request) {
+  return request.request()
+      .decoder_experiment_params()
+      .user_history_cache_inner_segment_boundary();
+}
 
 // Mixed conversion is enabled mainly on mobile device.
 bool IsMixedConversionEnabled(const ConversionRequest& request) {
@@ -194,16 +206,40 @@ absl::string_view GetDescription(const Result& result) {
 }
 
 // Populate `inner_segment_boundary` to the new `entry`.
-void PopulateInnerSegmentBoundary(
+void MaybePopulateInnerSegmentBoundary(
+    const ConversionRequest& request,
     converter::InnerSegmentBoundarySpan inner_segment_boundary,
     UserHistoryPredictor::Entry* absl_nonnull entry) {
+  if (!CacheInnerSegmentBoundaryEnabled(request)) return;
+
+  // We only populate inner_segment_boundary when
+  // non-empty inner_segment_boundary is passed.
+  if (inner_segment_boundary.empty()) return;
+
   entry->clear_inner_segment_boundary();
+  entry->mutable_inner_segment_boundary()->Reserve(
+      inner_segment_boundary.size());
+  for (const uint32_t v : inner_segment_boundary) {
+    entry->add_inner_segment_boundary(v);
+  }
 }
 
 // Add the inner_segment_boundary information in `entry` via `builder`.
-void AppendInnerBoundary(converter::InnerSegmentBoundaryBuilder& builder,
+void AppendInnerBoundary(const ConversionRequest& request,
+                         converter::InnerSegmentBoundaryBuilder& builder,
                          const UserHistoryPredictor::Entry& entry) {
-  // b/449508982: temporarily disables the inner segment feature.
+  if (!CacheInnerSegmentBoundaryEnabled(request)) return;
+
+  if (entry.inner_segment_boundary_size() > 0) {
+    // Directly copies the raw encoded value.
+    for (const uint32_t encoded : entry.inner_segment_boundary()) {
+      builder.AddEncoded(encoded);
+    }
+  } else {
+    // Encode the length assuming one key/value.
+    builder.Add(entry.key().size(), entry.value().size(), entry.key().size(),
+                entry.value().size());
+  }
 }
 
 }  // namespace
@@ -474,9 +510,6 @@ bool UserHistoryPredictor::Load(UserHistoryStorage&& history) {
         std::max(entry.suggestion_freq(), entry.conversion_freq_deprecated()));
     entry.clear_conversion_freq_deprecated();
     // Avoid std::move() is called before EntryFingerprint.
-
-    // b/449508982: temporarily disables the inner segment feature.
-    entry.clear_inner_segment_boundary();
 
     const uint64_t fp = EntryFingerprint(entry);
     dic_->Insert(fp, std::move(entry));
@@ -762,13 +795,21 @@ bool UserHistoryPredictor::ClearHistoryEntry(const absl::string_view key,
   return deleted;
 }
 
+// static
+std::optional<int> UserHistoryPredictor::GetBigramEntryLruOrder(
+    const Entry& entry, const Entry& prev_entry) {
+  const uint64_t fp = EntryFingerprint(entry);
+  const auto& next_fps = prev_entry.next_entry_fps();
+  const auto it = absl::c_find(next_fps, fp);
+  if (it == next_fps.end()) return std::nullopt;
+  return std::distance(next_fps.begin(), it);
+}
+
 // Returns true if prev_entry has a next_fp link to entry
 // static
 bool UserHistoryPredictor::HasBigramEntry(const Entry& entry,
                                           const Entry& prev_entry) {
-  const uint64_t fp = EntryFingerprint(entry);
-  const auto& next_fps = prev_entry.next_entry_fps();
-  return absl::c_find(next_fps, fp) != next_fps.end();
+  return GetBigramEntryLruOrder(entry, prev_entry).has_value();
 }
 
 // static
@@ -960,7 +1001,7 @@ UserHistoryPredictor::Entry* absl_nonnull UserHistoryPredictor::AddEntry(
 
 UserHistoryPredictor::Entry* absl_nonnull
 UserHistoryPredictor::AddEntryWithNewKeyValue(
-    std::string key, std::string value,
+    const ConversionRequest& request, std::string key, std::string value,
     converter::InnerSegmentBoundarySpan inner_segment_boundary, Entry entry,
     EntryPriorityQueue* entry_queue) const {
   // We add an entry even if it was marked as removed so that it can be used to
@@ -970,7 +1011,7 @@ UserHistoryPredictor::AddEntryWithNewKeyValue(
   *new_entry = std::move(entry);
   new_entry->set_key(std::move(key));
   new_entry->set_value(std::move(value));
-  PopulateInnerSegmentBoundary(inner_segment_boundary, new_entry);
+  MaybePopulateInnerSegmentBoundary(request, inner_segment_boundary, new_entry);
 
   // Sets removed field true if the new key and value were removed.
   const Entry* e = dic_->LookupWithoutInsert(
@@ -981,15 +1022,16 @@ UserHistoryPredictor::AddEntryWithNewKeyValue(
 }
 
 bool UserHistoryPredictor::GetKeyValueForExactAndRightPrefixMatch(
-    const absl::string_view request_key, bool prefer_exact_match,
-    const Entry* entry, const Entry** result_last_entry,
-    uint64_t* left_last_access_time, uint64_t* left_most_last_access_time,
-    std::string* result_key, std::string* result_value,
+    const ConversionRequest& request, const absl::string_view request_key,
+    bool prefer_exact_match, const Entry* entry,
+    const Entry** result_last_entry, uint64_t* left_last_access_time,
+    uint64_t* left_most_last_access_time, std::string* result_key,
+    std::string* result_value,
     converter::InnerSegmentBoundary* result_inner_segment_boundary) const {
   std::string key = entry->key();
   std::string value = entry->value();
   converter::InnerSegmentBoundaryBuilder inner_segment_boundary_builder;
-  AppendInnerBoundary(inner_segment_boundary_builder, *entry);
+  AppendInnerBoundary(request, inner_segment_boundary_builder, *entry);
 
   const Entry* current_entry = entry;
   DCHECK(current_entry);
@@ -1060,7 +1102,7 @@ bool UserHistoryPredictor::GetKeyValueForExactAndRightPrefixMatch(
 
     absl::StrAppend(&key, next_entry->key());
     absl::StrAppend(&value, next_entry->value());
-    AppendInnerBoundary(inner_segment_boundary_builder, *next_entry);
+    AppendInnerBoundary(request, inner_segment_boundary_builder, *next_entry);
     current_entry = next_entry;
     *result_last_entry = next_entry;
 
@@ -1166,12 +1208,12 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
       std::string key, value;
       converter::InnerSegmentBoundary inner_segment_boundary;
       if (GetKeyValueForExactAndRightPrefixMatch(
-              request_key, prefer_exact_match, entry, &last_entry,
+              request, request_key, prefer_exact_match, entry, &last_entry,
               &left_last_access_time, &left_most_last_access_time, &key, &value,
               &inner_segment_boundary)) {
-        result = AddEntryWithNewKeyValue(std::move(key), std::move(value),
-                                         inner_segment_boundary, *entry,
-                                         entry_queue);
+        result = AddEntryWithNewKeyValue(
+            request, std::move(key), std::move(value), inner_segment_boundary,
+            *entry, entry_queue);
       }
       break;
     }
@@ -1188,12 +1230,12 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
         std::string key, value;
         converter::InnerSegmentBoundary inner_segment_boundary;
         if (GetKeyValueForExactAndRightPrefixMatch(
-                request_key, prefer_exact_match, entry, &last_entry,
+                request, request_key, prefer_exact_match, entry, &last_entry,
                 &left_last_access_time, &left_most_last_access_time, &key,
                 &value, &inner_segment_boundary)) {
-          result = AddEntryWithNewKeyValue(std::move(key), std::move(value),
-                                           inner_segment_boundary, *entry,
-                                           entry_queue);
+          result = AddEntryWithNewKeyValue(
+              request, std::move(key), std::move(value), inner_segment_boundary,
+              *entry, entry_queue);
         }
       }
       break;
@@ -1210,10 +1252,34 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
   // from |prev_entry| to |entry|.
   result->set_bigram_boost(false);
 
-  if (prev_entry != nullptr && HasBigramEntry(*entry, *prev_entry)) {
-    // Sets bigram_boost flag so that this entry is boosted
-    // against LRU policy.
-    result->set_bigram_boost(true);
+  if (prev_entry != nullptr) {
+    if (mtype == MatchType::LEFT_EMPTY_MATCH) {
+      // When zero query suggestion, prev_entry and entry might not always typed
+      // at the same time. Instead of using the unigram timestamp of prev_entry
+      // and entry, we simply use the actual time of the bigram was generated.
+      // GetBigramEntryLruOrder returns a larger value if the connection from
+      // prev_entry to entry was made more recently.
+      // (prev_entry->last_access_time() + 10 *GetBigramEntryLruOrder()) purely
+      // prioritizes bigrams that were recently generated.
+      //
+      // Sets "prev_entry->last_access_time()" as the base time to compare
+      // the preference with the entry typed prev_entry+current_entry as one
+      // word. Suppose the case when there are two histories "東京駅"  and
+      // 東京|大学", and NWP for 東京. We want to compare the timestamp of
+      // "東京駅" and "東京大学" to decide the NWP, "駅" or "大学".
+      if (std::optional<int> order =
+              GetBigramEntryLruOrder(*entry, *prev_entry);
+          order.has_value()) {
+        constexpr uint32_t kBigramLinkAsTime = 10;
+        result->set_last_access_time(prev_entry->last_access_time() +
+                                     kBigramLinkAsTime * order.value());
+        result->set_bigram_boost(true);
+      }
+    } else {
+      // Sets bigram_boost flag so that this entry is boosted
+      // against LRU policy.
+      result->set_bigram_boost(HasBigramEntry(*entry, *prev_entry));
+    }
   }
 
   // result with zero frequency is generated via revert operation.
@@ -1267,14 +1333,14 @@ bool UserHistoryPredictor::LookupEntry(const ConversionRequest& request,
         !StartsWithPunctuation(next_entry->value()) &&
         IsContentWord(next_entry->value())) {
       converter::InnerSegmentBoundaryBuilder inner_segment_boundary_builder;
-      AppendInnerBoundary(inner_segment_boundary_builder, *result);
-      AppendInnerBoundary(inner_segment_boundary_builder, *next_entry);
+      AppendInnerBoundary(request, inner_segment_boundary_builder, *result);
+      AppendInnerBoundary(request, inner_segment_boundary_builder, *next_entry);
       std::string key = absl::StrCat(result->key(), next_entry->key());
       std::string value = absl::StrCat(result->value(), next_entry->value());
       const converter::InnerSegmentBoundary inner_segment_boundary =
           inner_segment_boundary_builder.Build(key, value);
       Entry* result2 =
-          AddEntryWithNewKeyValue(std::move(key), std::move(value),
+          AddEntryWithNewKeyValue(request, std::move(key), std::move(value),
                                   inner_segment_boundary, *result, entry_queue);
       if (!result2->removed()) {
         entry_queue->Push(result2);
@@ -1366,8 +1432,7 @@ bool UserHistoryPredictor::ShouldPredict(
     return false;
   }
 
-  if (!request.config().use_history_suggest() &&
-      request.request_type() == ConversionRequest::SUGGESTION) {
+  if (!request.config().use_history_suggest()) {
     MOZC_VLOG(2) << "no history suggest";
     return false;
   }
@@ -1536,7 +1601,6 @@ void UserHistoryPredictor::GetInputKeyFromRequest(
 }
 
 bool UserHistoryPredictor::IsValidResult(const ConversionRequest& request,
-                                         uint32_t request_key_len,
                                          const Entry& entry) {
   // Suppress broken utf8 string just in case.
   if (!Util::IsValidUtf8(entry.value())) {
@@ -1556,6 +1620,27 @@ bool UserHistoryPredictor::IsValidResult(const ConversionRequest& request,
       MOZC_VLOG(2) << "long candidate: " << entry.value();
       return false;
     }
+
+    // The full sentence candidate was not cached nor suggested before.
+    // Here we filter the full sentence candidate to emulate the previous
+    // behavior. The full sentence is allowed only when the key exceeds
+    // the key of the last segment. When the frequency >= 2, no filtering
+    // is applied because the suggested full sentence is repeatedly selected.
+    // e.g., entry="きょうの|てんき"
+    //      request={き,きょ...,きょう,きょうの} -> NG.
+    //              {きょうのて,きようのてん,きようのてんき} -> OK.
+    if (entry.inner_segment_boundary_size() >= 2 &&
+        entry.suggestion_freq() <= 1 &&
+        CacheInnerSegmentBoundaryEnabled(request)) {
+      const converter::InnerSegments inner_segments(
+          entry.key(), entry.value(), entry.inner_segment_boundary());
+      absl::string_view min_required_key =
+          inner_segments.GetPrefixKeyAndValue(inner_segments.size() - 1).first;
+      if (request.key().size() <= min_required_key.size()) {
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -1563,18 +1648,57 @@ bool UserHistoryPredictor::IsValidResult(const ConversionRequest& request,
   return true;
 }
 
+// static
+void UserHistoryPredictor::MaybeRewritePrefixSpace(
+    const ConversionRequest& request, Result& result) {
+  const bool is_prefix_full_space =
+      absl::StartsWith(result.key, kPrefixFullSpace) &&
+      absl::StartsWith(result.value, kPrefixFullSpace);
+  const bool is_prefix_half_space =
+      absl::StartsWith(result.key, kPrefixHalfSpace) &&
+      absl::StartsWith(result.value, kPrefixHalfSpace);
+
+  if (!is_prefix_full_space && !is_prefix_half_space) {
+    return;
+  }
+
+  // Clears inner_segment_boundary because the prefix space may break the
+  // internal offsets.
+  result.inner_segment_boundary.clear();
+
+  // Replaces the space in display_value: " ラーメン" -> "␣ラーメン"
+  if (request.request().display_value_capability() ==
+      commands::Request::PLAIN_TEXT) {
+    if (is_prefix_full_space) {
+      result.display_value = absl::StrCat(
+          kPrefixDisplaySpace, result.value.substr(kPrefixFullSpace.size()));
+    } else {
+      result.display_value = absl::StrCat(
+          kPrefixDisplaySpace, result.value.substr(kPrefixHalfSpace.size()));
+    }
+  }
+
+  const auto cform = request.config().space_character_form();
+
+  if (cform == config::Config::FUNDAMENTAL_HALF_WIDTH && is_prefix_full_space) {
+    result.key = absl::StrCat(kPrefixHalfSpace,
+                              result.key.substr(kPrefixFullSpace.size()));
+    result.value = absl::StrCat(kPrefixHalfSpace,
+                                result.value.substr(kPrefixFullSpace.size()));
+  } else if (cform == config::Config::FUNDAMENTAL_FULL_WIDTH &&
+             is_prefix_half_space) {
+    result.key = absl::StrCat(kPrefixFullSpace,
+                              result.key.substr(kPrefixHalfSpace.size()));
+    result.value = absl::StrCat(kPrefixFullSpace,
+                                result.value.substr(kPrefixHalfSpace.size()));
+  }
+}
+
 std::vector<Result> UserHistoryPredictor::MakeResults(
     const ConversionRequest& request, size_t max_prediction_size,
     size_t max_prediction_char_coverage,
     EntryPriorityQueue* entry_queue) const {
   DCHECK(entry_queue);
-  if (request.request_type() != ConversionRequest::SUGGESTION &&
-      request.request_type() != ConversionRequest::PREDICTION) {
-    LOG(ERROR) << "Unknown mode";
-    return {};
-  }
-  const uint32_t request_key_len = Util::CharsLen(request.key());
-
   size_t inserted_char_coverage = 0;
 
   std::vector<const UserHistoryPredictor::Entry*> entries;
@@ -1626,7 +1750,7 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
       break;
     }
 
-    if (!IsValidResult(request, request_key_len, *result_entry)) {
+    if (!IsValidResult(request, *result_entry)) {
       continue;
     }
 
@@ -1668,6 +1792,9 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
       result.description = description;
       result.candidate_attributes |= converter::Attribute::NO_EXTRA_DESCRIPTION;
     }
+
+    MaybeRewritePrefixSpace(request, result);
+
     MOZC_WORD_LOG(result, "Added by UserHistoryPredictor::InsertCandidates");
 #if DEBUG
     if (!absl::StrContains(result.description, "History")) {
@@ -1681,45 +1808,25 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
   return results;
 }
 
-void UserHistoryPredictor::InsertNextEntry(uint64_t fp, Entry* entry) const {
+// static
+void UserHistoryPredictor::InsertNextEntry(uint64_t fp, Entry* entry) {
   if (fp == 0 || entry == nullptr) {
     return;
   }
 
-  // If next_entries_size is less than kMaxNextEntriesSize,
-  // we simply allocate a new entry.
-  if (entry->next_entry_fps_size() < kMaxNextEntriesSize) {
-    entry->add_next_entry_fps(fp);
-  } else {
-    // Otherwise, find the oldest next_entry.
-    uint64_t last_access_time = std::numeric_limits<uint64_t>::max();
-    int insert_index = -1;
+  auto& next_fps = *(entry->mutable_next_entry_fps());
 
-    auto& next_entry_fps = *entry->mutable_next_entry_fps();
-    for (int i = 0; i < next_entry_fps.size(); ++i) {
-      // Already has the same id
-      if (fp == next_entry_fps[i]) {
-        return;
-      }
+  // Emulates LRU. next_fps.back() is the latest fp.
+  // Here we remove all elements equal to `fp` to de-dup the next_fps.
+  next_fps.erase(std::remove(next_fps.begin(), next_fps.end(), fp),
+                 next_fps.end());
+  next_fps.Add(fp);  // always push to the last.
 
-      const Entry* found_entry = dic_->LookupWithoutInsert(next_entry_fps[i]);
-
-      // Reuses the entry if it is already removed from the LRU.
-      if (found_entry == nullptr) {
-        next_entry_fps[i] = fp;
-        return;
-      }
-
-      // Preserves the oldest entry
-      if (last_access_time > found_entry->last_access_time()) {
-        insert_index = i;
-        last_access_time = found_entry->last_access_time();
-      }
-    }
-
-    if (insert_index >= 0) {
-      next_entry_fps[insert_index] = fp;
-    }
+  // Removes the older items when the size exceeds the capacity.
+  // The top elements are older.
+  if (next_fps.size() > kMaxNextEntriesSize) {
+    next_fps.erase(next_fps.begin(),
+                   next_fps.begin() + next_fps.size() - kMaxNextEntriesSize);
   }
 }
 
@@ -1808,9 +1915,7 @@ void UserHistoryPredictor::Insert(
     entry->set_description(description);
   }
 
-  if (!inner_segment_boundary.empty()) {
-    PopulateInnerSegmentBoundary(inner_segment_boundary, entry);
-  }
+  MaybePopulateInnerSegmentBoundary(request, inner_segment_boundary, entry);
 
   revert_entries->entries.emplace_back(key_begin, value_begin, *entry);
 
@@ -1923,28 +2028,98 @@ UserHistoryPredictor::MakeLearningSegments(
 
   if (results.empty()) return learning_segments;
 
-  auto make_learning_segments = [](const Result& result) {
+  auto make_learning_segments = [&](const Result& result) {
     std::vector<SegmentForLearning> segments;
-    const bool is_single_segment = result.inner_segments().size() <= 1;
-    for (const auto& iter : result.inner_segments()) {
-      const int key_begin =
-          std::distance(result.key.data(), iter.GetKey().data());
-      const int value_begin =
-          std::distance(result.value.data(), iter.GetValue().data());
-      segments.push_back({key_begin, value_begin, iter.GetKey(),
-                          iter.GetValue(), iter.GetContentKey(),
-                          iter.GetContentValue(),
-                          is_single_segment ? GetDescription(result) : ""});
+
+    if (CacheInnerSegmentBoundaryEnabled(request) &&
+        result.inner_segments().size() >= 2 &&
+        (result.candidate_attributes &
+         converter::Attribute::USER_HISTORY_PREDICTION)) {
+      // The result with USER_HISTORY_PREDICTION was treated as a single
+      // segment. We would like to preserve this behavior in order to promote
+      // the full sentence candidate when it is typed before.
+      // Without this treatment, shorter inner segments are continuously
+      // being suggested.
+      segments.push_back({0, 0, result.key, result.value, result.key,
+                          result.value, GetDescription(result)});
+    } else {
+      const bool is_single_segment = result.inner_segments().size() <= 1;
+      // TODO(taku): result.(key|value) may start with kPrefixFullSpace.
+      // It would be better to remove them to increase the coverage
+      // of bigram-prediction.
+      for (const auto& iter : result.inner_segments()) {
+        const int key_begin =
+            std::distance(result.key.data(), iter.GetKey().data());
+        const int value_begin =
+            std::distance(result.value.data(), iter.GetValue().data());
+        segments.push_back({key_begin, value_begin, iter.GetKey(),
+                            iter.GetValue(), iter.GetContentKey(),
+                            iter.GetContentValue(),
+                            is_single_segment ? GetDescription(result) : ""});
+      }
     }
+
     return segments;
+  };
+
+  // Returns [Segments, whether_contains_space_prefix]
+  auto make_history_learning_segments = [&](const Result& result)
+      -> std::pair<std::vector<SegmentForLearning>, bool> {
+    static constexpr bool kHasPrefixSpace = true;
+
+    std::vector<SegmentForLearning> segments = make_learning_segments(result);
+    if (!segments.empty()) return {segments, !kHasPrefixSpace};
+
+    // TODO(taku): disable space_prefix when the client doesn't have
+    // display_value capability.
+    if (!request.request()
+             .decoder_experiment_params()
+             .user_history_predict_space_prefix()) {
+      return {segments, !kHasPrefixSpace};
+    }
+
+    // whether the preceding_text ends with a single space.
+    absl::string_view preceding_text = request.context().preceding_text();
+    for (absl::string_view space_char : {kPrefixHalfSpace, kPrefixFullSpace}) {
+      if (absl::EndsWith(preceding_text, space_char)) {
+        preceding_text.remove_suffix(space_char.size());
+      }
+    }
+
+    // preceding_text does not end with space.
+    if (preceding_text.size() == request.context().preceding_text().size()) {
+      return {segments, !kHasPrefixSpace};
+    }
+
+    const DicElement* head = dic_->Head();
+    if (head == nullptr ||
+        !absl::EndsWith(preceding_text, head->value.value())) {
+      return {segments, !kHasPrefixSpace};
+    }
+
+    // When `head` has functional value, head->next may store the context_value.
+    // We only suggest space-prefixed suggestion only when noun to noun case.
+    // TODO(taku): Better to use inner boundary information.
+    const DicElement* head_next = head->next;
+    if (head_next != nullptr &&
+        absl::StartsWith(head->value.value(), head_next->value.value())) {
+      return {segments, !kHasPrefixSpace};
+    }
+
+    const Entry& head_entry = head->value;
+    segments.push_back({0, 0, head_entry.key(), head_entry.value(),
+                        head_entry.key(), head_entry.value()});
+
+    return {segments, kHasPrefixSpace};
   };
 
   const Result& result = results.front();
 
   learning_segments.conversion_segments_key = result.key;
   learning_segments.conversion_segments_value = result.value;
-  learning_segments.history_segments =
-      make_learning_segments(request.history_result());
+  std::tie(learning_segments.history_segments,
+           learning_segments.has_space_prefix) =
+      make_history_learning_segments(request.history_result());
   learning_segments.conversion_segments = make_learning_segments(result);
   learning_segments.inner_segment_boundary = result.inner_segment_boundary;
 
@@ -1973,7 +2148,6 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
       learning_segments.conversion_segments.empty()) {
     return;
   }
-
   const SegmentForLearning& history_segment =
       learning_segments.history_segments.back();
   const SegmentForLearning& conversion_segment =
@@ -1983,10 +2157,15 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
     return;
   }
 
+  const bool ends_with_punctuation = EndsWithPunctuation(history_value);
+
   // 1) Don't learn a link from a history which ends with punctuation.
-  if (EndsWithPunctuation(history_value)) {
+  if (ends_with_punctuation) {
     return;
   }
+
+  const bool starts_with_punctuation =
+      StartsWithPunctuation(conversion_segment.value);
 
   // 2) Don't learn a link to a punctuation.
   // Exception: For zero query suggestion, we learn a link to a single
@@ -1997,8 +2176,14 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
   // In the suggestion phase, we do not allow the bigram connection where
   // right-hand-side words start with a punctuation mark. The prediction
   // of punctuation marks is only triggered on zero-query suggestions.
-  if (Util::CharsLen(conversion_segment.value) > 1 &&
-      StartsWithPunctuation(conversion_segment.value)) {
+  if (Util::CharsLen(conversion_segment.value) > 1 && starts_with_punctuation) {
+    return;
+  }
+
+  // When there is a space between the history and current token,
+  // do not allow the punctuation.
+  if (learning_segments.has_space_prefix &&
+      (starts_with_punctuation || ends_with_punctuation)) {
     return;
   }
 
@@ -2010,8 +2195,27 @@ void UserHistoryPredictor::InsertHistoryForHistorySegments(
 
   revert_entries->history_entry = *history_entry;
 
-  for (const auto next_fp : LearningSegmentFingerprints(conversion_segment)) {
-    InsertNextEntry(next_fp, history_entry);
+  if (learning_segments.has_space_prefix) {
+    // Space is mainly used to make a search query, e.g. ラーメン_渋谷.
+    // So the next word would mainly be a noun. We only predict space-prefixed
+    // word when the next word has no functional word.
+    if (conversion_segment.key == conversion_segment.content_key &&
+        conversion_segment.value == conversion_segment.content_value) {
+      // Add full width space because half width space may be removed in
+      // Insert() method.
+      const std::string key =
+          absl::StrCat(kPrefixFullSpace, conversion_segment.key);
+      const std::string value =
+          absl::StrCat(kPrefixFullSpace, conversion_segment.value);
+      Insert(request, 0, 0, key, value, "", {}, {}, last_access_time,
+             revert_entries);
+      InsertNextEntry(Fingerprint(key, value), history_entry);
+    }
+  } else {
+    for (const uint64_t next_fp :
+         LearningSegmentFingerprints(conversion_segment)) {
+      InsertNextEntry(next_fp, history_entry);
+    }
   }
 }
 
@@ -2021,7 +2225,8 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
     UserHistoryPredictor::RevertEntries* revert_entries) {
   // Inserts all_key/all_value.
   // We don't insert it for mobile.
-  if (!IsMixedConversionEnabled(request) &&
+  if ((CacheInnerSegmentBoundaryEnabled(request) ||
+       !IsMixedConversionEnabled(request)) &&
       learning_segments.conversion_segments.size() > 1) {
     Insert(request, 0, 0, learning_segments.conversion_segments_key,
            learning_segments.conversion_segments_value, "",

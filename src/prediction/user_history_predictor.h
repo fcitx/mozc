@@ -175,6 +175,12 @@ class UserHistoryPredictor : public PredictorInterface {
 
     std::vector<SegmentForLearning> history_segments;
     std::vector<SegmentForLearning> conversion_segments;
+
+    // whether the there is a space between history_segments.back() and
+    // conversion_segments.front(), e.g., ラーメン_渋谷. We heuristically
+    // identify the existence of the space using the surrounding context and the
+    // head segment in the LRU cache.
+    bool has_space_prefix = false;
   };
 
   friend class UserHistoryPredictorTestPeer;
@@ -220,12 +226,24 @@ class UserHistoryPredictor : public PredictorInterface {
                                          const Trie<std::string>* key_expanded,
                                          absl::string_view target);
 
+  // Returns the LUR order of the next_fp links from `prev_entry` to `entry`.
+  // Returns a larger value if the connection from prev_entry to entry was made
+  // more recently. The return value must be [0, kMaxNextEntriesSize).
+  static std::optional<int> GetBigramEntryLruOrder(const Entry& entry,
+                                                   const Entry& prev_entry);
+
   // Returns true if prev_entry has a next_fp link to entry
   static bool HasBigramEntry(const Entry& entry, const Entry& prev_entry);
 
   // Returns true if `entry` is valid.
   static bool IsValidResult(const ConversionRequest& request,
-                            uint32_t request_key_len, const Entry& entry);
+                            const Entry& entry);
+
+  // Rewrite the prefix white spaces in result.(value|key) to
+  // full or half width form depending on the config.
+  // If display_value capability is available, sets result.display_value.
+  static void MaybeRewritePrefixSpace(const ConversionRequest& request,
+                                      Result& result);
 
   // Returns true if entry is DEFAULT_ENTRY, satisfies certain conditions, and
   // doesn't have removed flag.
@@ -292,10 +310,11 @@ class UserHistoryPredictor : public PredictorInterface {
   // If exact match results exist, return them first when |prefer_exact_match|
   // is true.
   bool GetKeyValueForExactAndRightPrefixMatch(
-      absl::string_view request_key, bool prefer_exact_match,
-      const Entry* entry, const Entry** result_last_entry,
-      uint64_t* left_last_access_time, uint64_t* left_most_last_access_time,
-      std::string* result_key, std::string* result_value,
+      const ConversionRequest& request, absl::string_view request_key,
+      bool prefer_exact_match, const Entry* entry,
+      const Entry** result_last_entry, uint64_t* left_last_access_time,
+      uint64_t* left_most_last_access_time, std::string* result_key,
+      std::string* result_value,
       converter::InnerSegmentBoundary* result_inner_segment_boundary) const;
 
   const Entry* absl_nullable LookupPrevEntry(
@@ -307,7 +326,7 @@ class UserHistoryPredictor : public PredictorInterface {
 
   // Adds the entry whose key and value are modified to a priority queue.
   Entry* absl_nonnull AddEntryWithNewKeyValue(
-      std::string key, std::string value,
+      const ConversionRequest& request, std::string key, std::string value,
       converter::InnerSegmentBoundarySpan inner_segment_boundary, Entry entry,
       EntryPriorityQueue* entry_queue) const;
 
@@ -412,7 +431,7 @@ class UserHistoryPredictor : public PredictorInterface {
 
   // Inserts a new |fp| into |entry|.
   // it makes a bigram connection from entry to next_entry.
-  void InsertNextEntry(uint64_t fp, Entry* entry) const;
+  static void InsertNextEntry(uint64_t fp, Entry* entry);
 
   static void EraseNextEntries(uint64_t fp, Entry* entry);
 
