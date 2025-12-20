@@ -54,8 +54,8 @@ class MozcEngine;
 class MozcState : public InputContextProperty {
  public:
   // This constructor is used by unittests.
-  MozcState(InputContext *ic, MozcEngine *engine);
-  MozcState(const MozcState &) = delete;
+  MozcState(InputContext* ic, MozcEngine* engine);
+  MozcState(const MozcState&) = delete;
   virtual ~MozcState();
 
   void UpdatePreeditMethod();
@@ -65,13 +65,13 @@ class MozcState : public InputContextProperty {
   void SelectCandidate(int idx);
   void Reset();
   void FocusIn();
-  void FocusOut(const InputContextEvent &event);
+  void FocusOut(const InputContextEvent& event);
   bool Paging(bool prev);
 
   // Functions called by the MozcResponseParser class to update UI.
 
   // Displays a 'result' (aka 'commit string') on FCITX UI.
-  void SetResultString(const std::string &result_string);
+  void SetResultString(const std::string& result_string);
   // Displays a 'preedit' string on FCITX UI. This function takes ownership
   // of preedit_info. If the parameter is NULL, hides the string currently
   // displayed.
@@ -79,7 +79,7 @@ class MozcState : public InputContextProperty {
   // Displays an auxiliary message (e.g., an error message, a title of
   // candidate window). If the string is empty (""), hides the message
   // currently being displayed.
-  void SetAuxString(const std::string &str);
+  void SetAuxString(const std::string& str);
   // Sets a current composition mode (e.g., Hankaku Katakana).
   void SetCompositionMode(mozc::commands::CompositionMode mode,
                           bool updateUI = true);
@@ -87,21 +87,21 @@ class MozcState : public InputContextProperty {
   void SendCompositionMode(mozc::commands::CompositionMode mode);
 
   // Sets the url to be opened by the default browser.
-  void SetUrl(const std::string &url);
+  void SetUrl(const std::string& url);
 
-  const std::string &GetIconFile(std::string key);
+  const std::string& GetIconFile(std::string key);
 
   mozc::commands::CompositionMode GetCompositionMode() {
     return composition_mode_;
   }
 
-  MozcClientInterface *GetClient() const;
+  MozcClientInterface* GetClient() const;
   void ReleaseClient();
 
-  bool SendCommand(const mozc::commands::SessionCommand &session_command,
-                   mozc::commands::Output *new_output);
+  bool SendCommand(const mozc::commands::SessionCommand& session_command,
+                   mozc::commands::Output* new_output);
 
-  void SetUsage(const std::string &title, const std::string &description);
+  void SetUsage(const std::string& title, const std::string& description);
 
   void DrawAll();
 
@@ -111,31 +111,31 @@ class MozcState : public InputContextProperty {
   // response is stored on 'out' (and 'out_error' is not modified). If the IPC
   // fails, returns false and the error message is stored on 'out_error'. In
   // this case, 'out' is not modified.
-  bool TrySendKeyEvent(InputContext *ic, const mozc::commands::KeyEvent &event,
-                       mozc::commands::Output *out,
-                       std::string *out_error) const;
+  bool TrySendKeyEvent(InputContext* ic, const mozc::commands::KeyEvent& event,
+                       mozc::commands::Output* out,
+                       std::string* out_error) const;
 
   // Sends 'mouse click on the candidate window' event to the server.
-  bool TrySendClick(int32_t unique_id, mozc::commands::Output *out,
-                    std::string *out_error) const;
+  bool TrySendClick(int32_t unique_id, mozc::commands::Output* out,
+                    std::string* out_error) const;
 
   // Sends composition mode to the server.
   bool TrySendCompositionMode(mozc::commands::CompositionMode mode,
-                              mozc::commands::Output *out,
-                              std::string *out_error) const;
+                              mozc::commands::Output* out,
+                              std::string* out_error) const;
 
   // Sends a command to the server.
   bool TrySendCommand(mozc::commands::SessionCommand::CommandType type,
-                      mozc::commands::Output *out,
-                      std::string *out_error) const;
+                      mozc::commands::Output* out,
+                      std::string* out_error) const;
 
-  bool TrySendRawCommand(const mozc::commands::SessionCommand &command,
-                         mozc::commands::Output *out,
-                         std::string *out_error) const;
+  bool TrySendRawCommand(const mozc::commands::SessionCommand& command,
+                         mozc::commands::Output* out,
+                         std::string* out_error) const;
 
   // Parses the response from mozc_server. Returns whether the server consumes
   // the input or not (true means 'consumed').
-  bool ParseResponse(const mozc::commands::Output &raw_response);
+  bool ParseResponse(const mozc::commands::Output& raw_response);
 
   void ClearAll();
   void DrawPreeditInfo();
@@ -144,8 +144,8 @@ class MozcState : public InputContextProperty {
   // Open url_ with a default browser.
   void OpenUrl();
 
-  InputContext *ic_;
-  MozcEngine *engine_;
+  InputContext* ic_;
+  MozcEngine* engine_;
   mutable std::shared_ptr<MozcClientInterface> client_;
 
   mozc::commands::CompositionMode composition_mode_ = mozc::commands::HIRAGANA;

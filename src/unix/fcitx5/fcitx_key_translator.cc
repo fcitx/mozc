@@ -159,8 +159,8 @@ const auto kFcitxModifierMaskMap = new std::map<uint32_t, KeyState>({
 // '4' is mapped to Japanese 'Hiragana Letter U' (without Shift modifier) and
 // 'Hiragana Letter Small U' (with Shift modifier).
 // TODO(team): Add kana_map_dv to support Dvoraklayout.
-using KanaMap = std::map<uint32_t, std::pair<const char *, const char *>>;
-const KanaMap *kKanaJpMap = new KanaMap({
+using KanaMap = std::map<uint32_t, std::pair<const char*, const char*>>;
+const KanaMap* kKanaJpMap = new KanaMap({
     {'1', {"ぬ", "ぬ"}},
     {'!', {"ぬ", "ぬ"}},
     {'2', {"ふ", "ふ"}},
@@ -261,7 +261,7 @@ const KanaMap *kKanaJpMap = new KanaMap({
     {U'¥', {"ー", "ー"}},  // U+00A5
 });
 
-const KanaMap *kKanaUsMap = new KanaMap({
+const KanaMap* kKanaUsMap = new KanaMap({
     {'`', {"ろ", "ろ"}},  {'~', {"ろ", "ろ"}},  {'1', {"ぬ", "ぬ"}},
     {'!', {"ぬ", "ぬ"}},  {'2', {"ふ", "ふ"}},  {'@', {"ふ", "ふ"}},
     {'3', {"あ", "ぁ"}},  {'#', {"あ", "ぁ"}},  {'4', {"う", "ぅ"}},
@@ -296,7 +296,7 @@ const KanaMap *kKanaUsMap = new KanaMap({
     {'?', {"め", "・"}},
 });
 
-const char *GetKanaValue(const KanaMap &kana_map, uint32_t keyval,
+const char* GetKanaValue(const KanaMap& kana_map, uint32_t keyval,
                          bool is_shift) {
   KanaMap::const_iterator iter = kana_map.find(keyval);
   if (iter == kana_map.end()) {
@@ -312,7 +312,7 @@ bool KeyTranslator::Translate(KeySym keyval, uint32_t keycode,
                               KeyStates modifiers,
                               mozc::config::Config::PreeditMethod method,
                               bool layout_is_jp,
-                              mozc::commands::KeyEvent *out_event) const {
+                              mozc::commands::KeyEvent* out_event) const {
   DCHECK(out_event) << "out_event is NULL";
   out_event->Clear();
 
@@ -379,11 +379,11 @@ bool KeyTranslator::IsHiraganaKatakanaKeyWithShift(KeySym keyval,
 
 bool KeyTranslator::IsKanaAvailable(KeySym keyval, uint32_t keycode,
                                     KeyStates modifiers, bool layout_is_jp,
-                                    std::string *out) const {
+                                    std::string* out) const {
   if ((modifiers & KeyState::Ctrl) || (modifiers & KeyState::Alt)) {
     return false;
   }
-  const KanaMap &kana_map = layout_is_jp ? *kKanaJpMap : *kKanaUsMap;
+  const KanaMap& kana_map = layout_is_jp ? *kKanaJpMap : *kKanaUsMap;
 
   // When a Japanese keyboard is in use, the yen-sign key and the backslash
   // key generate the same |keyval|. In this case, we have to check |keycode|
@@ -397,7 +397,7 @@ bool KeyTranslator::IsKanaAvailable(KeySym keyval, uint32_t keycode,
   }
 
   const bool is_shift = (modifiers & KeyState::Shift);
-  const char *kana = GetKanaValue(kana_map, keyval, is_shift);
+  const char* kana = GetKanaValue(kana_map, keyval, is_shift);
 
   if (kana == nullptr) {
     return false;

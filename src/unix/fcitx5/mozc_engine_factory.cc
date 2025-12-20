@@ -32,7 +32,7 @@
 namespace fcitx {
 class MozcEngineFactory : public AddonFactory {
  public:
-  AddonInstance *create(AddonManager *manager) override {
+  AddonInstance* create(AddonManager* manager) override {
     // We don't have a direct way to detect, so we simply try.
     auto baseDirectory = makeUniqueCPtr(
         realpath(mozc::SystemUtil::GetServerDirectory().data(), nullptr));
@@ -65,7 +65,7 @@ class MozcEngineFactory : public AddonFactory {
   }
 
  private:
-  UniqueCPtr<char> cdUp(const char *path) {
+  UniqueCPtr<char> cdUp(const char* path) {
     return makeUniqueCPtr(
         realpath(stringutils::joinPath(path, "..").data(), nullptr));
   }

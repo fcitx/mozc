@@ -65,7 +65,7 @@ namespace {
 // Returns a position that determines a preedit cursor position _AND_ top-left
 // position of a candidate window. Note that we can't set these two positions
 // independently. That's a SCIM's limitation.
-uint32_t GetCursorPosition(const mozc::commands::Output &response) {
+uint32_t GetCursorPosition(const mozc::commands::Output& response) {
   if (!response.has_preedit()) {
     return 0;
   }
@@ -75,36 +75,36 @@ uint32_t GetCursorPosition(const mozc::commands::Output &response) {
   return response.preedit().cursor();
 }
 
-std::string CreateDescriptionString(const std::string &description) {
+std::string CreateDescriptionString(const std::string& description) {
   return " [" + description + "]";
 }
 
 class MozcCandidateWord final : public CandidateWord {
  public:
-  MozcCandidateWord(int id, std::string text, MozcEngine *engine)
+  MozcCandidateWord(int id, std::string text, MozcEngine* engine)
       : CandidateWord(Text(std::move(text))), id_(id), engine_(engine) {}
 
-  void select(InputContext *inputContext) const override {
-    MozcState *mozc_state = engine_->mozcState(inputContext);
+  void select(InputContext* inputContext) const override {
+    MozcState* mozc_state = engine_->mozcState(inputContext);
     mozc_state->SelectCandidate(id_);
   }
 
  private:
   int id_;
-  MozcEngine *engine_;
+  MozcEngine* engine_;
 };
 
 class MozcCandidateList final : public CandidateList,
                                 public PageableCandidateList {
  public:
-  MozcCandidateList(const mozc::commands::CandidateWindow &candidates,
-                    InputContext *ic, MozcEngine *engine, bool use_annotation)
+  MozcCandidateList(const mozc::commands::CandidateWindow& candidates,
+                    InputContext* ic, MozcEngine* engine, bool use_annotation)
       : ic_(ic), engine_(engine) {
-    auto *state = engine_->mozcState(ic);
+    auto* state = engine_->mozcState(ic);
     setPageable(this);
     bool index_visible = false;
     if (candidates.has_footer()) {
-      const auto &footer = candidates.footer();
+      const auto& footer = candidates.footer();
       index_visible = footer.has_index_visible() && footer.index_visible();
     }
 
@@ -131,9 +131,9 @@ class MozcCandidateList final : public CandidateList,
 
     std::map<int32_t, std::pair<std::string, std::string>> usage_map;
     if (candidates.has_usages()) {
-      const mozc::commands::InformationList &usages = candidates.usages();
+      const mozc::commands::InformationList& usages = candidates.usages();
       for (size_t i = 0; i < usages.information().size(); ++i) {
-        const mozc::commands::Information &information = usages.information(i);
+        const mozc::commands::Information& information = usages.information(i);
         if (!information.has_id() || !information.has_description()) {
           continue;
         }
@@ -145,7 +145,7 @@ class MozcCandidateList final : public CandidateList,
     labels_.reserve(candidates.candidate_size());
 
     for (int i = 0; i < candidates.candidate_size(); ++i) {
-      const mozc::commands::CandidateWindow::Candidate &candidate =
+      const mozc::commands::CandidateWindow::Candidate& candidate =
           candidates.candidate(i);
       const uint32_t index = candidate.index();
 
@@ -212,12 +212,12 @@ class MozcCandidateList final : public CandidateList,
     }
   }
 
-  const Text &label(int idx) const override {
+  const Text& label(int idx) const override {
     checkIndex(idx);
     return labels_[idx];
   }
 
-  const CandidateWord &candidate(int idx) const override {
+  const CandidateWord& candidate(int idx) const override {
     checkIndex(idx);
     return *candidateWords_[idx];
   }
@@ -230,11 +230,11 @@ class MozcCandidateList final : public CandidateList,
   bool hasPrev() const override { return hasPrev_; }
   bool hasNext() const override { return hasNext_; }
   void prev() override {
-    auto *mozc_state = engine_->mozcState(ic_);
+    auto* mozc_state = engine_->mozcState(ic_);
     mozc_state->Paging(true);
   }
   void next() override {
-    auto *mozc_state = engine_->mozcState(ic_);
+    auto* mozc_state = engine_->mozcState(ic_);
     mozc_state->Paging(false);
   }
 
@@ -247,8 +247,8 @@ class MozcCandidateList final : public CandidateList,
     }
   }
 
-  InputContext *ic_;
-  MozcEngine *engine_;
+  InputContext* ic_;
+  MozcEngine* engine_;
   std::vector<Text> labels_;
   bool hasPrev_ = false;
   bool hasNext_ = false;
@@ -259,12 +259,12 @@ class MozcCandidateList final : public CandidateList,
 
 }  // namespace
 
-MozcResponseParser::MozcResponseParser(MozcEngine *engine) : engine_(engine) {}
+MozcResponseParser::MozcResponseParser(MozcEngine* engine) : engine_(engine) {}
 
 MozcResponseParser::~MozcResponseParser() {}
 
 void MozcResponseParser::UpdateDeletionRange(
-    const mozc::commands::Output &response, InputContext *ic) const {
+    const mozc::commands::Output& response, InputContext* ic) const {
   if (response.has_deletion_range() &&
       response.deletion_range().offset() <= 0 &&
       response.deletion_range().offset() + response.deletion_range().length() >=
@@ -274,16 +274,16 @@ void MozcResponseParser::UpdateDeletionRange(
   }
 }
 
-void MozcResponseParser::LaunchTool(const mozc::commands::Output &response,
-                                    InputContext *ic) const {
+void MozcResponseParser::LaunchTool(const mozc::commands::Output& response,
+                                    InputContext* ic) const {
   if (response.has_launch_tool_mode()) {
-    auto *mozc_state = engine_->mozcState(ic);
+    auto* mozc_state = engine_->mozcState(ic);
     mozc_state->GetClient()->LaunchToolWithProtoBuf(response);
   }
 }
 
-void MozcResponseParser::ExecuteCallback(const mozc::commands::Output &response,
-                                         InputContext *ic) const {
+void MozcResponseParser::ExecuteCallback(const mozc::commands::Output& response,
+                                         InputContext* ic) const {
   if (!response.has_callback()) {
     return;
   }
@@ -293,7 +293,7 @@ void MozcResponseParser::ExecuteCallback(const mozc::commands::Output &response,
     return;
   }
 
-  const mozc::commands::SessionCommand &callback_command =
+  const mozc::commands::SessionCommand& callback_command =
       response.callback().session_command();
 
   if (!callback_command.has_type()) {
@@ -330,7 +330,7 @@ void MozcResponseParser::ExecuteCallback(const mozc::commands::Output &response,
       return;
   }
 
-  auto *mozc_state = engine_->mozcState(ic);
+  auto* mozc_state = engine_->mozcState(ic);
   mozc::commands::Output new_output;
   if (!mozc_state->SendCommand(session_command, &new_output)) {
     LOG(ERROR) << "Callback Command Failed";
@@ -340,7 +340,7 @@ void MozcResponseParser::ExecuteCallback(const mozc::commands::Output &response,
   if (callback_command.type() ==
       mozc::commands::SessionCommand::CONVERT_REVERSE) {
     // We need to remove selected text as a first step of reconversion.
-    mozc::commands::DeletionRange *range = new_output.mutable_deletion_range();
+    mozc::commands::DeletionRange* range = new_output.mutable_deletion_range();
     // Use DeletionRange field to remove the selected text.
     // For forward selection (that is, |relative_selected_length > 0|), the
     // offset should be a negative value to delete preceding text.
@@ -360,9 +360,9 @@ void MozcResponseParser::ExecuteCallback(const mozc::commands::Output &response,
   ParseResponse(new_output, ic);
 }
 
-bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
-                                       InputContext *ic) const {
-  auto *mozc_state = engine_->mozcState(ic);
+bool MozcResponseParser::ParseResponse(const mozc::commands::Output& response,
+                                       InputContext* ic) const {
+  auto* mozc_state = engine_->mozcState(ic);
   mozc_state->SetUsage("", "");
 
   UpdateDeletionRange(response, ic);
@@ -381,25 +381,25 @@ bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
   }
 
   if (response.has_result()) {
-    const mozc::commands::Result &result = response.result();
+    const mozc::commands::Result& result = response.result();
     ParseResult(result, ic);
   }
 
   // First, determine the cursor position.
   if (response.has_preedit()) {
-    const mozc::commands::Preedit &preedit = response.preedit();
+    const mozc::commands::Preedit& preedit = response.preedit();
     ParsePreedit(preedit, GetCursorPosition(response), ic);
   }
 
   // Then show the candidate window.
   if (response.has_candidate_window()) {
-    const mozc::commands::CandidateWindow &candidates =
+    const mozc::commands::CandidateWindow& candidates =
         response.candidate_window();
     ParseCandidates(candidates, ic);
   }
 
   if (response.has_url()) {
-    const std::string &url = response.url();
+    const std::string& url = response.url();
     mozc_state->SetUrl(url);
   }
   LaunchTool(response, ic);
@@ -408,9 +408,9 @@ bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
   return true;  // mozc consumed the key.
 }
 
-void MozcResponseParser::ParseResult(const mozc::commands::Result &result,
-                                     InputContext *ic) const {
-  auto *mozc_state = engine_->mozcState(ic);
+void MozcResponseParser::ParseResult(const mozc::commands::Result& result,
+                                     InputContext* ic) const {
+  auto* mozc_state = engine_->mozcState(ic);
   switch (result.type()) {
     case mozc::commands::Result::NONE: {
       mozc_state->SetAuxString("No result");  // not a fatal error.
@@ -424,9 +424,9 @@ void MozcResponseParser::ParseResult(const mozc::commands::Result &result,
 }
 
 void MozcResponseParser::ParseCandidates(
-    const mozc::commands::CandidateWindow &candidates, InputContext *ic) const {
-  auto *mozc_state = engine_->mozcState(ic);
-  const mozc::commands::Footer &footer = candidates.footer();
+    const mozc::commands::CandidateWindow& candidates, InputContext* ic) const {
+  auto* mozc_state = engine_->mozcState(ic);
+  const mozc::commands::Footer& footer = candidates.footer();
   if (candidates.has_footer()) {
     std::string auxString;
     if (footer.has_label()) {
@@ -455,16 +455,16 @@ void MozcResponseParser::ParseCandidates(
       candidates, ic, engine_, *engine_->config().verticalList));
 }
 
-void MozcResponseParser::ParsePreedit(const mozc::commands::Preedit &preedit,
+void MozcResponseParser::ParsePreedit(const mozc::commands::Preedit& preedit,
                                       uint32_t position,
-                                      InputContext *ic) const {
-  auto *mozc_state = engine_->mozcState(ic);
+                                      InputContext* ic) const {
+  auto* mozc_state = engine_->mozcState(ic);
   Text preedit_text;
   std::string s;
 
   for (int i = 0; i < preedit.segment_size(); ++i) {
-    const mozc::commands::Preedit_Segment &segment = preedit.segment(i);
-    const std::string &str = segment.value();
+    const mozc::commands::Preedit_Segment& segment = preedit.segment(i);
+    const std::string& str = segment.value();
     if (!utf8::validate(str)) {
       continue;
     }

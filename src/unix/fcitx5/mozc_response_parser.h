@@ -45,32 +45,32 @@ class MozcEngine;
 // updates the FCITX UI.
 class MozcResponseParser {
  public:
-  MozcResponseParser(MozcEngine *engine);
-  MozcResponseParser(const MozcResponseParser &) = delete;
+  MozcResponseParser(MozcEngine* engine);
+  MozcResponseParser(const MozcResponseParser&) = delete;
   ~MozcResponseParser();
 
   // Parses a response from Mozc server and sets persed information on
   // fcitx_mozc
   // object. Returns true if response.consumed() is true. fcitx_mozc must be non
   // NULL. This function does not take ownership of fcitx_mozc.
-  bool ParseResponse(const mozc::commands::Output &response,
-                     InputContext *ic) const;
+  bool ParseResponse(const mozc::commands::Output& response,
+                     InputContext* ic) const;
 
  private:
-  void UpdateDeletionRange(const mozc::commands::Output &response,
-                           InputContext *ic) const;
-  void LaunchTool(const mozc::commands::Output &response,
-                  InputContext *ic) const;
-  void ExecuteCallback(const mozc::commands::Output &response,
-                       InputContext *ic) const;
-  void ParseResult(const mozc::commands::Result &result,
-                   InputContext *ic) const;
-  void ParseCandidates(const mozc::commands::CandidateWindow &candidates,
-                       InputContext *ic) const;
-  void ParsePreedit(const mozc::commands::Preedit &preedit, uint32_t position,
-                    InputContext *ic) const;
+  void UpdateDeletionRange(const mozc::commands::Output& response,
+                           InputContext* ic) const;
+  void LaunchTool(const mozc::commands::Output& response,
+                  InputContext* ic) const;
+  void ExecuteCallback(const mozc::commands::Output& response,
+                       InputContext* ic) const;
+  void ParseResult(const mozc::commands::Result& result,
+                   InputContext* ic) const;
+  void ParseCandidates(const mozc::commands::CandidateWindow& candidates,
+                       InputContext* ic) const;
+  void ParsePreedit(const mozc::commands::Preedit& preedit, uint32_t position,
+                    InputContext* ic) const;
 
-  MozcEngine *engine_;
+  MozcEngine* engine_;
 };
 
 }  // namespace fcitx

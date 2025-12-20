@@ -49,14 +49,14 @@ struct SurroundingTextInfo {
 class SurroundingTextUtil {
  public:
   SurroundingTextUtil() = delete;
-  SurroundingTextUtil(const SurroundingTextUtil &) = delete;
-  SurroundingTextUtil &operator=(const SurroundingTextUtil &) = delete;
+  SurroundingTextUtil(const SurroundingTextUtil&) = delete;
+  SurroundingTextUtil& operator=(const SurroundingTextUtil&) = delete;
   // Calculates |from| - |to| and stores the result into |delta| with
   // checking integer overflow.
   // Returns true when neither |abs(delta)| nor |-delta| does not cause
   // integer overflow, that is, |delta| is in a safe range.
   // Returns false otherwise.
-  static bool GetSafeDelta(unsigned int from, unsigned int to, int32_t *delta);
+  static bool GetSafeDelta(unsigned int from, unsigned int to, int32_t* delta);
 
   // Returns true if
   // 1. |surrounding_text| contains |selected_text|
@@ -69,14 +69,14 @@ class SurroundingTextUtil {
   // When both 1) and 2) are satisfied, this function calculates
   // |*anchor_pos| for case 1).
   // Otherwise returns false.
-  static bool GetAnchorPosFromSelection(const std::string &surrounding_text,
-                                        const std::string &selected_text,
+  static bool GetAnchorPosFromSelection(const std::string& surrounding_text,
+                                        const std::string& selected_text,
                                         unsigned int cursor_pos,
-                                        unsigned int *anchor_pos);
+                                        unsigned int* anchor_pos);
 };
 
-bool GetSurroundingText(InputContext *ic, SurroundingTextInfo *info,
-                        AddonInstance *clipboard);
+bool GetSurroundingText(InputContext* ic, SurroundingTextInfo* info,
+                        AddonInstance* clipboard);
 
 }  // namespace fcitx
 

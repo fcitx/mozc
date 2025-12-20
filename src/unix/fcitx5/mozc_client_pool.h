@@ -51,12 +51,12 @@ class MozcClientPool : public TrackableObject<MozcClientPool> {
   void setPolicy(PropertyPropagatePolicy policy);
   PropertyPropagatePolicy policy() const { return policy_; }
 
-  std::shared_ptr<MozcClientInterface> requestClient(InputContext *ic);
+  std::shared_ptr<MozcClientInterface> requestClient(InputContext* ic);
 
  private:
   std::shared_ptr<MozcClientInterface> registerClient(
-      const std::string &key, std::unique_ptr<MozcClientInterface> client);
-  void unregisterClient(const std::string &key);
+      const std::string& key, std::unique_ptr<MozcClientInterface> client);
+  void unregisterClient(const std::string& key);
   PropertyPropagatePolicy policy_;
   std::unordered_map<std::string, std::weak_ptr<MozcClientInterface>> clients_;
 };

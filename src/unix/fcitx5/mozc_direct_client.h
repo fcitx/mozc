@@ -20,19 +20,19 @@ class MozcDirectClient : public MozcClientInterface {
   ~MozcDirectClient();
 
   bool EnsureConnection() override { return true; }
-  bool SendKeyWithContext(const mozc::commands::KeyEvent &key,
-                          const mozc::commands::Context &context,
-                          mozc::commands::Output *output) override;
-  bool SendCommandWithContext(const mozc::commands::SessionCommand &command,
-                              const mozc::commands::Context &context,
-                              mozc::commands::Output *output) override;
-  bool IsDirectModeCommand(const mozc::commands::KeyEvent &key) const override;
-  bool GetConfig(mozc::config::Config *config) override;
+  bool SendKeyWithContext(const mozc::commands::KeyEvent& key,
+                          const mozc::commands::Context& context,
+                          mozc::commands::Output* output) override;
+  bool SendCommandWithContext(const mozc::commands::SessionCommand& command,
+                              const mozc::commands::Context& context,
+                              mozc::commands::Output* output) override;
+  bool IsDirectModeCommand(const mozc::commands::KeyEvent& key) const override;
+  bool GetConfig(mozc::config::Config* config) override;
   void set_client_capability(
-      const mozc::commands::Capability &capability) override;
+      const mozc::commands::Capability& capability) override;
   bool SyncData() override;
-  bool LaunchTool(const std::string &mode, std::string_view arg) override;
-  bool LaunchToolWithProtoBuf(const mozc::commands::Output &output) override;
+  bool LaunchTool(const std::string& mode, std::string_view arg) override;
+  bool LaunchToolWithProtoBuf(const mozc::commands::Output& output) override;
 
  private:
   // Initializes `request_` with the flag.
@@ -42,7 +42,7 @@ class MozcDirectClient : public MozcClientInterface {
   // If launch_tool_mode is not set or NO_TOOL is set or an invalid value is
   // set, this function will return false and do nothing.
   static bool TranslateProtoBufToMozcToolArg(
-      const mozc::commands::Output &output, std::string *mode);
+      const mozc::commands::Output& output, std::string* mode);
 
   bool EnsureSession();
 
@@ -52,18 +52,18 @@ class MozcDirectClient : public MozcClientInterface {
   };
 
   // Initialize input filling id and preferences.
-  void InitInput(mozc::commands::Input *input) const;
+  void InitInput(mozc::commands::Input* input) const;
 
   bool CreateSession();
   bool DeleteSession();
   bool CallCommand(mozc::commands::Input::CommandType type);
 
   // This method re-issue session id if it is not available.
-  bool EnsureCallCommand(mozc::commands::Input *input,
-                         mozc::commands::Output *output);
+  bool EnsureCallCommand(mozc::commands::Input* input,
+                         mozc::commands::Output* output);
 
   // The most primitive Call method
-  bool Call(const mozc::commands::Input &input, mozc::commands::Output *output);
+  bool Call(const mozc::commands::Input& input, mozc::commands::Output* output);
 
   uint64_t id_;
   std::unique_ptr<mozc::commands::Request> request_;

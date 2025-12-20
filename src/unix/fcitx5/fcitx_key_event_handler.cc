@@ -65,7 +65,7 @@ class AdditionalModifiersData {
     data_[mozc::commands::KeyEvent::RIGHT_SHIFT] =
         mozc::commands::KeyEvent::SHIFT;
   }
-  const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey> &data() {
+  const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey>& data() {
     return data_;
   }
 
@@ -76,10 +76,10 @@ class AdditionalModifiersData {
 // TODO(hsumita): Moves this function into member functions of
 // KeyEventHandler.
 void AddAdditionalModifiers(
-    std::set<mozc::commands::KeyEvent::ModifierKey> *modifier_keys_set) {
+    std::set<mozc::commands::KeyEvent::ModifierKey>* modifier_keys_set) {
   DCHECK(modifier_keys_set);
 
-  const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey> &data =
+  const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey>& data =
       mozc::Singleton<AdditionalModifiersData>::get()->data();
 
   // Adds MODIFIER if there are (LEFT|RIGHT)_MODIFIER like LEFT_SHIFT.
@@ -92,7 +92,7 @@ void AddAdditionalModifiers(
   }
 }
 
-bool IsModifierToBeSentOnKeyUp(const mozc::commands::KeyEvent &key_event) {
+bool IsModifierToBeSentOnKeyUp(const mozc::commands::KeyEvent& key_event) {
   if (key_event.modifier_keys_size() == 0) {
     return false;
   }
@@ -114,7 +114,7 @@ KeyEventHandler::KeyEventHandler()
 bool KeyEventHandler::GetKeyEvent(
     KeySym keyval, uint32_t keycode, KeyStates modifiers,
     mozc::config::Config::PreeditMethod preedit_method, bool layout_is_jp,
-    bool is_key_up, mozc::commands::KeyEvent *key) {
+    bool is_key_up, mozc::commands::KeyEvent* key) {
   DCHECK(key);
   key->Clear();
 
@@ -128,9 +128,9 @@ bool KeyEventHandler::GetKeyEvent(
 }
 
 bool KeyEventHandler::GetKeyEvent(
-    const std::string &composeString,
+    const std::string& composeString,
     mozc::config::Config::PreeditMethod preedit_method, bool layout_is_jp,
-    mozc::commands::KeyEvent *key) {
+    mozc::commands::KeyEvent* key) {
   key->Clear();
   auto length = utf8::length(composeString);
   if (length == 1) {
@@ -152,7 +152,7 @@ void KeyEventHandler::Clear() {
 }
 
 bool KeyEventHandler::ProcessModifiers(bool is_key_up, uint32_t keyval,
-                                       mozc::commands::KeyEvent *key_event) {
+                                       mozc::commands::KeyEvent* key_event) {
   // Manage modifier key event.
   // Modifier key event is sent on key up if non-modifier key has not been
   // pressed since key down of modifier keys and no modifier keys are pressed

@@ -57,7 +57,7 @@ void MozcClientPool::setPolicy(PropertyPropagatePolicy policy) {
   policy_ = policy;
 }
 
-std::string uuidKey(InputContext *ic) {
+std::string uuidKey(InputContext* ic) {
   std::string key = "u:";
   for (auto v : ic->uuid()) {
     auto lower = v % 16;
@@ -69,7 +69,7 @@ std::string uuidKey(InputContext *ic) {
 }
 
 std::shared_ptr<MozcClientInterface> MozcClientPool::requestClient(
-    InputContext *ic) {
+    InputContext* ic) {
   std::string key;
   switch (policy_) {
     case PropertyPropagatePolicy::No:
@@ -100,12 +100,12 @@ std::shared_ptr<MozcClientInterface> MozcClientPool::requestClient(
 }
 
 std::shared_ptr<MozcClientInterface> MozcClientPool::registerClient(
-    const std::string &key, std::unique_ptr<MozcClientInterface> client) {
+    const std::string& key, std::unique_ptr<MozcClientInterface> client) {
   assert(!key.empty());
   std::shared_ptr<MozcClientInterface> managedClient(
       client.release(),
-      [key, ref = this->watch()](MozcClientInterface *client) {
-        if (auto *that = ref.get()) {
+      [key, ref = this->watch()](MozcClientInterface* client) {
+        if (auto* that = ref.get()) {
           that->unregisterClient(key);
         }
         delete client;
@@ -116,7 +116,7 @@ std::shared_ptr<MozcClientInterface> MozcClientPool::registerClient(
   return managedClient;
 }
 
-void MozcClientPool::unregisterClient(const std::string &key) {
+void MozcClientPool::unregisterClient(const std::string& key) {
   clients_.erase(key);
 }
 

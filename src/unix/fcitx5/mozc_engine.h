@@ -74,7 +74,7 @@ FCITX_CONFIG_ENUM_NAME_WITH_I18N(CompositionMode, N_("Direct"), N_("Hiragana"),
 FCITX_CONFIGURATION(
     MozcEngineConfig, const std::string toolPath_ = mozc::FileUtil::JoinPath(
                           mozc::SystemUtil::GetServerDirectory(), "mozc_tool");
-    std::string toolCommand(const char *arg) {
+    std::string toolCommand(const char* arg) {
       return stringutils::concat(toolPath_, " ", arg);
     }
 
@@ -108,55 +108,55 @@ FCITX_CONFIGURATION(
 
 class MozcModeSubAction : public SimpleAction {
  public:
-  MozcModeSubAction(MozcEngine *engine, mozc::commands::CompositionMode mode);
-  bool isChecked(fcitx::InputContext *ic) const override;
-  void activate(fcitx::InputContext *ic) override;
+  MozcModeSubAction(MozcEngine* engine, mozc::commands::CompositionMode mode);
+  bool isChecked(fcitx::InputContext* ic) const override;
+  void activate(fcitx::InputContext* ic) override;
 
  private:
-  MozcEngine *engine_;
+  MozcEngine* engine_;
   mozc::commands::CompositionMode mode_;
 };
 
 class MozcEngine final : public InputMethodEngineV2 {
  public:
-  MozcEngine(Instance *instance);
+  MozcEngine(Instance* instance);
   ~MozcEngine();
-  Instance *instance() { return instance_; }
-  void activate(const InputMethodEntry &entry,
-                InputContextEvent &event) override;
-  void deactivate(const fcitx::InputMethodEntry &entry,
-                  fcitx::InputContextEvent &event) override;
-  void keyEvent(const InputMethodEntry &entry, KeyEvent &keyEvent) override;
+  Instance* instance() { return instance_; }
+  void activate(const InputMethodEntry& entry,
+                InputContextEvent& event) override;
+  void deactivate(const fcitx::InputMethodEntry& entry,
+                  fcitx::InputContextEvent& event) override;
+  void keyEvent(const InputMethodEntry& entry, KeyEvent& keyEvent) override;
   void reloadConfig() override;
-  void reset(const InputMethodEntry &entry, InputContextEvent &event) override;
+  void reset(const InputMethodEntry& entry, InputContextEvent& event) override;
   void save() override;
-  std::string subMode(const fcitx::InputMethodEntry & /*entry*/,
-                      fcitx::InputContext &ic) override;
-  std::string subModeIconImpl(const InputMethodEntry &entry,
-                              InputContext &ic) override;
+  std::string subMode(const fcitx::InputMethodEntry& /*entry*/,
+                      fcitx::InputContext& ic) override;
+  std::string subModeIconImpl(const InputMethodEntry& entry,
+                              InputContext& ic) override;
 
-  const Configuration *getConfig() const override { return &config_; }
-  void setConfig(const RawConfig &config) override;
+  const Configuration* getConfig() const override { return &config_; }
+  void setConfig(const RawConfig& config) override;
 
-  auto &config() const { return config_; }
+  auto& config() const { return config_; }
   auto factory() const { return &factory_; }
 
-  MozcState *mozcState(InputContext *ic);
-  AddonInstance *clipboardAddon();
+  MozcState* mozcState(InputContext* ic);
+  AddonInstance* clipboardAddon();
 
-  void compositionModeUpdated(InputContext *ic);
+  void compositionModeUpdated(InputContext* ic);
 
   void SyncData(bool force);
 
   bool deactivating() const { return deactivating_; }
-  auto *parser() const { return parser_.get(); }
-  auto *pool() const { return pool_.get(); }
+  auto* parser() const { return parser_.get(); }
+  auto* pool() const { return pool_.get(); }
 
  private:
   void ResetClientPool();
   PropertyPropagatePolicy GetSharedStatePolicy();
 
-  Instance *instance_;
+  Instance* instance_;
   const std::unique_ptr<MozcResponseParser> parser_;
   std::unique_ptr<MozcClientInterface> client_;
   std::unique_ptr<MozcClientPool> pool_;

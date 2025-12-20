@@ -47,7 +47,7 @@ namespace fcitx {
 class KeyEventHandler {
  public:
   KeyEventHandler();
-  KeyEventHandler(const KeyEventHandler &) = delete;
+  KeyEventHandler(const KeyEventHandler&) = delete;
 
   // Converts a key event came from fcitx to commands::KeyEvent. This is a
   // stateful method. It stores modifier keys states since ibus doesn't send
@@ -55,11 +55,11 @@ class KeyEventHandler {
   bool GetKeyEvent(KeySym keyval, uint32_t keycode, KeyStates modifiers,
                    mozc::config::Config::PreeditMethod preedit_method,
                    bool layout_is_jp, bool is_key_up,
-                   mozc::commands::KeyEvent *key);
+                   mozc::commands::KeyEvent* key);
 
-  bool GetKeyEvent(const std::string &composeString,
+  bool GetKeyEvent(const std::string& composeString,
                    mozc::config::Config::PreeditMethod preedit_method,
-                   bool layout_is_jp, mozc::commands::KeyEvent *key);
+                   bool layout_is_jp, mozc::commands::KeyEvent* key);
 
   // Clears states.
   void Clear();
@@ -67,7 +67,7 @@ class KeyEventHandler {
  private:
   // Manages modifier keys. Returns false if it should not be sent to server.
   bool ProcessModifiers(bool is_key_up, uint32_t keyval,
-                        mozc::commands::KeyEvent *key_event);
+                        mozc::commands::KeyEvent* key_event);
 
   std::unique_ptr<KeyTranslator> key_translator_;
   // Non modifier key is pressed or not after all keys are released.

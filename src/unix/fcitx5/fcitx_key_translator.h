@@ -46,19 +46,19 @@ namespace fcitx {
 class KeyTranslator {
  public:
   KeyTranslator() = default;
-  KeyTranslator(const KeyTranslator &) = delete;
-  KeyTranslator &operator=(const KeyTranslator &) = delete;
+  KeyTranslator(const KeyTranslator&) = delete;
+  KeyTranslator& operator=(const KeyTranslator&) = delete;
   virtual ~KeyTranslator() = default;
 
   // Converts fcitx key into Mozc key code and stores them on out_translated.
   bool Translate(KeySym keyval, uint32_t keycode, KeyStates modifiers,
                  mozc::config::Config::PreeditMethod method, bool layout_is_jp,
-                 mozc::commands::KeyEvent *out_event) const;
+                 mozc::commands::KeyEvent* out_event) const;
 
  private:
   // Returns true iff |keyval| is a key with a kana assigned.
   bool IsKanaAvailable(KeySym keyval, uint32_t keycode, KeyStates modifiers,
-                       bool layout_is_jp, std::string *out) const;
+                       bool layout_is_jp, std::string* out) const;
 
   // Returns true iff key is ASCII such as '0', 'A', or '!'.
   static bool IsAscii(KeySym keyval, uint32_t keycode, KeyStates modifiers);

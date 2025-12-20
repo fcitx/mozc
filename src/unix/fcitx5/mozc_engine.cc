@@ -52,10 +52,10 @@
 namespace fcitx {
 
 const struct CompositionModeInfo {
-  const char *name;
-  const char *icon;
-  const char *label;
-  const char *description;
+  const char* name;
+  const char* icon;
+  const char* label;
+  const char* description;
   mozc::commands::CompositionMode mode;
 } kPropCompositionModes[] = {
     {
@@ -105,7 +105,7 @@ const struct CompositionModeInfo {
 };
 const size_t kNumCompositionModes = FCITX_ARRAY_SIZE(kPropCompositionModes);
 
-MozcModeSubAction::MozcModeSubAction(MozcEngine *engine,
+MozcModeSubAction::MozcModeSubAction(MozcEngine* engine,
                                      mozc::commands::CompositionMode mode)
     : engine_(engine), mode_(mode) {
   setShortText(_(kPropCompositionModes[mode].description));
@@ -114,13 +114,13 @@ MozcModeSubAction::MozcModeSubAction(MozcEngine *engine,
   setCheckable(true);
 }
 
-bool MozcModeSubAction::isChecked(InputContext *ic) const {
-  auto *mozc_state = engine_->mozcState(ic);
+bool MozcModeSubAction::isChecked(InputContext* ic) const {
+  auto* mozc_state = engine_->mozcState(ic);
   return mozc_state->GetCompositionMode() == mode_;
 }
 
-void MozcModeSubAction::activate(InputContext *ic) {
-  auto *mozc_state = engine_->mozcState(ic);
+void MozcModeSubAction::activate(InputContext* ic) {
+  auto* mozc_state = engine_->mozcState(ic);
   mozc_state->SendCompositionMode(mode_);
 }
 
@@ -129,20 +129,20 @@ void MozcModeSubAction::activate(InputContext *ic) {
 static_assert(mozc::commands::NUM_OF_COMPOSITIONS == kNumCompositionModes,
               "number of modes must match");
 
-Instance *Init(Instance *instance) {
+Instance* Init(Instance* instance) {
   int argc = 1;
   char argv0[] = "fcitx_mozc";
-  char *_argv[] = {argv0};
-  char **argv = _argv;
+  char* _argv[] = {argv0};
+  char** argv = _argv;
   mozc::InitMozc(argv[0], &argc, &argv);
   return instance;
 }
 
-MozcEngine::MozcEngine(Instance *instance)
+MozcEngine::MozcEngine(Instance* instance)
     : instance_(Init(instance)),
       parser_(std::make_unique<MozcResponseParser>(this)),
       client_(createClient()),
-      factory_([this](InputContext &ic) { return new MozcState(&ic, this); }) {
+      factory_([this](InputContext& ic) { return new MozcState(&ic, this); }) {
   pool_ = std::make_unique<MozcClientPool>(GetSharedStatePolicy());
   for (auto command :
        {mozc::commands::DIRECT, mozc::commands::HIRAGANA,
@@ -158,7 +158,7 @@ MozcEngine::MozcEngine(Instance *instance)
   toolAction_.setIcon("fcitx_mozc_tool");
 
   int i = 0;
-  for (auto &modeAction : modeActions_) {
+  for (auto& modeAction : modeActions_) {
     instance_->userInterfaceManager().registerAction(
         kPropCompositionModes[i].name, modeAction.get());
     toolMenu_.addAction(modeAction.get());
@@ -183,7 +183,7 @@ MozcEngine::MozcEngine(Instance *instance)
                                                    &configToolAction_);
   configToolAction_.setShortText(_("Configuration Tool"));
   configToolAction_.setIcon("fcitx_mozc_tool");
-  configToolAction_.connect<SimpleAction::Activated>([](InputContext *) {
+  configToolAction_.connect<SimpleAction::Activated>([](InputContext*) {
     mozc::Process::SpawnMozcProcess("mozc_tool", "--mode=config_dialog");
   });
 
@@ -191,21 +191,21 @@ MozcEngine::MozcEngine(Instance *instance)
                                                    &dictionaryToolAction_);
   dictionaryToolAction_.setShortText(_("Dictionary Tool"));
   dictionaryToolAction_.setIcon("fcitx_mozc_dictionary");
-  dictionaryToolAction_.connect<SimpleAction::Activated>([](InputContext *) {
+  dictionaryToolAction_.connect<SimpleAction::Activated>([](InputContext*) {
     mozc::Process::SpawnMozcProcess("mozc_tool", "--mode=dictionary_tool");
   });
 
   instance_->userInterfaceManager().registerAction("mozc-tool-add",
                                                    &addWordAction_);
   addWordAction_.setShortText(_("Add Word"));
-  addWordAction_.connect<SimpleAction::Activated>([](InputContext *) {
+  addWordAction_.connect<SimpleAction::Activated>([](InputContext*) {
     mozc::Process::SpawnMozcProcess("mozc_tool", "--mode=word_register_dialog");
   });
 
   instance_->userInterfaceManager().registerAction("mozc-tool-about",
                                                    &aboutAction_);
   aboutAction_.setShortText(_("About Mozc"));
-  aboutAction_.connect<SimpleAction::Activated>([](InputContext *) {
+  aboutAction_.connect<SimpleAction::Activated>([](InputContext*) {
     mozc::Process::SpawnMozcProcess("mozc_tool", "--mode=about_dialog");
   });
 
@@ -218,7 +218,7 @@ MozcEngine::MozcEngine(Instance *instance)
 
   globalConfigReloadHandle_ =
       instance_->watchEvent(EventType::GlobalConfigReloaded,
-                            EventWatcherPhase::Default, [this](Event &) {
+                            EventWatcherPhase::Default, [this](Event&) {
                               ResetClientPool();
                               return true;
                             });
@@ -228,7 +228,7 @@ MozcEngine::MozcEngine(Instance *instance)
 
 MozcEngine::~MozcEngine() {}
 
-void MozcEngine::setConfig(const RawConfig &config) {
+void MozcEngine::setConfig(const RawConfig& config) {
   config_.load(config, true);
   safeSaveAsIni(config_, "conf/mozc.conf");
   ResetClientPool();
@@ -238,28 +238,28 @@ void MozcEngine::reloadConfig() {
   readAsIni(config_, "conf/mozc.conf");
   ResetClientPool();
 }
-void MozcEngine::activate(const fcitx::InputMethodEntry & /*entry*/,
-                          fcitx::InputContextEvent &event) {
+void MozcEngine::activate(const fcitx::InputMethodEntry& /*entry*/,
+                          fcitx::InputContextEvent& event) {
   if (client_) {
     client_->EnsureConnection();
   }
-  auto *ic = event.inputContext();
-  auto *mozc_state = mozcState(ic);
+  auto* ic = event.inputContext();
+  auto* mozc_state = mozcState(ic);
   mozc_state->FocusIn();
   ic->statusArea().addAction(StatusGroup::InputMethod, &toolAction_);
 }
-void MozcEngine::deactivate(const fcitx::InputMethodEntry & /*entry*/,
-                            fcitx::InputContextEvent &event) {
-  auto *ic = event.inputContext();
+void MozcEngine::deactivate(const fcitx::InputMethodEntry& /*entry*/,
+                            fcitx::InputContextEvent& event) {
+  auto* ic = event.inputContext();
   deactivating_ = true;
-  auto *mozc_state = mozcState(ic);
+  auto* mozc_state = mozcState(ic);
   mozc_state->FocusOut(event);
   deactivating_ = false;
 }
-void MozcEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
-  auto *mozc_state = mozcState(event.inputContext());
+void MozcEngine::keyEvent(const InputMethodEntry& entry, KeyEvent& event) {
+  auto* mozc_state = mozcState(event.inputContext());
 
-  const auto &group = instance_->inputMethodManager().currentGroup();
+  const auto& group = instance_->inputMethodManager().currentGroup();
   std::string layout = group.layoutFor(entry.uniqueName());
   if (layout.empty()) {
     layout = group.defaultLayout();
@@ -274,9 +274,9 @@ void MozcEngine::keyEvent(const InputMethodEntry &entry, KeyEvent &event) {
   }
 }
 
-void MozcEngine::reset(const InputMethodEntry & /*entry*/,
-                       InputContextEvent &event) {
-  auto *mozc_state = mozcState(event.inputContext());
+void MozcEngine::reset(const InputMethodEntry& /*entry*/,
+                       InputContextEvent& event) {
+  auto* mozc_state = mozcState(event.inputContext());
   mozc_state->Reset();
 }
 
@@ -287,35 +287,35 @@ void MozcEngine::save() {
   client_->SyncData();
 }
 
-std::string MozcEngine::subMode(const fcitx::InputMethodEntry & /*entry*/,
-                                fcitx::InputContext &ic) {
-  auto *mozc_state = mozcState(&ic);
+std::string MozcEngine::subMode(const fcitx::InputMethodEntry& /*entry*/,
+                                fcitx::InputContext& ic) {
+  auto* mozc_state = mozcState(&ic);
   return _(kPropCompositionModes[mozc_state->GetCompositionMode()].description);
 }
 
 std::string MozcEngine::subModeIconImpl(
-    const fcitx::InputMethodEntry & /*unused*/, fcitx::InputContext &ic) {
-  auto *mozc_state = mozcState(&ic);
+    const fcitx::InputMethodEntry& /*unused*/, fcitx::InputContext& ic) {
+  auto* mozc_state = mozcState(&ic);
   return _(kPropCompositionModes[mozc_state->GetCompositionMode()].icon);
 }
 
-MozcState *MozcEngine::mozcState(InputContext *ic) {
+MozcState* MozcEngine::mozcState(InputContext* ic) {
   return ic->propertyFor(&factory_);
 }
 
-void MozcEngine::compositionModeUpdated(InputContext *ic) {
-  for (const auto &modeAction : modeActions_) {
+void MozcEngine::compositionModeUpdated(InputContext* ic) {
+  for (const auto& modeAction : modeActions_) {
     modeAction->update(ic);
   }
   ic->updateUserInterface(UserInterfaceComponent::StatusArea);
 }
 
-AddonInstance *MozcEngine::clipboardAddon() { return clipboard(); }
+AddonInstance* MozcEngine::clipboardAddon() { return clipboard(); }
 
 void MozcEngine::ResetClientPool() {
   if (pool_->policy() != GetSharedStatePolicy()) {
-    instance_->inputContextManager().foreach ([this](InputContext *ic) {
-      if (auto *state = this->mozcState(ic)) {
+    instance_->inputContextManager().foreach ([this](InputContext* ic) {
+      if (auto* state = this->mozcState(ic)) {
         state->ReleaseClient();
       }
       return true;
