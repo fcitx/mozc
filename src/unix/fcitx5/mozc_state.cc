@@ -160,6 +160,17 @@ bool MozcState::TrySendClick(int32_t unique_id, mozc::commands::Output* out,
   return TrySendRawCommand(command, out, out_error);
 }
 
+bool MozcState::TrySendHighlight(int32_t unique_id, mozc::commands::Output* out,
+                                 std::string* out_error) const {
+  DCHECK(out);
+  DCHECK(out_error);
+
+  mozc::commands::SessionCommand command;
+  command.set_type(mozc::commands::SessionCommand::HIGHLIGHT_CANDIDATE);
+  command.set_id(unique_id);
+  return TrySendRawCommand(command, out, out_error);
+}
+
 bool MozcState::TrySendCompositionMode(mozc::commands::CompositionMode mode,
                                        mozc::commands::Output* out,
                                        std::string* out_error) const {
@@ -280,6 +291,24 @@ void MozcState::SelectCandidate(int32_t id) {
   std::string error;
   mozc::commands::Output raw_response;
   if (!TrySendClick(id, &raw_response, &error)) {
+    LOG(ERROR) << "IPC failed. error=" << error;
+    SetAuxString(error);
+    DrawAll();
+  } else {
+    ParseResponse(raw_response);
+  }
+}
+
+void MozcState::HighlightCandidate(int32_t id) {
+  if (id == kBadCandidateId) {
+    LOG(ERROR) << "The highlighted candidate doesn't have unique ID.";
+    return;
+  }
+  MOZC_VLOG(1) << "highlight_candidate, id=" << id;
+
+  std::string error;
+  mozc::commands::Output raw_response;
+  if (!TrySendHighlight(id, &raw_response, &error)) {
     LOG(ERROR) << "IPC failed. error=" << error;
     SetAuxString(error);
     DrawAll();
