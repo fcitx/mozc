@@ -308,7 +308,7 @@ void FcitxMozc::SetCompositionMode ( mozc::commands::CompositionMode mode )
 
 void FcitxMozc::SendCompositionMode(mozc::commands::CompositionMode mode)
 {
-    // Send the SWITCH_INPUT_MODE command.
+    // Send the SWITCH_COMPOSITION_MODE command.
     std::string error;
     mozc::commands::Output raw_response;
     if (connection_->TrySendCompositionMode(

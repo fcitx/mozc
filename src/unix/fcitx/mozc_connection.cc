@@ -157,7 +157,7 @@ bool MozcConnection::TrySendCompositionMode(
     command.set_type(mozc::commands::SessionCommand::TURN_OFF_IME);
     command.set_composition_mode(old_mode);
   } else {
-    command.set_type(mozc::commands::SessionCommand::SWITCH_INPUT_MODE);
+    command.set_type(mozc::commands::SessionCommand::SWITCH_COMPOSITION_MODE);
     command.set_composition_mode(mode);
   }
   return TrySendRawCommand(command, out, out_error);
