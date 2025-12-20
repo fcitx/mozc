@@ -1,4 +1,4 @@
-name: CI
+name: Fcitx5 CI
 on:
   push:
     branches:
@@ -6,6 +6,7 @@ on:
   pull_request:
     branches:
       - fcitx
+  workflow_dispatch: # can be manually dispatched under GitHub's "Actions" tab
 jobs:
   clang-format:
     name: Check clang-format
