@@ -44,7 +44,9 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "base/config_file_stream.h"
+#include "base/container/flat_map.h"
 #include "base/file_stream.h"
 #include "base/util.h"
 #include "composer/key_parser.h"
@@ -64,6 +66,48 @@ static constexpr char kMobileKeyMapFile[] = "system://mobile.tsv";
 static constexpr char kChromeOsKeyMapFile[] = "system://chromeos.tsv";
 static constexpr char kOverlayHenkanMuhenkanToImeOnOffKeyMapFile[] =
     "system://overlay_henkan_muhenkan_to_ime_on_off.tsv";
+
+static constexpr char kCommandStringCompositionModeHiragana[] =
+    "CompositionModeHiragana";
+static constexpr char kCommandStringCompositionModeFullKatakana[] =
+    "CompositionModeFullKatakana";
+static constexpr char kCommandStringCompositionModeHalfKatakana[] =
+    "CompositionModeHalfKatakana";
+static constexpr char kCommandStringCompositionModeFullAlphanumeric[] =
+    "CompositionModeFullAlphanumeric";
+static constexpr char kCommandStringCompositionModeHalfAlphanumeric[] =
+    "CompositionModeHalfAlphanumeric";
+static constexpr char kCommandStringCompositionModeSwitchKanaType[] =
+    "CompositionModeSwitchKanaType";
+
+static constexpr char kLegacyCommandStringInputModeHiragana[] =
+    "InputModeHiragana";
+static constexpr char kLegacyCommandStringInputModeFullKatakana[] =
+    "InputModeFullKatakana";
+static constexpr char kLegacyCommandStringInputModeHalfKatakana[] =
+    "InputModeHalfKatakana";
+static constexpr char kLegacyCommandStringInputModeFullAlphanumeric[] =
+    "InputModeFullAlphanumeric";
+static constexpr char kLegacyCommandStringInputModeHalfAlphanumeric[] =
+    "InputModeHalfAlphanumeric";
+static constexpr char kLegacyCommandStringInputModeSwitchKanaType[] =
+    "InputModeSwitchKanaType";
+
+static constexpr auto kCommandStringsToLegacyCommandStrings =
+    CreateFlatMap<absl::string_view, absl::string_view>({
+        {kCommandStringCompositionModeHiragana,
+         kLegacyCommandStringInputModeHiragana},
+        {kCommandStringCompositionModeFullKatakana,
+         kLegacyCommandStringInputModeFullKatakana},
+        {kCommandStringCompositionModeHalfKatakana,
+         kLegacyCommandStringInputModeHalfKatakana},
+        {kCommandStringCompositionModeFullAlphanumeric,
+         kLegacyCommandStringInputModeFullAlphanumeric},
+        {kCommandStringCompositionModeHalfAlphanumeric,
+         kLegacyCommandStringInputModeHalfAlphanumeric},
+        {kCommandStringCompositionModeSwitchKanaType,
+         kLegacyCommandStringInputModeSwitchKanaType},
+    });
 }  // namespace
 
 // static
@@ -378,45 +422,74 @@ void KeyMapManager::RegisterDirectCommand(const std::string& command_string,
                                           DirectInputState::Commands command) {
   command_direct_map_[command_string] = command;
   reverse_command_direct_map_[command] = command_string;
+
+  const absl::string_view* legacy_command_string =
+      kCommandStringsToLegacyCommandStrings.FindOrNull(command_string);
+  if (legacy_command_string != nullptr) {
+    command_direct_map_[*legacy_command_string] = command;
+  }
 }
 
 void KeyMapManager::RegisterPrecompositionCommand(
     const std::string& command_string, PrecompositionState::Commands command) {
   command_precomposition_map_[command_string] = command;
   reverse_command_precomposition_map_[command] = command_string;
+
+  const absl::string_view* legacy_command_string =
+      kCommandStringsToLegacyCommandStrings.FindOrNull(command_string);
+  if (legacy_command_string != nullptr) {
+    command_precomposition_map_[*legacy_command_string] = command;
+  }
 }
 
 void KeyMapManager::RegisterCompositionCommand(
     const std::string& command_string, CompositionState::Commands command) {
   command_composition_map_[command_string] = command;
   reverse_command_composition_map_[command] = command_string;
+
+  const absl::string_view* legacy_command_string =
+      kCommandStringsToLegacyCommandStrings.FindOrNull(command_string);
+  if (legacy_command_string != nullptr) {
+    command_composition_map_[*legacy_command_string] = command;
+  }
 }
 
 void KeyMapManager::RegisterConversionCommand(
     const std::string& command_string, ConversionState::Commands command) {
   command_conversion_map_[command_string] = command;
   reverse_command_conversion_map_[command] = command_string;
+
+  const absl::string_view* legacy_command_string =
+      kCommandStringsToLegacyCommandStrings.FindOrNull(command_string);
+  if (legacy_command_string != nullptr) {
+    command_conversion_map_[*legacy_command_string] = command;
+  }
 }
 
 void KeyMapManager::InitCommandData() {
   RegisterDirectCommand("IMEOn", DirectInputState::IME_ON);
-  if (kInputModeXCommandSupported) {
-    RegisterDirectCommand("InputModeHiragana",
-                          DirectInputState::INPUT_MODE_HIRAGANA);
-    RegisterDirectCommand("InputModeFullKatakana",
-                          DirectInputState::INPUT_MODE_FULL_KATAKANA);
-    RegisterDirectCommand("InputModeHalfKatakana",
-                          DirectInputState::INPUT_MODE_HALF_KATAKANA);
-    RegisterDirectCommand("InputModeFullAlphanumeric",
-                          DirectInputState::INPUT_MODE_FULL_ALPHANUMERIC);
-    RegisterDirectCommand("InputModeHalfAlphanumeric",
-                          DirectInputState::INPUT_MODE_HALF_ALPHANUMERIC);
+  if (kCompositionModeXCommandSupported) {
+    RegisterDirectCommand(kCommandStringCompositionModeHiragana,
+                          DirectInputState::COMPOSITION_MODE_HIRAGANA);
+    RegisterDirectCommand(kCommandStringCompositionModeFullKatakana,
+                          DirectInputState::COMPOSITION_MODE_FULL_KATAKANA);
+    RegisterDirectCommand(kCommandStringCompositionModeHalfKatakana,
+                          DirectInputState::COMPOSITION_MODE_HALF_KATAKANA);
+    RegisterDirectCommand(kCommandStringCompositionModeFullAlphanumeric,
+                          DirectInputState::COMPOSITION_MODE_FULL_ALPHANUMERIC);
+    RegisterDirectCommand(kCommandStringCompositionModeHalfAlphanumeric,
+                          DirectInputState::COMPOSITION_MODE_HALF_ALPHANUMERIC);
   } else {
-    RegisterDirectCommand("InputModeHiragana", DirectInputState::NONE);
-    RegisterDirectCommand("InputModeFullKatakana", DirectInputState::NONE);
-    RegisterDirectCommand("InputModeHalfKatakana", DirectInputState::NONE);
-    RegisterDirectCommand("InputModeFullAlphanumeric", DirectInputState::NONE);
-    RegisterDirectCommand("InputModeHalfAlphanumeric", DirectInputState::NONE);
+    RegisterDirectCommand(kCommandStringCompositionModeHiragana,
+                          DirectInputState::NONE);
+    RegisterDirectCommand(kCommandStringCompositionModeFullKatakana,
+                          DirectInputState::NONE);
+    RegisterDirectCommand(kCommandStringCompositionModeHalfKatakana,
+                          DirectInputState::NONE);
+    RegisterDirectCommand(kCommandStringCompositionModeFullAlphanumeric,
+                          DirectInputState::NONE);
+    RegisterDirectCommand(kCommandStringCompositionModeHalfAlphanumeric,
+                          DirectInputState::NONE);
   }
   RegisterDirectCommand("Reconvert", DirectInputState::RECONVERT);
 
@@ -435,34 +508,37 @@ void KeyMapManager::InitCommandData() {
                                 PrecompositionState::INSERT_FULL_SPACE);
   RegisterPrecompositionCommand("ToggleAlphanumericMode",
                                 PrecompositionState::TOGGLE_ALPHANUMERIC_MODE);
-  if (kInputModeXCommandSupported) {
-    RegisterPrecompositionCommand("InputModeHiragana",
-                                  PrecompositionState::INPUT_MODE_HIRAGANA);
+  if (kCompositionModeXCommandSupported) {
     RegisterPrecompositionCommand(
-        "InputModeFullKatakana", PrecompositionState::INPUT_MODE_FULL_KATAKANA);
+        kCommandStringCompositionModeHiragana,
+        PrecompositionState::COMPOSITION_MODE_HIRAGANA);
     RegisterPrecompositionCommand(
-        "InputModeHalfKatakana", PrecompositionState::INPUT_MODE_HALF_KATAKANA);
+        kCommandStringCompositionModeFullKatakana,
+        PrecompositionState::COMPOSITION_MODE_FULL_KATAKANA);
     RegisterPrecompositionCommand(
-        "InputModeFullAlphanumeric",
-        PrecompositionState::INPUT_MODE_FULL_ALPHANUMERIC);
+        kCommandStringCompositionModeHalfKatakana,
+        PrecompositionState::COMPOSITION_MODE_HALF_KATAKANA);
     RegisterPrecompositionCommand(
-        "InputModeHalfAlphanumeric",
-        PrecompositionState::INPUT_MODE_HALF_ALPHANUMERIC);
+        kCommandStringCompositionModeFullAlphanumeric,
+        PrecompositionState::COMPOSITION_MODE_FULL_ALPHANUMERIC);
     RegisterPrecompositionCommand(
-        "InputModeSwitchKanaType",
-        PrecompositionState::INPUT_MODE_SWITCH_KANA_TYPE);
+        kCommandStringCompositionModeHalfAlphanumeric,
+        PrecompositionState::COMPOSITION_MODE_HALF_ALPHANUMERIC);
+    RegisterPrecompositionCommand(
+        kCommandStringCompositionModeSwitchKanaType,
+        PrecompositionState::COMPOSITION_MODE_SWITCH_KANA_TYPE);
   } else {
-    RegisterPrecompositionCommand("InputModeHiragana",
+    RegisterPrecompositionCommand(kCommandStringCompositionModeHiragana,
                                   PrecompositionState::NONE);
-    RegisterPrecompositionCommand("InputModeFullKatakana",
+    RegisterPrecompositionCommand(kCommandStringCompositionModeFullKatakana,
                                   PrecompositionState::NONE);
-    RegisterPrecompositionCommand("InputModeHalfKatakana",
+    RegisterPrecompositionCommand(kCommandStringCompositionModeHalfKatakana,
                                   PrecompositionState::NONE);
-    RegisterPrecompositionCommand("InputModeFullAlphanumeric",
+    RegisterPrecompositionCommand(kCommandStringCompositionModeFullAlphanumeric,
                                   PrecompositionState::NONE);
-    RegisterPrecompositionCommand("InputModeHalfAlphanumeric",
+    RegisterPrecompositionCommand(kCommandStringCompositionModeHalfAlphanumeric,
                                   PrecompositionState::NONE);
-    RegisterPrecompositionCommand("InputModeSwitchKanaType",
+    RegisterPrecompositionCommand(kCommandStringCompositionModeSwitchKanaType,
                                   PrecompositionState::NONE);
   }
 
@@ -548,24 +624,31 @@ void KeyMapManager::InitCommandData() {
                              CompositionState::TRANSLATE_HALF_ASCII);
   RegisterCompositionCommand("ToggleAlphanumericMode",
                              CompositionState::TOGGLE_ALPHANUMERIC_MODE);
-  if (kInputModeXCommandSupported) {
-    RegisterCompositionCommand("InputModeHiragana",
-                               CompositionState::INPUT_MODE_HIRAGANA);
-    RegisterCompositionCommand("InputModeFullKatakana",
-                               CompositionState::INPUT_MODE_FULL_KATAKANA);
-    RegisterCompositionCommand("InputModeHalfKatakana",
-                               CompositionState::INPUT_MODE_HALF_KATAKANA);
-    RegisterCompositionCommand("InputModeFullAlphanumeric",
-                               CompositionState::INPUT_MODE_FULL_ALPHANUMERIC);
-    RegisterCompositionCommand("InputModeHalfAlphanumeric",
-                               CompositionState::INPUT_MODE_HALF_ALPHANUMERIC);
+  if (kCompositionModeXCommandSupported) {
+    RegisterCompositionCommand(kCommandStringCompositionModeHiragana,
+                               CompositionState::COMPOSITION_MODE_HIRAGANA);
+    RegisterCompositionCommand(
+        kCommandStringCompositionModeFullKatakana,
+        CompositionState::COMPOSITION_MODE_FULL_KATAKANA);
+    RegisterCompositionCommand(
+        kCommandStringCompositionModeHalfKatakana,
+        CompositionState::COMPOSITION_MODE_HALF_KATAKANA);
+    RegisterCompositionCommand(
+        kCommandStringCompositionModeFullAlphanumeric,
+        CompositionState::COMPOSITION_MODE_FULL_ALPHANUMERIC);
+    RegisterCompositionCommand(
+        kCommandStringCompositionModeHalfAlphanumeric,
+        CompositionState::COMPOSITION_MODE_HALF_ALPHANUMERIC);
   } else {
-    RegisterCompositionCommand("InputModeHiragana", CompositionState::NONE);
-    RegisterCompositionCommand("InputModeFullKatakana", CompositionState::NONE);
-    RegisterCompositionCommand("InputModeHalfKatakana", CompositionState::NONE);
-    RegisterCompositionCommand("InputModeFullAlphanumeric",
+    RegisterCompositionCommand(kCommandStringCompositionModeHiragana,
                                CompositionState::NONE);
-    RegisterCompositionCommand("InputModeHalfAlphanumeric",
+    RegisterCompositionCommand(kCommandStringCompositionModeFullKatakana,
+                               CompositionState::NONE);
+    RegisterCompositionCommand(kCommandStringCompositionModeHalfKatakana,
+                               CompositionState::NONE);
+    RegisterCompositionCommand(kCommandStringCompositionModeFullAlphanumeric,
+                               CompositionState::NONE);
+    RegisterCompositionCommand(kCommandStringCompositionModeHalfAlphanumeric,
                                CompositionState::NONE);
   }
 
@@ -638,24 +721,29 @@ void KeyMapManager::InitCommandData() {
                             ConversionState::TRANSLATE_HALF_ASCII);
   RegisterConversionCommand("DeleteSelectedCandidate",
                             ConversionState::DELETE_SELECTED_CANDIDATE);
-  if (kInputModeXCommandSupported) {
-    RegisterConversionCommand("InputModeHiragana",
-                              ConversionState::INPUT_MODE_HIRAGANA);
-    RegisterConversionCommand("InputModeFullKatakana",
-                              ConversionState::INPUT_MODE_FULL_KATAKANA);
-    RegisterConversionCommand("InputModeHalfKatakana",
-                              ConversionState::INPUT_MODE_HALF_KATAKANA);
-    RegisterConversionCommand("InputModeFullAlphanumeric",
-                              ConversionState::INPUT_MODE_FULL_ALPHANUMERIC);
-    RegisterConversionCommand("InputModeHalfAlphanumeric",
-                              ConversionState::INPUT_MODE_HALF_ALPHANUMERIC);
+  if (kCompositionModeXCommandSupported) {
+    RegisterConversionCommand(kCommandStringCompositionModeHiragana,
+                              ConversionState::COMPOSITION_MODE_HIRAGANA);
+    RegisterConversionCommand(kCommandStringCompositionModeFullKatakana,
+                              ConversionState::COMPOSITION_MODE_FULL_KATAKANA);
+    RegisterConversionCommand(kCommandStringCompositionModeHalfKatakana,
+                              ConversionState::COMPOSITION_MODE_HALF_KATAKANA);
+    RegisterConversionCommand(
+        kCommandStringCompositionModeFullAlphanumeric,
+        ConversionState::COMPOSITION_MODE_FULL_ALPHANUMERIC);
+    RegisterConversionCommand(
+        kCommandStringCompositionModeHalfAlphanumeric,
+        ConversionState::COMPOSITION_MODE_HALF_ALPHANUMERIC);
   } else {
-    RegisterConversionCommand("InputModeHiragana", ConversionState::NONE);
-    RegisterConversionCommand("InputModeFullKatakana", ConversionState::NONE);
-    RegisterConversionCommand("InputModeHalfKatakana", ConversionState::NONE);
-    RegisterConversionCommand("InputModeFullAlphanumeric",
+    RegisterConversionCommand(kCommandStringCompositionModeHiragana,
                               ConversionState::NONE);
-    RegisterConversionCommand("InputModeHalfAlphanumeric",
+    RegisterConversionCommand(kCommandStringCompositionModeFullKatakana,
+                              ConversionState::NONE);
+    RegisterConversionCommand(kCommandStringCompositionModeHalfKatakana,
+                              ConversionState::NONE);
+    RegisterConversionCommand(kCommandStringCompositionModeFullAlphanumeric,
+                              ConversionState::NONE);
+    RegisterConversionCommand(kCommandStringCompositionModeHalfAlphanumeric,
                               ConversionState::NONE);
   }
 #ifndef NDEBUG  // means NOT RELEASE build

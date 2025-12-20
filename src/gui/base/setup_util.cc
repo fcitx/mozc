@@ -49,7 +49,7 @@ namespace gui {
 
 SetupUtil::SetupUtil()
     : storage_(new UserDictionaryStorage(
-          UserDictionaryUtil::GetUserDictionaryFileName())),
+          user_dictionary::GetUserDictionaryFileName())),
       is_userdictionary_locked_(false) {}
 
 bool SetupUtil::LockUserDictionary() {
@@ -123,22 +123,22 @@ bool SetupUtil::MigrateDictionaryFromMSIME() {
     dic_id = *dic_id_status;
   }
 
-  UserDictionaryStorage::UserDictionary *dic =
+  UserDictionaryStorage::UserDictionary* dic =
       storage_->GetUserDictionary(dic_id);
   if (dic == nullptr) {
     LOG(ERROR) << "GetUserDictionary returned nullptr";
     return false;
   }
 
-  std::unique_ptr<UserDictionaryImporter::InputIteratorInterface> iter(
+  std::unique_ptr<user_dictionary::InputIteratorInterface> iter(
       MSIMEUserDictionarImporter::Create());
   if (!iter) {
     LOG(ERROR) << "ImportFromMSIME failed";
     return false;
   }
 
-  if (UserDictionaryImporter::ImportFromIterator(iter.get(), dic) !=
-      UserDictionaryImporter::IMPORT_NO_ERROR) {
+  if (user_dictionary::ImportFromIterator(iter.get(), dic) !=
+      user_dictionary::IMPORT_NO_ERROR) {
     LOG(ERROR) << "ImportFromMSIME failed";
     return false;
   }
