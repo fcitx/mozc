@@ -180,7 +180,7 @@ bool MozcResponseParser::ParseResponse(const mozc::commands::Output &response,
     UpdateDeletionRange(response, fcitx_mozc);
 
     // We should check the mode field first since the response for a
-    // SWITCH_INPUT_MODE request only contains mode and id fields.
+    // SWITCH_COMPOSITION_MODE request only contains mode and id fields.
     if (response.has_mode()) {
         fcitx_mozc->SetCompositionMode(response.mode());
     }
