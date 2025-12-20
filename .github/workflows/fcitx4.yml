@@ -11,7 +11,6 @@ jobs:
   check:
     name: Build and test
     runs-on: ubuntu-latest
-    container: archlinux:latest
     strategy:
       fail-fast: false
       matrix:
@@ -25,20 +24,16 @@ jobs:
       CC: ${{ matrix.compiler }}
       CXX: ${{ matrix.cxx_compiler }}
     steps:
-      - name: Setup User
-        run: |
-          useradd -m builduser
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm base-devel clang cmake ninja extra-cmake-modules fmt libuv boost git qt6-base qt6-wayland libxkbcommon qt6-webengine bazel fcitx python
+          sudo apt-get install fcitx-libs-dev
       - uses: actions/checkout@v4
         with:
           path: mozc
           submodules: true
+      - uses: bazelbuild/setup-bazelisk@v3
       - name: Build fcitx-mozc
         shell: bash
         run: |
           cd mozc/src/
-          chown -R builduser:builduser .
-          sudo -u builduser env _BUILD_TARGETS=unix/fcitx:fcitx-mozc.so ../scripts/build_fcitx_bazel --cxxopt=-Wno-uninitialized --host_cxxopt=-Wno-uninitialized
-          chown -R root:root .
+          _BUILD_TARGETS=unix/fcitx:fcitx-mozc.so ../scripts/build_fcitx_bazel --cxxopt=-Wno-uninitialized --host_cxxopt=-Wno-uninitialized
