@@ -265,7 +265,7 @@ void MozcEngine::keyEvent(const InputMethodEntry& entry, KeyEvent& event) {
     layout = group.defaultLayout();
   }
 
-  const bool isJP = (layout == "jp" || stringutils::startsWith(layout, "jp-"));
+  const bool isJP = (layout == "jp" || layout.starts_with("jp-"));
 
   if (mozc_state->ProcessKeyEvent(event.rawKey().sym(), event.rawKey().code(),
                                   event.rawKey().states(), isJP,
