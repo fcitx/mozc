@@ -4,14 +4,15 @@
 #
 # Translators:
 # abc Def <hdogan1974@gmail.com>, 2021
+# Emir SARI, 2025
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: fcitx5-mozc\n"
 "Report-Msgid-Bugs-To: fcitx-dev@googlegroups.com\n"
-"POT-Creation-Date: 2023-09-20 20:24+0000\n"
+"POT-Creation-Date: 2025-12-25 20:24+0000\n"
 "PO-Revision-Date: 2017-11-23 05:28+0000\n"
-"Last-Translator: abc Def <hdogan1974@gmail.com>, 2021\n"
+"Last-Translator: Emir SARI, 2025\n"
 "Language-Team: Turkish (https://app.transifex.com/fcitx/teams/12005/tr/)\n"
 "Language: tr\n"
 "MIME-Version: 1.0\n"
@@ -19,79 +20,79 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: mozc_engine.h:94 mozc_engine.cc:198
+#: mozc_engine.h:106 mozc_engine.cc:207
 msgid "About Mozc"
 msgstr "Mozc Hakkında"
 
-#: mozc_engine.h:92 mozc_engine.cc:191
+#: mozc_engine.h:104 mozc_engine.cc:200
 msgid "Add Word"
-msgstr "Kelime Ekle"
+msgstr "Sözcük Ekle"
 
-#: mozc_engine.h:52
+#: mozc_engine.h:64
 msgid "All"
-msgstr ""
+msgstr "Tümü"
 
-#: mozc_engine.h:55
+#: mozc_engine.h:67
 msgid "Always"
-msgstr ""
+msgstr "Her Zaman"
 
-#: mozc_engine.h:88 mozc_engine.cc:175
+#: mozc_engine.h:100 mozc_engine.cc:184
 msgid "Configuration Tool"
-msgstr ""
+msgstr "Yapılandırma Aracı"
 
-#: mozc_engine.h:90 mozc_engine.cc:183
+#: mozc_engine.h:102 mozc_engine.cc:192
 msgid "Dictionary Tool"
-msgstr ""
+msgstr "Sözcük Aracı"
 
-#: mozc_engine.h:58 mozc_engine.cc:54
+#: mozc_engine.h:70 mozc_engine.cc:65
 msgid "Direct"
-msgstr ""
+msgstr "Doğrudan"
 
-#: mozc_engine.h:79
+#: mozc_engine.h:91
 msgid "Expand Usage (Requires vertical candidate list)"
 msgstr ""
 
-#: mozc_engine.h:83
+#: mozc_engine.h:95
 msgid "Fix embedded preedit cursor at the beginning of the preedit"
 msgstr ""
 
-#: mozc_engine.h:52
+#: mozc_engine.h:64
 msgid "Follow Global Configuration"
 msgstr ""
 
 #. Full width ASCII letter A.
-#: mozc_engine.h:60 mozc_engine.cc:84
+#: mozc_engine.h:72 mozc_engine.cc:95
 msgid "Full ASCII"
 msgstr ""
 
 #. Katakana letter A.
-#: mozc_engine.h:59 mozc_engine.cc:68
+#: mozc_engine.h:71 mozc_engine.cc:79
 msgid "Full Katakana"
 msgstr ""
 
-#: mozc_engine.h:59 mozc_engine.cc:76
+#: mozc_engine.h:71 mozc_engine.cc:87
 msgid "Half ASCII"
 msgstr ""
 
 #. Half width Katakana letter A.
-#: mozc_engine.h:60 mozc_engine.cc:91
+#: mozc_engine.h:72 mozc_engine.cc:102
 msgid "Half Katakana"
 msgstr ""
 
 #. Hiragana letter A in UTF-8.
-#: mozc_engine.h:58 mozc_engine.cc:61
+#: mozc_engine.h:70 mozc_engine.cc:72
 msgid "Hiragana"
 msgstr ""
 
-#: mozc_engine.h:56
+#: mozc_engine.h:68
 msgid "Hotkey"
 msgstr ""
 
-#: mozc_engine.h:85
+#: mozc_engine.h:97
 msgid "Hotkey to expand usage"
 msgstr ""
 
-#: mozc_engine.h:70
+#: mozc_engine.h:82
 msgid "Initial Mode"
 msgstr ""
 
@@ -99,7 +100,7 @@ msgstr ""
 msgid "Japanese input method based on Mozc"
 msgstr ""
 
-#: mozc_engine.cc:147 mozc_engine.cc:148
+#: mozc_engine.cc:156 mozc_engine.cc:157
 msgid "Mozc Settings"
 msgstr ""
 
@@ -107,33 +108,33 @@ msgstr ""
 msgid "Mozc for Fcitx 5"
 msgstr ""
 
-#: mozc_engine.h:53
+#: mozc_engine.h:65
 msgid "No"
 msgstr ""
 
-#: mozc_engine.h:55
+#: mozc_engine.h:67
 msgid "On Focus"
 msgstr ""
 
 #. We don't have a good library option for this, just do the simple
 #. replace. absl's runtime parsed format string is too copmlex.
-#: mozc_response_parser.cc:175
+#: mozc_response_parser.cc:189
 #, c-format
 msgid "Press %s to show usages."
 msgstr ""
 
-#: mozc_state.cc:426
+#: mozc_state.cc:460
 msgid "Press Escape to go back"
 msgstr ""
 
-#: mozc_engine.h:53
+#: mozc_engine.h:65
 msgid "Program"
 msgstr ""
 
-#: mozc_engine.h:73
+#: mozc_engine.h:85
 msgid "Shared Input State"
 msgstr ""
 
-#: mozc_engine.h:75
+#: mozc_engine.h:87
 msgid "Vertical candidate list"
 msgstr ""
