@@ -15,7 +15,6 @@
   <project_group>Fcitx</project_group>
   <releases>
     <release version="3.33.6079.2" date="2026-01-16"></release>
-    <release version="2.32.5994.2" date="2026-01-12"></release>
     <release version="2.32.5994.102" date="2025-10-22"></release>
     <release version="2.32.5981.102" date="2025-10-09"></release>
     <release version="2.31.5851.102" date="2025-06-02"></release>
