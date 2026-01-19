@@ -1965,6 +1965,50 @@ TEST_F(DictionaryPredictionAggregatorTest, TriggerNumberZeroQuerySuggestion) {
   }
 }
 
+TEST_F(DictionaryPredictionAggregatorTest, GetNumberHistoryWithPrecedingText) {
+  std::unique_ptr<MockDataAndAggregator> data_and_aggregator =
+      CreateAggregatorWithMockData();
+  const DictionaryPredictionAggregatorTestPeer& aggregator =
+      data_and_aggregator->aggregator();
+  const PosMatcher& pos_matcher = data_and_aggregator->pos_matcher();
+
+  // No history but has preceding text.
+  PrependHistory("", "");
+  composer_->Reset();
+
+  commands::Context context;
+  context.set_preceding_text("12");
+
+  request_->set_zero_query_suggestion(true);
+
+  // Manually build ConversionRequest with context
+  ConversionRequest::Options options;
+  options.request_type = ConversionRequest::SUGGESTION;
+  const ConversionRequest convreq = ConversionRequestBuilder()
+                                        .SetComposer(*composer_)
+                                        .SetRequest(*request_)
+                                        .SetConfig(*config_)
+                                        .SetOptions(std::move(options))
+                                        .SetHistoryResultView(history_result_)
+                                        .SetContext(context)
+                                        .SetKey("")
+                                        .Build();
+
+  std::vector<Result> results;
+  aggregator.AggregateZeroQuery(convreq, &results);
+  EXPECT_FALSE(results.empty());
+
+  bool found = false;
+  for (const Result& result : results) {
+    if (result.types == SUFFIX && result.value == "月" &&
+        result.lid == pos_matcher.GetCounterSuffixWordId()) {
+      found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
 TEST_F(DictionaryPredictionAggregatorTest, TriggerZeroQuerySuggestion) {
   std::unique_ptr<MockDataAndAggregator> data_and_aggregator =
       CreateAggregatorWithMockData();
@@ -2755,6 +2799,69 @@ TEST_F(DictionaryPredictionAggregatorTest, HandwritingRealtime) {
   // composition from handwriting output
   EXPECT_TRUE(FindResultByKeyValue(results, "ばらが", "ばらが"));
   EXPECT_TRUE(FindResultByKeyValue(results, "ばらが", "薔薇が"));
+}
+
+TEST_F(DictionaryPredictionAggregatorTest,
+       AggregateZeroQueryWithPrecedingText) {
+  std::unique_ptr<MockDataAndAggregator> data_and_aggregator =
+      CreateAggregatorWithMockData();
+  const DictionaryPredictionAggregatorTestPeer& aggregator =
+      data_and_aggregator->aggregator();
+
+  // No history but has preceding text "@".
+  PrependHistory("", "");
+  composer_->Reset();
+
+  commands::Context context;
+  context.set_preceding_text("@");
+
+  request_->set_zero_query_suggestion(true);
+  request_test_util::FillMobileRequest(request_.get());
+
+  ConversionRequest convreq = ConversionRequestBuilder()
+                                  .SetComposer(*composer_)
+                                  .SetRequest(*request_)
+                                  .SetConfig(*config_)
+                                  .SetContext(context)
+                                  .SetKey("")
+                                  .Build();
+
+  std::vector<Result> results;
+  aggregator.AggregateZeroQuery(convreq, &results);
+  EXPECT_FALSE(results.empty());
+
+  // "@" -> "gmail.com" should be found in zero_query_dict_
+  EXPECT_TRUE(FindResultByValue(results, "gmail.com"));
+}
+
+TEST_F(DictionaryPredictionAggregatorTest, ZeroQuerySuffixSkipWithoutHistory) {
+  auto data_and_aggregator = std::make_unique<MockDataAndAggregator>();
+  data_and_aggregator->Init(std::make_unique<TestSuffixDictionary>(), nullptr);
+
+  const DictionaryPredictionAggregatorTestPeer& aggregator =
+      data_and_aggregator->aggregator();
+  request_test_util::FillMobileRequest(request_.get());
+
+  // rid == 0, so suffix dictionary should be skipped.
+  PrependHistory("key", "value", 0);
+  request_->set_zero_query_suggestion(true);
+
+  commands::Context context;
+  context.set_preceding_text("東京");
+
+  ConversionRequest convreq = ConversionRequestBuilder()
+                                  .SetComposer(*composer_)
+                                  .SetRequest(*request_)
+                                  .SetConfig(*config_)
+                                  .SetContext(context)
+                                  .SetKey("")
+                                  .Build();
+
+  std::vector<Result> results;
+  aggregator.AggregateZeroQuery(convreq, &results);
+
+  // results should NOT have candidates from TestSuffixDictionary ("以下")
+  EXPECT_FALSE(FindResultByValue(results, "以下"));
 }
 
 }  // namespace

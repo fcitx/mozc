@@ -44,6 +44,7 @@
 #include "absl/container/btree_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -128,16 +129,24 @@ bool IsLongKeyForRealtimeCandidates(const ConversionRequest& request) {
   return Util::CharsLen(request.key()) >= kFewResultThreshold;
 }
 
-// Returns true if `request` contains number history.
-// Normalized number will be set to |number_key|
+// Returns the normalized number history if `request` contains it.
 // Note:
 //  Now this function supports arabic number candidates only and
 //  we don't support kanji number candidates for now.
 //  This is because We have several kanji number styles, for example,
 //  "一二", "十二", "壱拾弐", etc for 12.
+//  If the history in `request` is empty, it fallback to `preceding_text`.
 // TODO(toshiyuki): Define the spec and support Kanji.
 std::optional<std::string> GetNumberHistory(const ConversionRequest& request) {
   absl::string_view history_value = request.converter_history_value(1);
+  if (history_value.empty()) {
+    // Note: Full width number is not supported in `preceding_text`.
+    history_value = request.context().preceding_text();
+    const auto it =
+        std::find_if(history_value.rbegin(), history_value.rend(),
+                     [](char c) { return !absl::ascii_isdigit(c); });
+    history_value = history_value.substr(it.base() - history_value.begin());
+  }
   if (history_value.empty() || !NumberUtil::IsArabicNumber(history_value)) {
     return std::nullopt;
   }
@@ -764,6 +773,13 @@ void DictionaryPredictionAggregator::AggregateZeroQuery(
   absl::string_view history_value = request.converter_history_value(1);
   absl::string_view history_key = request.converter_history_key(1);
 
+  if (history_value.empty() && history_key.empty()) {
+    // (b/475682454): Use the preceding text as the history value and key.
+    // We may want to tokenize the preceding text to increase the coverage.
+    history_value = request.context().preceding_text();
+    history_key = history_value;
+  }
+
   if (history_key.empty() || history_value.empty()) {
     return;
   }
@@ -796,6 +812,14 @@ void DictionaryPredictionAggregator::AggregateZeroQuery(
   // We do not want zero query results from suffix dictionary for Latin
   // input mode. For example, we do not need "です", "。" just after "when".
   if (IsLatinInputMode(request)) {
+    return;
+  }
+
+  // We do not want zero query results from suffix dictionary if the request
+  // does not have the history POS information.
+  // (b/475682454): Context does not have POS information. Suffix dictionary
+  // may generate noisy predictions.
+  if (request.converter_history_rid() == 0) {
     return;
   }
 

@@ -21,8 +21,9 @@ common:android      --config=android_env --define TARGET=oss_android
 common:oss_android  --config=android_env --define TARGET=oss_android
 common:prod_android --config=android_env --define TARGET=prod_android
 
-## Dev channel
-build:dev_channel --define CHANNEL=dev
+## Build channels
+build:dev_channel    --define CHANNEL=dev
+build:stable_channel --define CHANNEL=stable
 
 ## Release build
 build:release_build --compilation_mode=opt

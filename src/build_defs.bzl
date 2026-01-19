@@ -840,6 +840,19 @@ def mozc_select(
         "//conditions:default": default,
     })
 
+# Macros for release channel selection.
+# dev_channel: It contains new/experimental/relatively-unstable features.
+#    The revision number starts from 100 (e.g. 100 for Windows).
+# stable_channel: The main release channel. The revision number starts from 0 (e.g. 0 for Windows).
+#
+# The default of OSS build is dev_channel.
+def mozc_select_release_channel(dev = [], stable = []):
+    return select({
+        "//:dev_channel": dev,
+        "//:stable_channel": stable,
+        "//conditions:default": dev,
+    })
+
 # Macros for build config settings.
 #
 # These macros are syntax sugars for the Bazel select statement.

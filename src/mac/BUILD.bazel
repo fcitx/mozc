@@ -36,6 +36,7 @@ load(
     "mozc_objc_test",
     "mozc_py_binary",
     "mozc_select",
+    "mozc_select_release_channel",
 )
 load(
     "//:config.bzl",
@@ -53,11 +54,11 @@ load(
 package(default_visibility = ["//visibility:private"])
 
 # BUILD_TYPE_SELECT is treated as a function, but not a string. This cannot be a value of join().
-# `--define CHANNEL=dev` is the command line option to select dev channel.
-BUILD_TYPE_SELECT = select({
-    "//:dev_channel": "dev",
-    "//conditions:default": "stable",
-})
+# `--define CHANNEL=(dev|stable)` is the command line option to select a channel.
+BUILD_TYPE_SELECT = mozc_select_release_channel(
+    dev = "dev",
+    stable = "stable",
+)
 
 # CODESIGN_IDENTITY_SELECT is treated as a function. This cannot be a value of join().
 # `--define CODESIGN=testing` is the command line option to select testing codesign.

@@ -10238,5 +10238,47 @@ TEST_F(SessionTest, ClearCompositionByEscape) {
   EXPECT_FALSE(command.output().has_all_candidate_words());
 }
 
+TEST_F(SessionTest, RequestNWP) {
+  MockEngine engine;
+  auto converter = CreateEngineConverterMock(&engine);
+
+  Session session(engine);
+  InitSessionToPrecomposition(&session);
+
+  {
+    // Set up a mock suggestion result.
+    Segments segments;
+    Segment* segment;
+    segment = segments.add_segment();
+    segment->set_key("");
+    AddCandidate("predicted", "predicted", segment);
+    EXPECT_CALL(*converter, StartPrediction(_, _))
+        .WillOnce(DoAll(SetArgPointee<1>(segments), Return(true)));
+  }
+
+  commands::Command command;
+  command.mutable_input()->set_type(commands::Input::SEND_COMMAND);
+  command.mutable_input()->mutable_command()->set_type(
+      commands::SessionCommand::REQUEST_NWP);
+  command.mutable_input()->set_request_suggestion(true);
+
+  EXPECT_TRUE(session.SendCommand(&command));
+  EXPECT_TRUE(command.output().has_all_candidate_words());
+  EXPECT_EQ(command.output().all_candidate_words().candidates_size(), 1);
+  EXPECT_EQ(command.output().all_candidate_words().candidates(0).value(),
+            "predicted");
+  Mock::VerifyAndClearExpectations(converter.get());
+
+  // If request_suggestion is false, StartPrediction should not be called.
+  command.Clear();
+  command.mutable_input()->set_type(commands::Input::SEND_COMMAND);
+  command.mutable_input()->mutable_command()->set_type(
+      commands::SessionCommand::REQUEST_NWP);
+  command.mutable_input()->set_request_suggestion(false);
+  EXPECT_FALSE(session.SendCommand(&command));
+  EXPECT_CALL(*converter, StartPrediction(_, _)).Times(0);
+  EXPECT_FALSE(command.output().has_all_candidate_words());
+}
+
 }  // namespace session
 }  // namespace mozc

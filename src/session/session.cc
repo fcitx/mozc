@@ -386,6 +386,22 @@ bool Session::SendCommand(commands::Command* command) {
     case commands::SessionCommand::UPDATE_COMPOSITION:
       result = UpdateComposition(command);
       break;
+    case commands::SessionCommand::REQUEST_NWP: {
+      ConversionPreferences conversion_preferences =
+          context_->converter().conversion_preferences();
+      conversion_preferences.request_suggestion =
+          command->input().request_suggestion();
+      // Resets converter's state (e.g. previous segments).
+      // NWP will be generated from surrounding text given by the client.
+      context_->mutable_converter()->Reset();
+      result = context_->mutable_converter()->SuggestWithPreferences(
+          context_->composer(), command->input().context(),
+          conversion_preferences);
+      if (result) {
+        Output(command);
+      }
+      break;
+    }
     default:
       LOG(WARNING) << "Unknown command" << *command;
       result = DoNothing(command);

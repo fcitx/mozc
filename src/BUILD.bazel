@@ -67,6 +67,16 @@ config_setting(
     },
 )
 
+# CHANNEL=stable is used to build Stable channel binaries.
+# Stable channel is a main release.
+# The version number of Stable channel is a single digit (e.g. 0 for Windows, 1 for macOS).
+config_setting(
+    name = "stable_channel",
+    values = {
+        "define": "CHANNEL=stable",
+    },
+)
+
 # CODESIGN=release is used to build binaries that are signed for external product release.
 config_setting(
     name = "codesign_release",

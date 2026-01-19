@@ -443,6 +443,12 @@ message SessionCommand {
     // rather than appending to the existing composition.
     // The command will be used for supporting handwriting.
     UPDATE_COMPOSITION = 26;
+
+    // Explicitly request Next Word Prediction (NWP, zero query suggestion) from
+    // the surrounding text.
+    // Note: This command resets the internal states (history segments) of the
+    // converter.
+    REQUEST_NWP = 27;
   }
   required CommandType type = 1;
 
