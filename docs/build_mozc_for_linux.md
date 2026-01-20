@@ -13,7 +13,7 @@ descriptions below and make sure the operations before running them.
 git clone https://github.com/google/mozc.git --recursive
 cd mozc/src
 
-bazelisk build package --config oss_linux --config release_build
+bazelisk build package --config stable_channel --config oss_linux --config release_build
 ```
 
 `bazel-bin/unix/mozc.zip` contains built files.
@@ -116,7 +116,7 @@ You should be able to build Mozc for Linux desktop as follows, assuming
 `bazelisk` is in your `$PATH`.
 
 ```
-bazelisk build package --config oss_linux --config release_build
+bazelisk build package --config stable_channel --config oss_linux --config release_build
 ```
 
 `package` is an alias to build Mozc executables and archive them into
@@ -174,7 +174,7 @@ git update-index --no-assume-unchanged src/config.bzl
 ### Run all tests
 
 ```
-bazelisk test ... --config oss_linux --build_tests_only -c dbg
+bazelisk test ... --config stable_channel --config oss_linux --build_tests_only -c dbg
 ```
 
 *   `...` means all targets under the current and subdirectories.
@@ -182,7 +182,7 @@ bazelisk test ... --config oss_linux --build_tests_only -c dbg
 ### Run tests under the specific directories
 
 ```
-bazelisk test base/... composer/... --config oss_linux --build_tests_only -c dbg
+bazelisk test base/... composer/... --config stable_channel --config oss_linux --build_tests_only -c dbg
 ```
 
 *   `<dir>/...` means all targets under the `<dir>/` directory.
@@ -190,7 +190,7 @@ bazelisk test base/... composer/... --config oss_linux --build_tests_only -c dbg
 ### Run tests without the specific directories
 
 ```
-bazelisk test ... --config oss_linux --build_tests_only -c dbg -- -base/...
+bazelisk test ... --config stable_channel --config oss_linux --build_tests_only -c dbg -- -base/...
 ```
 
 *   `--` means the end of the flags which start from `-`.
@@ -199,7 +199,7 @@ bazelisk test ... --config oss_linux --build_tests_only -c dbg -- -base/...
 ### Run the specific test
 
 ```
-bazelisk test base:util_test --config oss_linux -c dbg
+bazelisk test base:util_test --config stable_channel --config oss_linux -c dbg
 ```
 
 *   `util_test` is defined in `base/BUILD.bazel`.
@@ -207,7 +207,7 @@ bazelisk test base:util_test --config oss_linux -c dbg
 ### Output logs to stderr
 
 ```
-bazelisk test base:util_test --config oss_linux --test_arg=--stderrthreshold=0 --test_output=all
+bazelisk test base:util_test --config stable_channel --config oss_linux --test_arg=--stderrthreshold=0 --test_output=all
 ```
 
 *   The `--test_arg=--stderrthreshold=0 --test_output=all` flags shows the
