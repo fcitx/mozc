@@ -48,9 +48,7 @@ namespace mozc {
 namespace gui {
 
 SetupUtil::SetupUtil()
-    : storage_(new UserDictionaryStorage(
-          user_dictionary::GetUserDictionaryFileName())),
-      is_userdictionary_locked_(false) {}
+    : storage_(new UserDictionaryStorage()), is_userdictionary_locked_(false) {}
 
 bool SetupUtil::LockUserDictionary() {
   is_userdictionary_locked_ = storage_->Lock();

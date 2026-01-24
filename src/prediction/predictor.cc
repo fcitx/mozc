@@ -41,6 +41,7 @@
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "converter/attribute.h"
 #include "converter/converter_interface.h"
 #include "converter/immutable_converter_interface.h"
 #include "engine/modules.h"
@@ -201,10 +202,8 @@ std::vector<Result> Predictor::PredictForDesktop(
         dictionary_predictor_->Predict(request_for_prediction2);
   }
 
-  std::vector<Result> results;
-
-  absl::c_move(user_history_results, std::back_inserter(results));
-  absl::c_move(dictionary_results, std::back_inserter(results));
+  std::vector<Result> results = MixCandidates(
+      request, std::move(user_history_results), std::move(dictionary_results));
 
   return results;
 }
@@ -248,11 +247,31 @@ std::vector<Result> Predictor::PredictForMixedConversion(
       break;
   }
 
+  std::vector<Result> results = MixCandidates(
+      request, std::move(user_history_results), std::move(dictionary_results));
+
+  MaybeFillFallbackPos(absl::MakeSpan(results));
+
+  return results;
+}
+
+std::vector<Result> Predictor::MixCandidates(
+    const ConversionRequest& request, std::vector<Result> user_history_results,
+    std::vector<Result> dictionary_results) const {
+  // Add NO_DELETABLE annotation when the top user history result is the same
+  // as the top dictionary result.
+  // when user_history_results.size() > 1, the decoder can still show the second
+  // candidate, so user can be aware of the change after the deleteion.
+  if (user_history_results.size() == 1 && !dictionary_results.empty() &&
+      user_history_results.front().key == dictionary_results.front().key &&
+      user_history_results.front().value == dictionary_results.front().value) {
+    Result& result = user_history_results.front();
+    result.candidate_attributes |= converter::Attribute::NO_DELETABLE;
+  }
+
   std::vector<Result> results;
   absl::c_move(user_history_results, std::back_inserter(results));
   absl::c_move(dictionary_results, std::back_inserter(results));
-
-  MaybeFillFallbackPos(absl::MakeSpan(results));
 
   return results;
 }

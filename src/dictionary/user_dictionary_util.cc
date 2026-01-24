@@ -37,13 +37,11 @@
 #include <memory>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
-#include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "base/config_file_stream.h"
-#include "base/protobuf/repeated_ptr_field.h"
 #include "base/strings/japanese.h"
 #include "base/strings/unicode.h"
 #include "base/vlog.h"
@@ -54,40 +52,14 @@ namespace mozc {
 namespace user_dictionary {
 namespace {
 
-using ::mozc::protobuf::RepeatedPtrField;
-
 // Maximum string length in UserDictionaryEntry's field
-constexpr size_t kMaxKeySize = 300;
-constexpr size_t kMaxValueSize = 300;
-constexpr size_t kMaxCommentSize = 300;
+constexpr size_t kMaxStringSize = 300;
 constexpr absl::string_view kInvalidChars = "\n\r\t";
-constexpr absl::string_view kUserDictionaryFile = "user://user_dictionary.db";
-
-// Maximum string length for dictionary name.
-constexpr size_t kMaxDictionaryNameSize = 300;
-
-// The limits of dictionary/entry size.
-constexpr size_t kMaxDictionarySize = 100;
-constexpr size_t kMaxEntrySize = 1000000;
-
-}  // namespace
-
-size_t max_dictionary_size() { return kMaxDictionarySize; }
-
-size_t max_entry_size() { return kMaxEntrySize; }
-
-bool IsValidEntry(const dictionary::UserPos& user_pos,
-                  const user_dictionary::UserDictionary::Entry& entry) {
-  return ValidateEntry(entry).ok();
-}
-
-namespace {
-
-bool InRange(const char32_t c, const char32_t lo, const char32_t hi) {
-  return lo <= c && c <= hi;
-}
 
 bool InternalValidateNormalizedReading(const absl::string_view reading) {
+  auto InRange = [](const char32_t c, const char32_t lo, const char32_t hi) {
+    return lo <= c && c <= hi;
+  };
   for (const char32_t c : Utf8AsChars32(reading)) {
     if (!InRange(c, 0x0021, 0x007E) &&  // Basic Latin (Ascii)
         !InRange(c, 0x3041, 0x3096) &&  // Hiragana
@@ -102,6 +74,15 @@ bool InternalValidateNormalizedReading(const absl::string_view reading) {
     }
   }
   return true;
+}
+
+bool IsTooLongString(absl::string_view str) {
+  return str.size() > kMaxStringSize;
+}
+
+bool ContainsInvalidChars(absl::string_view str) {
+  return (str.find_first_of(kInvalidChars) != absl::string_view::npos ||
+          !strings::IsValidUtf8(str));
 }
 
 }  // namespace
@@ -123,44 +104,41 @@ std::string NormalizeReading(const absl::string_view input) {
 absl::Status ValidateEntry(
     const user_dictionary::UserDictionary::Entry& entry) {
   // Validate reading.
-  const std::string& reading = entry.key();
+  absl::string_view reading = entry.key();
   if (reading.empty()) {
     MOZC_VLOG(1) << "key is empty";
     return ToStatus(ExtendedErrorCode::READING_EMPTY);
   }
-  if (reading.size() > kMaxKeySize) {
+  if (IsTooLongString(reading)) {
     MOZC_VLOG(1) << "Too long key.";
     return ToStatus(ExtendedErrorCode::READING_TOO_LONG);
   }
-  if (reading.find_first_of(kInvalidChars) != std::string::npos ||
-      !strings::IsValidUtf8(reading)) {
+  if (ContainsInvalidChars(reading)) {
     MOZC_VLOG(1) << "Invalid reading";
     return ToStatus(ExtendedErrorCode::READING_CONTAINS_INVALID_CHARACTER);
   }
 
   // Validate word.
-  const std::string& word = entry.value();
+  absl::string_view word = entry.value();
   if (word.empty()) {
     return ToStatus(ExtendedErrorCode::WORD_EMPTY);
   }
-  if (word.size() > kMaxValueSize) {
+  if (IsTooLongString(word)) {
     MOZC_VLOG(1) << "Too long value.";
     return ToStatus(ExtendedErrorCode::WORD_TOO_LONG);
   }
-  if (word.find_first_of(kInvalidChars) != std::string::npos ||
-      !strings::IsValidUtf8(word)) {
+  if (ContainsInvalidChars(word)) {
     MOZC_VLOG(1) << "Invalid character in value.";
     return ToStatus(ExtendedErrorCode::WORD_CONTAINS_INVALID_CHARACTER);
   }
 
   // Validate comment.
-  const std::string& comment = entry.comment();
-  if (comment.size() > kMaxCommentSize) {
+  absl::string_view comment = entry.comment();
+  if (IsTooLongString(comment)) {
     MOZC_VLOG(1) << "Too long comment.";
     return ToStatus(ExtendedErrorCode::COMMENT_TOO_LONG);
   }
-  if (comment.find_first_of(kInvalidChars) != std::string::npos ||
-      !strings::IsValidUtf8(comment)) {
+  if (ContainsInvalidChars(comment)) {
     MOZC_VLOG(1) << "Invalid character in comment.";
     return ToStatus(ExtendedErrorCode::COMMENT_CONTAINS_INVALID_CHARACTER);
   }
@@ -175,56 +153,17 @@ absl::Status ValidateEntry(
   return absl::OkStatus();
 }
 
-bool IsStorageFull(const user_dictionary::UserDictionaryStorage& storage) {
-  return storage.dictionaries_size() >= kMaxDictionarySize;
-}
-
-bool IsDictionaryFull(const user_dictionary::UserDictionary& dictionary) {
-  return dictionary.entries_size() >= kMaxEntrySize;
-}
-
-const user_dictionary::UserDictionary* GetUserDictionaryById(
-    const user_dictionary::UserDictionaryStorage& storage,
-    uint64_t dictionary_id) {
-  int index = GetUserDictionaryIndexById(storage, dictionary_id);
-  return index >= 0 ? &storage.dictionaries(index) : nullptr;
-}
-
-user_dictionary::UserDictionary* GetMutableUserDictionaryById(
-    user_dictionary::UserDictionaryStorage* storage, uint64_t dictionary_id) {
-  int index = GetUserDictionaryIndexById(*storage, dictionary_id);
-  return index >= 0 ? storage->mutable_dictionaries(index) : nullptr;
-}
-
-int GetUserDictionaryIndexById(
-    const user_dictionary::UserDictionaryStorage& storage,
-    uint64_t dictionary_id) {
-  for (int i = 0; i < storage.dictionaries_size(); ++i) {
-    const user_dictionary::UserDictionary& dictionary = storage.dictionaries(i);
-    if (dictionary.id() == dictionary_id) {
-      return i;
-    }
-  }
-
-  LOG(ERROR) << "Cannot find dictionary id: " << dictionary_id;
-  return -1;
-}
-
-std::string GetUserDictionaryFileName() {
-  return ConfigFileStream::GetFileName(kUserDictionaryFile);
-}
-
 // static
 bool SanitizeEntry(user_dictionary::UserDictionary::Entry* entry) {
   bool modified = false;
-  modified |= Sanitize(entry->mutable_key(), kMaxKeySize);
-  modified |= Sanitize(entry->mutable_value(), kMaxValueSize);
+  modified |= Sanitize(entry->mutable_key(), kMaxStringSize);
+  modified |= Sanitize(entry->mutable_value(), kMaxStringSize);
   if (!user_dictionary::UserDictionary::PosType_IsValid(entry->pos())) {
     // Fallback to NOUN.
     entry->set_pos(user_dictionary::UserDictionary::NOUN);
     modified = true;
   }
-  modified |= Sanitize(entry->mutable_comment(), kMaxCommentSize);
+  modified |= Sanitize(entry->mutable_comment(), kMaxStringSize);
   return modified;
 }
 
@@ -252,27 +191,19 @@ bool Sanitize(std::string* str, size_t max_size) {
   return true;
 }
 
-absl::Status ValidateDictionaryName(
-    const user_dictionary::UserDictionaryStorage& storage,
-    const absl::string_view dictionary_name) {
+absl::Status ValidateDictionaryName(const absl::string_view dictionary_name) {
   if (dictionary_name.empty()) {
     MOZC_VLOG(1) << "Empty dictionary name.";
     return ToStatus(ExtendedErrorCode::DICTIONARY_NAME_EMPTY);
   }
-  if (dictionary_name.size() > kMaxDictionaryNameSize) {
+  if (IsTooLongString(dictionary_name)) {
     MOZC_VLOG(1) << "Too long dictionary name";
     return ToStatus(ExtendedErrorCode::DICTIONARY_NAME_TOO_LONG);
   }
-  if (dictionary_name.find_first_of(kInvalidChars) != std::string::npos) {
+  if (ContainsInvalidChars(dictionary_name)) {
     MOZC_VLOG(1) << "Invalid character in dictionary name: " << dictionary_name;
     return ToStatus(
         ExtendedErrorCode::DICTIONARY_NAME_CONTAINS_INVALID_CHARACTER);
-  }
-  for (int i = 0; i < storage.dictionaries_size(); ++i) {
-    if (storage.dictionaries(i).name() == dictionary_name) {
-      LOG(ERROR) << "duplicated dictionary name";
-      return ToStatus(ExtendedErrorCode::DICTIONARY_NAME_DUPLICATED);
-    }
   }
 
   return absl::OkStatus();
@@ -308,98 +239,14 @@ absl::string_view GetStringPosType(
 
 user_dictionary::UserDictionary::PosType ToPosType(
     absl::string_view string_pos_type) {
-  for (int i = 0; i < std::size(kPosTypeStringTable); ++i) {
-    if (kPosTypeStringTable[i] == string_pos_type) {
-      return static_cast<user_dictionary::UserDictionary::PosType>(i);
-    }
+  int index = -1;  // not found by default.
+  if (auto it = absl::c_find(kPosTypeStringTable, string_pos_type);
+      it != std::end(kPosTypeStringTable)) {
+    index = std::distance(std::begin(kPosTypeStringTable), it);
   }
 
-  // Not found. Return invalid value.
-  return static_cast<user_dictionary::UserDictionary::PosType>(-1);
+  return static_cast<user_dictionary::UserDictionary::PosType>(index);
 }
 
-uint64_t CreateNewDictionaryId(
-    const user_dictionary::UserDictionaryStorage& storage) {
-  static constexpr uint64_t kInvalidDictionaryId = 0;
-  absl::BitGen gen;
-
-  uint64_t id = kInvalidDictionaryId;
-  while (id == kInvalidDictionaryId) {
-    id = absl::Uniform<uint64_t>(gen);
-
-    // Duplication check.
-    for (int i = 0; i < storage.dictionaries_size(); ++i) {
-      if (storage.dictionaries(i).id() == id) {
-        // Duplicated id is found. So invalidate it to retry the generating.
-        id = kInvalidDictionaryId;
-        break;
-      }
-    }
-  }
-
-  return id;
-}
-
-absl::Status CreateDictionary(user_dictionary::UserDictionaryStorage* storage,
-                              const absl::string_view dictionary_name,
-                              uint64_t* new_dictionary_id) {
-  absl::Status status = ValidateDictionaryName(*storage, dictionary_name);
-  if (!status.ok()) {
-    LOG(ERROR) << "Invalid dictionary name is passed";
-    return status;
-  }
-
-  if (IsStorageFull(*storage)) {
-    LOG(ERROR) << "too many dictionaries";
-    return ToStatus(ExtendedErrorCode::DICTIONARY_SIZE_LIMIT_EXCEEDED);
-  }
-
-  if (new_dictionary_id == nullptr) {
-    LOG(ERROR) << "new_dictionary_id is nullptr";
-    return ToStatus(ExtendedErrorCode::UNKNOWN_ERROR);
-  }
-
-  *new_dictionary_id = CreateNewDictionaryId(*storage);
-  user_dictionary::UserDictionary* dictionary = storage->add_dictionaries();
-  if (dictionary == nullptr) {
-    LOG(ERROR) << "add_dictionaries failed.";
-    return ToStatus(ExtendedErrorCode::UNKNOWN_ERROR);
-  }
-
-  dictionary->set_id(*new_dictionary_id);
-  dictionary->set_name(dictionary_name);
-
-  return absl::OkStatus();
-}
-
-bool DeleteDictionary(
-    user_dictionary::UserDictionaryStorage* storage, uint64_t dictionary_id,
-    int* original_index,
-    std::unique_ptr<user_dictionary::UserDictionary>* deleted_dictionary) {
-  const int index = GetUserDictionaryIndexById(*storage, dictionary_id);
-  if (original_index != nullptr) {
-    *original_index = index;
-  }
-
-  if (index < 0) {
-    LOG(ERROR) << "Invalid dictionary id: " << dictionary_id;
-    return false;
-  }
-
-  RepeatedPtrField<user_dictionary::UserDictionary>* dictionaries =
-      storage->mutable_dictionaries();
-  // Move the target dictionary to the end.
-  std::rotate(dictionaries->pointer_begin() + index,
-              dictionaries->pointer_begin() + index + 1,
-              dictionaries->pointer_end());
-
-  if (deleted_dictionary == nullptr) {
-    dictionaries->RemoveLast();
-  } else {
-    deleted_dictionary->reset(dictionaries->ReleaseLast());
-  }
-
-  return true;
-}
 }  // namespace user_dictionary
 }  // namespace mozc

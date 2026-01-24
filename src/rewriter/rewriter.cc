@@ -148,8 +148,8 @@ Rewriter::Rewriter(const engine::Modules& modules) {
   AddRewriter(std::make_unique<SingleKanjiRewriter>(pos_matcher,
                                                     single_kanji_dictionary));
   AddRewriter(std::make_unique<IvsVariantsRewriter>());
-  AddRewriter(std::make_unique<EmojiRewriter>(data_manager));
   AddRewriter(EmoticonRewriter::CreateFromDataManager(data_manager));
+  AddRewriter(std::make_unique<EmojiRewriter>(data_manager));
   AddRewriter(std::make_unique<CalculatorRewriter>());
   AddRewriter(std::make_unique<SymbolRewriter>(data_manager));
   AddRewriter(std::make_unique<UnicodeRewriter>());

@@ -38,6 +38,7 @@
 #include "absl/strings/string_view.h"
 #include "composer/composer.h"
 #include "config/config_handler.h"
+#include "converter/attribute.h"
 #include "data_manager/testing/mock_data_manager.h"
 #include "dictionary/dictionary_mock.h"
 #include "engine/modules.h"
@@ -400,6 +401,62 @@ TEST_F(MixedDecodingPredictorTest, FillPos) {
   EXPECT_EQ(result.rid, 3);
   // cost is not changed.
   EXPECT_EQ(result.cost, 1);
+}
+
+TEST_F(MixedDecodingPredictorTest, MixCandidates) {
+  auto is_top_no_deletable = [&](const std::vector<Result>& predictor_results,
+                                 const std::vector<Result>& history_results) {
+    auto mock_dictionary_predictor = std::make_unique<MockPredictor>();
+    auto mock_history_predictor = std::make_unique<MockPredictor>();
+
+    EXPECT_CALL(*mock_history_predictor, Predict(_))
+        .WillOnce(Return(history_results));
+    EXPECT_CALL(*mock_dictionary_predictor, Predict(_))
+        .WillOnce(Return(predictor_results));
+
+    auto predictor =
+        std::make_unique<Predictor>(std::move(mock_dictionary_predictor),
+                                    std::move(mock_history_predictor));
+
+    const ConversionRequest convreq =
+        CreateConversionRequest(ConversionRequest::SUGGESTION);
+    const std::vector<Result> results = predictor->Predict(convreq);
+
+    EXPECT_EQ(results.size(),
+              predictor_results.size() + history_results.size());
+    return results[0].candidate_attributes & converter::Attribute::NO_DELETABLE;
+  };
+
+  {
+    std::vector<Result> predictor_results(3), history_results(1);
+
+    predictor_results[0].key = history_results[0].key = "key";
+    predictor_results[0].value = history_results[0].value = "value";
+
+    EXPECT_TRUE(is_top_no_deletable(predictor_results, history_results));
+  }
+
+  {
+    std::vector<Result> predictor_results(3), history_results(1);
+
+    predictor_results[0].key = history_results[0].key = "key";
+
+    // different value.
+    predictor_results[0].value = "value1";
+    history_results[0].value = "value2";
+
+    EXPECT_FALSE(is_top_no_deletable(predictor_results, history_results));
+  }
+
+  {
+    // history size is > 1.
+    std::vector<Result> predictor_results(3), history_results(2);
+
+    predictor_results[0].key = history_results[0].key = "key";
+    predictor_results[0].value = history_results[0].value = "value";
+
+    EXPECT_FALSE(is_top_no_deletable(predictor_results, history_results));
+  }
 }
 
 }  // namespace mozc::prediction

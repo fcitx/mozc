@@ -89,6 +89,12 @@ class Predictor : public PredictorInterface {
   std::vector<Result> PredictForMixedConversion(
       const ConversionRequest& request) const;
 
+  // Mix user_history_results and dictionary_results.
+  std::vector<Result> MixCandidates(
+      const ConversionRequest& request,
+      std::vector<Result> user_history_results,
+      std::vector<Result> dictionary_results) const;
+
   std::unique_ptr<PredictorInterface> dictionary_predictor_;
   std::unique_ptr<PredictorInterface> user_history_predictor_;
 };

@@ -167,24 +167,15 @@ bool EmoticonRewriter::RewriteCandidate(Segments* segments) const {
     // TODO(taku): Emoticon dictionary does not always include "facemark".
     // Displaying non-facemarks with "かおもじ" is not always correct.
     // We have to distinguish pure facemarks and other symbol marks.
-
-    if (key == "かおもじ") {
-      // When key is "かおもじ", default candidate size should be small enough.
-      // It is safe to expand all candidates at this time.
+    if (key == "かおもじ" || key == "かお") {
+      // When key is "かおもじ" or "かお", default candidate size should be
+      // small enough. It is safe to expand all candidates at this time.
       begin = dic_.begin();
       CHECK(begin != dic_.end());
       end = dic_.end();
       // set large value(100) so that all candidates are pushed to the bottom
       initial_insert_pos = RewriterUtil::CalculateInsertPosition(segment, 100);
       initial_insert_size = dic_.size();
-    } else if (key == "かお") {
-      // When key is "かお", expand all candidates in conservative way.
-      begin = dic_.begin();
-      CHECK(begin != dic_.end());
-      // first 6 candidates are inserted at 4 th position.
-      // Other candidates are pushed to the buttom.
-      initial_insert_pos = RewriterUtil::CalculateInsertPosition(segment, 4);
-      initial_insert_size = 6;
     } else if (key == "ふくわらい") {
       // Choose one emoticon randomly from the dictionary.
       // TODO(taku): want to make it "generate" more funny emoticon.

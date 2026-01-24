@@ -493,6 +493,7 @@ mozc_cc_library(
         ":realtime_decoder",
         ":result",
         ":user_history_predictor",
+        "//converter:attribute",
         "//converter:converter_interface",
         "//converter:immutable_converter_interface",
         "//engine:modules",

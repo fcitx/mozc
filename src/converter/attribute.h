@@ -96,6 +96,10 @@ class Attribute {
     // Keys are expanded in the dictionary lookup. Usually
     // Kana-modifiers are expanded.
     KEY_EXPANDED_IN_DICTIONARY = 1 << 18,
+    // No-deletable candidate.
+    // User history is basically deletable, but decoder can set NO_DELETABLE
+    // attribute not to allow the candidate to be deleted.
+    NO_DELETABLE = 1 << 19,
   };
 };
 }  // namespace converter

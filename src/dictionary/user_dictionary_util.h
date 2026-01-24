@@ -95,9 +95,6 @@ enum ExtendedErrorCode {
 
 absl::Status ToStatus(ExtendedErrorCode code);
 
-size_t max_dictionary_size();
-size_t max_entry_size();
-
 // Returns true if all characters in the given string is a legitimate
 // character for reading.
 bool IsValidReading(absl::string_view reading);
@@ -107,14 +104,6 @@ bool IsValidReading(absl::string_view reading);
 // ascii. Identity of reading of a word should be defined by the
 // output of this function.
 std::string NormalizeReading(absl::string_view input);
-
-// Returns true if all fields of the given data is properly set and
-// have a legitimate value. It checks for an empty string, an
-// invalid character and so on. If the function returns false, we
-// shouldn't accept the data being passed into the dictionary.
-// TODO(hidehikoo): Replace this method by the following ValidateEntry.
-bool IsValidEntry(const dictionary::UserPos& user_pos,
-                  const user_dictionary::UserDictionary::Entry& entry);
 
 // Returns the error status of the validity for the given entry.
 // The validation process is as follows:
@@ -144,33 +133,7 @@ bool SanitizeEntry(user_dictionary::UserDictionary::Entry* entry);
 bool Sanitize(std::string* str, size_t max_size);
 
 // Returns the error status of the validity for the given dictionary name.
-absl::Status ValidateDictionaryName(
-    const user_dictionary::UserDictionaryStorage& storage,
-    absl::string_view dictionary_name);
-
-// Returns true if the given storage hits the limit for the number of
-// dictionaries.
-bool IsStorageFull(const user_dictionary::UserDictionaryStorage& storage);
-
-// Returns true if the given dictionary hits the limit for the number of
-// entries.
-bool IsDictionaryFull(const user_dictionary::UserDictionary& dictionary);
-
-// Returns UserDictionary with the given id, or nullptr if not found.
-const user_dictionary::UserDictionary* GetUserDictionaryById(
-    const user_dictionary::UserDictionaryStorage& storage,
-    uint64_t dictionary_id);
-user_dictionary::UserDictionary* GetMutableUserDictionaryById(
-    user_dictionary::UserDictionaryStorage* storage, uint64_t dictionary_id);
-
-// Returns the index of the dictionary with the given dictionary_id
-// in the storage, or -1 if not found.
-int GetUserDictionaryIndexById(
-    const user_dictionary::UserDictionaryStorage& storage,
-    uint64_t dictionary_id);
-
-// Returns the file name of UserDictionary.
-std::string GetUserDictionaryFileName();
+absl::Status ValidateDictionaryName(absl::string_view dictionary_name);
 
 // Returns the string representation of PosType, or empty string if the given
 // pos is invalid.
@@ -182,24 +145,6 @@ absl::string_view GetStringPosType(
 // invalid.
 user_dictionary::UserDictionary::PosType ToPosType(
     absl::string_view string_pos_type);
-
-// Generates a new dictionary id, i.e. id which is not in the storage.
-uint64_t CreateNewDictionaryId(
-    const user_dictionary::UserDictionaryStorage& storage);
-
-// Creates dictionary with the given name.
-absl::Status CreateDictionary(user_dictionary::UserDictionaryStorage* storage,
-                              absl::string_view dictionary_name,
-                              uint64_t* new_dictionary_id);
-
-// Deletes dictionary specified by the given dictionary_id.
-// If the deleted_dictionary is not nullptr, the pointer to the
-// delete dictionary is stored into it.
-// Returns true if succeeded, otherwise false.
-bool DeleteDictionary(
-    user_dictionary::UserDictionaryStorage* storage, uint64_t dictionary_id,
-    int* original_index,
-    std::unique_ptr<user_dictionary::UserDictionary>* deleted_dictionary);
 
 }  // namespace user_dictionary
 }  // namespace mozc

@@ -240,80 +240,13 @@ TEST(UserDictionaryUtilTest, ValidateEntry) {
 
 TEST(UserDictionaryUtilTest, ValidateDictionaryName) {
   EXPECT_EQ(ExtendedErrorCode::DICTIONARY_NAME_EMPTY,
-            ValidateDictionaryName(
-                user_dictionary::UserDictionaryStorage::default_instance(), "")
-                .raw_code());
+            ValidateDictionaryName("").raw_code());
 
   EXPECT_EQ(ExtendedErrorCode::DICTIONARY_NAME_TOO_LONG,
-            ValidateDictionaryName(
-                user_dictionary::UserDictionaryStorage::default_instance(),
-                std::string(500, 'a'))
-                .raw_code());
+            ValidateDictionaryName(std::string(500, 'a')).raw_code());
 
-  EXPECT_EQ(
-      ExtendedErrorCode::DICTIONARY_NAME_CONTAINS_INVALID_CHARACTER,
-      ValidateDictionaryName(
-          user_dictionary::UserDictionaryStorage::default_instance(), "a\nbc")
-          .raw_code());
-
-  user_dictionary::UserDictionaryStorage storage;
-  storage.add_dictionaries()->set_name("abc");
-  EXPECT_EQ(ExtendedErrorCode::DICTIONARY_NAME_DUPLICATED,
-            ValidateDictionaryName(storage, "abc").raw_code());
-}
-
-TEST(UserDictionaryUtilTest, IsStorageFull) {
-  user_dictionary::UserDictionaryStorage storage;
-  for (int i = 0; i < max_dictionary_size(); ++i) {
-    EXPECT_FALSE(IsStorageFull(storage));
-    storage.add_dictionaries();
-  }
-
-  EXPECT_TRUE(IsStorageFull(storage));
-}
-
-TEST(UserDictionaryUtilTest, IsDictionaryFull) {
-  UserDictionary dictionary;
-  for (int i = 0; i < max_entry_size(); ++i) {
-    EXPECT_FALSE(IsDictionaryFull(dictionary));
-    dictionary.add_entries();
-  }
-
-  EXPECT_TRUE(IsDictionaryFull(dictionary));
-}
-
-TEST(UserDictionaryUtilTest, GetUserDictionaryById) {
-  user_dictionary::UserDictionaryStorage storage;
-  storage.add_dictionaries()->set_id(1);
-  storage.add_dictionaries()->set_id(2);
-
-  EXPECT_EQ(GetUserDictionaryById(storage, 1), &storage.dictionaries(0));
-  EXPECT_EQ(GetUserDictionaryById(storage, 2), &storage.dictionaries(1));
-  EXPECT_EQ(GetUserDictionaryById(storage, -1), nullptr);
-}
-
-TEST(UserDictionaryUtilTest, GetMutableUserDictionaryById) {
-  user_dictionary::UserDictionaryStorage storage;
-  storage.add_dictionaries()->set_id(1);
-  storage.add_dictionaries()->set_id(2);
-
-  EXPECT_EQ(GetMutableUserDictionaryById(&storage, 1),
-            storage.mutable_dictionaries(0));
-  EXPECT_EQ(GetMutableUserDictionaryById(&storage, 2),
-            storage.mutable_dictionaries(1));
-  EXPECT_EQ(GetMutableUserDictionaryById(&storage, -1), nullptr);
-}
-
-TEST(UserDictionaryUtilTest, GetUserDictionaryIndexById) {
-  user_dictionary::UserDictionaryStorage storage;
-  storage.add_dictionaries()->set_id(1);
-  storage.add_dictionaries()->set_id(2);
-
-  EXPECT_EQ(GetUserDictionaryIndexById(storage, 1), 0);
-  EXPECT_EQ(GetUserDictionaryIndexById(storage, 2), 1);
-
-  // Return -1 for a failing case.
-  EXPECT_EQ(GetUserDictionaryIndexById(storage, -1), -1);
+  EXPECT_EQ(ExtendedErrorCode::DICTIONARY_NAME_CONTAINS_INVALID_CHARACTER,
+            ValidateDictionaryName("a\nbc").raw_code());
 }
 
 TEST(UserDictionaryUtilTest, ToPosType) {
@@ -331,66 +264,6 @@ TEST(UserDictionaryUtilTest, GetStringPosType) {
   EXPECT_EQ(GetStringPosType(UserDictionary::SUPPRESSION_WORD), "抑制単語");
 }
 
-TEST(UserDictionaryUtilTest, CreateDictionary) {
-  user_dictionary::UserDictionaryStorage storage;
-  uint64_t dictionary_id;
-
-  // Check dictionary validity.
-  EXPECT_EQ(ExtendedErrorCode::DICTIONARY_NAME_EMPTY,
-            CreateDictionary(&storage, "", &dictionary_id).raw_code());
-
-  // Check the limit of the number of dictionaries.
-  storage.Clear();
-  for (int i = 0; i < max_dictionary_size(); ++i) {
-    storage.add_dictionaries();
-  }
-
-  EXPECT_EQ(
-      CreateDictionary(&storage, "new dictionary", &dictionary_id).raw_code(),
-      ExtendedErrorCode::DICTIONARY_SIZE_LIMIT_EXCEEDED);
-
-  storage.Clear();
-  EXPECT_EQ(CreateDictionary(&storage, "new dictionary", nullptr).raw_code(),
-            ExtendedErrorCode::UNKNOWN_ERROR);
-
-  ASSERT_OK(CreateDictionary(&storage, "new dictionary", &dictionary_id));
-
-  EXPECT_PROTO_PEQ(
-      "dictionaries <\n"
-      "  name: \"new dictionary\"\n"
-      ">\n",
-      storage);
-  EXPECT_EQ(storage.dictionaries(0).id(), dictionary_id);
-}
-
-TEST(UserDictionaryUtilTest, DeleteDictionary) {
-  user_dictionary::UserDictionaryStorage storage;
-  storage.add_dictionaries()->set_id(1);
-  storage.add_dictionaries()->set_id(2);
-
-  // Simplest deleting case.
-  int original_index;
-  ASSERT_TRUE(DeleteDictionary(&storage, 1, &original_index, nullptr));
-  EXPECT_EQ(original_index, 0);
-  ASSERT_EQ(storage.dictionaries_size(), 1);
-  EXPECT_EQ(storage.dictionaries(0).id(), 2);
-
-  // Deletion for unknown dictionary should fail.
-  storage.Clear();
-  storage.add_dictionaries()->set_id(1);
-  storage.add_dictionaries()->set_id(2);
-  EXPECT_FALSE(DeleteDictionary(&storage, 100, nullptr, nullptr));
-
-  // Keep deleted dictionary.
-  storage.Clear();
-  storage.add_dictionaries()->set_id(1);
-  storage.add_dictionaries()->set_id(2);
-  std::unique_ptr<UserDictionary> deleted_dictionary;
-  EXPECT_TRUE(DeleteDictionary(&storage, 1, nullptr, &deleted_dictionary));
-  ASSERT_EQ(storage.dictionaries_size(), 1);
-  EXPECT_EQ(storage.dictionaries(0).id(), 2);
-  EXPECT_EQ(deleted_dictionary->id(), 1);
-}
 }  // namespace
 }  // namespace user_dictionary
 }  // namespace mozc

@@ -107,8 +107,7 @@ QString GetEnv(const char* envname) {
 
 WordRegisterDialog::WordRegisterDialog()
     : is_available_(true),
-      storage_(new UserDictionaryStorage(
-          user_dictionary::GetUserDictionaryFileName())),
+      storage_(new UserDictionaryStorage()),
       client_(client::ClientFactory::NewClient()),
       window_title_(GuiUtil::ProductName()) {
   setupUi(this);

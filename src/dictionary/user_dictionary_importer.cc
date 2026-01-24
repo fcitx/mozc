@@ -58,6 +58,7 @@
 #include "base/strings/unicode.h"
 #include "base/util.h"
 #include "base/vlog.h"
+#include "dictionary/user_dictionary_storage.h"
 #include "dictionary/user_dictionary_util.h"
 #include "protocol/user_dictionary_storage.pb.h"
 
@@ -161,8 +162,6 @@ absl::Status ImportFromIterator(InputIteratorInterface* iter,
     return ToStatus(ExtendedErrorCode::IMPORT_FATAL);
   }
 
-  const size_t max_size = user_dictionary::max_entry_size();
-
   ExtendedErrorCode ret = ExtendedErrorCode::OK;
 
   absl::flat_hash_set<size_t> existent_entries;
@@ -172,7 +171,7 @@ absl::Status ImportFromIterator(InputIteratorInterface* iter,
 
   RawEntry raw_entry;
   while (iter->Next(&raw_entry)) {
-    if (user_dic->entries_size() >= max_size) {
+    if (mozc::UserDictionaryStorage::IsDictionaryFull(*user_dic)) {
       LOG(WARNING) << "Too many words in one dictionary";
       return ToStatus(ExtendedErrorCode::IMPORT_TOO_MANY_WORDS);
     }

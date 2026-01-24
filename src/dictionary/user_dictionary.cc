@@ -179,7 +179,7 @@ class UserDictionary::TokensIndex {
 
       for (const UserDictionaryStorage::UserDictionaryEntry& entry :
            dic.entries()) {
-        if (!user_dictionary::IsValidEntry(user_pos_, entry)) {
+        if (!user_dictionary::ValidateEntry(entry).ok()) {
           continue;
         }
         if (canceled_signal->load()) {
@@ -331,7 +331,7 @@ UserDictionary::UserDictionary(std::unique_ptr<const UserPos> user_pos,
                                PosMatcher pos_matcher)
     : UserDictionary::UserDictionary(
           std::move(user_pos), std::move(pos_matcher),
-          user_dictionary::GetUserDictionaryFileName()) {}
+          UserDictionaryStorage::GetDefaultUserDictionaryFileName()) {}
 
 UserDictionary::UserDictionary(std::unique_ptr<const UserPos> user_pos,
                                PosMatcher pos_matcher, std::string filename)

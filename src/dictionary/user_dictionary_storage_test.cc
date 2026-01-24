@@ -51,6 +51,7 @@
 #include "testing/gmock.h"
 #include "testing/gunit.h"
 #include "testing/mozctest.h"
+#include "testing/testing_util.h"
 
 namespace mozc {
 namespace {
@@ -287,6 +288,94 @@ TEST_F(UserDictionaryStorageTest, GetUserDictionaryIdTest) {
 
   EXPECT_EQ(ret_id[0], id[0]);
   EXPECT_EQ(ret_id[1], id[1]);
+}
+
+TEST_F(UserDictionaryStorageTest, IsStorageFull) {
+  UserDictionaryStorage storage;
+  storage.GetProto().Clear();
+  for (int i = 0; i < UserDictionaryStorage::max_dictionary_size(); ++i) {
+    EXPECT_FALSE(storage.IsStorageFull());
+    storage.GetProto().add_dictionaries();
+  }
+
+  EXPECT_TRUE(storage.IsStorageFull());
+}
+
+TEST_F(UserDictionaryStorageTest, IsDictionaryFull) {
+  UserDictionary dictionary;
+  for (int i = 0; i < UserDictionaryStorage::max_entry_size(); ++i) {
+    EXPECT_FALSE(UserDictionaryStorage::IsDictionaryFull(dictionary));
+    dictionary.add_entries();
+  }
+
+  EXPECT_TRUE(UserDictionaryStorage::IsDictionaryFull(dictionary));
+}
+
+TEST_F(UserDictionaryStorageTest, GetUserDictionary) {
+  UserDictionaryStorage storage;
+  storage.GetProto().add_dictionaries()->set_id(1);
+  storage.GetProto().add_dictionaries()->set_id(2);
+
+  EXPECT_EQ(storage.GetUserDictionary(1), &storage.dictionaries(0));
+  EXPECT_EQ(storage.GetUserDictionary(2), &storage.dictionaries(1));
+  EXPECT_EQ(storage.GetUserDictionary(-1), nullptr);
+}
+
+TEST_F(UserDictionaryStorageTest, GetUserDictionaryIndexById) {
+  UserDictionaryStorage storage;
+  storage.GetProto().add_dictionaries()->set_id(1);
+  storage.GetProto().add_dictionaries()->set_id(2);
+
+  EXPECT_EQ(storage.GetUserDictionaryIndex(1), 0);
+  EXPECT_EQ(storage.GetUserDictionaryIndex(2), 1);
+
+  // Return -1 for a failing case.
+  EXPECT_EQ(storage.GetUserDictionaryIndex(100), -1);
+}
+
+TEST_F(UserDictionaryStorageTest, CreateDictionary) {
+  UserDictionaryStorage storage;
+
+  // Check dictionary validity.
+  EXPECT_EQ(storage.CreateDictionary("").status().raw_code(),
+            ExtendedErrorCode::DICTIONARY_NAME_EMPTY);
+
+  // Check the limit of the number of dictionaries.
+  storage.GetProto().Clear();
+  for (int i = 0; i < UserDictionaryStorage::max_dictionary_size(); ++i) {
+    storage.GetProto().add_dictionaries();
+  }
+
+  EXPECT_EQ(storage.CreateDictionary("new dictionary").status().raw_code(),
+            ExtendedErrorCode::DICTIONARY_SIZE_LIMIT_EXCEEDED);
+
+  storage.GetProto().Clear();
+  auto dictionary_id = storage.CreateDictionary("new dictionary").value();
+
+  EXPECT_PROTO_PEQ(
+      "dictionaries <\n"
+      "  name: \"new dictionary\"\n"
+      ">\n",
+      storage.GetProto());
+  EXPECT_EQ(storage.dictionaries(0).id(), dictionary_id);
+}
+
+TEST_F(UserDictionaryStorageTest, DeleteDictionary) {
+  UserDictionaryStorage storage;
+  auto& proto = storage.GetProto();
+  proto.add_dictionaries()->set_id(1);
+  proto.add_dictionaries()->set_id(2);
+
+  // Simplest deleting case.
+  ASSERT_OK(storage.DeleteDictionary(1));
+  ASSERT_EQ(storage.dictionaries_size(), 1);
+  EXPECT_EQ(storage.dictionaries(0).id(), 2);
+
+  // Deletion for unknown dictionary should fail.
+  proto.Clear();
+  proto.add_dictionaries()->set_id(1);
+  proto.add_dictionaries()->set_id(2);
+  EXPECT_NOT_OK(storage.DeleteDictionary(100));
 }
 
 TEST_F(UserDictionaryStorageTest, Export) {

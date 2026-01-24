@@ -81,7 +81,8 @@ bool FillAnnotation(const converter::Candidate& candidate_value,
     is_modified = true;
   }
   if (candidate_value.attributes &
-      converter::Attribute::USER_HISTORY_PREDICTION) {
+          converter::Attribute::USER_HISTORY_PREDICTION &&
+      !(candidate_value.attributes & converter::Attribute::NO_DELETABLE)) {
     annotation->set_deletable(true);
     is_modified = true;
   }
@@ -114,7 +115,9 @@ void FillCandidateWord(const converter::Candidate& segment_candidate,
   if (segment_candidate.attributes &
       converter::Attribute::USER_HISTORY_PREDICTION) {
     candidate_word_proto->add_attributes(commands::USER_HISTORY);
-    candidate_word_proto->add_attributes(commands::DELETABLE);
+    if (!(segment_candidate.attributes & converter::Attribute::NO_DELETABLE)) {
+      candidate_word_proto->add_attributes(commands::DELETABLE);
+    }
   }
   if (segment_candidate.attributes &
       converter::Attribute::SPELLING_CORRECTION) {

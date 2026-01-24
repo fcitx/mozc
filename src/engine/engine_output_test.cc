@@ -364,8 +364,8 @@ TEST(EngineOutputTest, FillAllCandidateWords_Attributes) {
   const char* kKey = "key";
   segment.set_key(kKey);
 
-  const char* kValues[5] = {"value_0", "value_1", "value_2", "value_3",
-                            "value_4"};
+  const char* kValues[6] = {"value_0", "value_1", "value_2",
+                            "value_3", "value_4", "value_5"};
   constexpr size_t kValueSize = std::size(kValues);
   for (size_t i = 0; i < kValueSize; ++i) {
     converter::Candidate* candidate = segment.push_back_candidate();
@@ -386,6 +386,9 @@ TEST(EngineOutputTest, FillAllCandidateWords_Attributes) {
   segment.mutable_candidate(4)->attributes =
       converter::Attribute::TYPING_CORRECTION |
       converter::Attribute::BEST_CANDIDATE;
+  segment.mutable_candidate(5)->attributes =
+      converter::Attribute::USER_HISTORY_PREDICTION |
+      converter::Attribute::NO_DELETABLE;
 
   candidate_list.set_focused(true);
   candidate_list.MoveToId(0);
@@ -422,6 +425,10 @@ TEST(EngineOutputTest, FillAllCandidateWords_Attributes) {
   EXPECT_EQ(1, candidates_proto.candidates(4).attributes_size());
   EXPECT_EQ(candidates_proto.candidates(4).attributes(0),
             commands::CandidateAttribute::TYPING_CORRECTION);
+
+  EXPECT_EQ(1, candidates_proto.candidates(5).attributes_size());
+  EXPECT_EQ(candidates_proto.candidates(5).attributes(0),
+            commands::CandidateAttribute::USER_HISTORY);
 }
 
 TEST(EngineOutputTest, ShouldShowUsages) {
