@@ -46,7 +46,7 @@ jobs:
       - name: bazel build
         working-directory: ./src
         run: |
-          bazelisk build --config oss_macos package --macos_cpus=arm64 --config release_build
+          bazelisk build --config stable_channel --config oss_macos package --macos_cpus=arm64 --config release_build
 
       - name: upload artifacts
         uses: actions/upload-artifact@v6
@@ -88,7 +88,7 @@ jobs:
       - name: bazel build
         working-directory: ./src
         run: |
-          bazelisk build --config oss_macos package --macos_cpus=x86_64 --config release_build
+          bazelisk build --config stable_channel --config oss_macos package --macos_cpus=x86_64 --config release_build
 
       - name: upload artifacts
         uses: actions/upload-artifact@v6
@@ -130,7 +130,7 @@ jobs:
       - name: bazel build
         working-directory: ./src
         run: |
-          bazelisk build --config oss_macos package --macos_cpus=x86_64,arm64 --config release_build
+          bazelisk build --config stable_channel --config oss_macos package --macos_cpus=x86_64,arm64 --config release_build
 
       - name: upload artifacts
         uses: actions/upload-artifact@v6
@@ -166,7 +166,7 @@ jobs:
       - name: bazel test
         working-directory: ./src
         run: |
-          bazelisk test ... --config oss_macos --build_tests_only -c dbg
+          bazelisk test ... --config stable_channel --config oss_macos --build_tests_only -c dbg
 
   # actions/cache works without this job, but having this would increase the likelihood of cache hit
   # in other jobs. Another approach would be to use "needs:".
