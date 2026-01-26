@@ -167,6 +167,8 @@ constexpr auto kSpecialKeyMap =
         {"virtualup", KeyEvent::VIRTUAL_UP},
         {"virtualdown", KeyEvent::VIRTUAL_DOWN},
 
+        {"imeaction", KeyEvent::IME_ACTION},
+
         // Meant to be used for any other special keys.
         {"undefinedkey", KeyEvent::UNDEFINED_KEY},
     });

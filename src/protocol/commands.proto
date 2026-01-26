@@ -149,7 +149,11 @@ message KeyEvent {
     VIRTUAL_UP = 75;     // Up key on virtual (software) keyboard
     VIRTUAL_DOWN = 76;   // Down key on virtual (software) keyboard
 
-    NUM_SPECIALKEYS = 77;
+    // Special IME action on mobile software keyboard.
+    // The actual content is in key_string.
+    IME_ACTION = 77;
+
+    NUM_SPECIALKEYS = 78;
   }
 
   // CTRL, ALT and SHIFT cover both LEFT and RIGHT keys.  If the
