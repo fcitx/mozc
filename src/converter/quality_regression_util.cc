@@ -276,6 +276,7 @@ absl::StatusOr<bool> QualityRegressionUtil::ConvertAndTest(
     composer.SetPreeditTextForTestOnly(key);
     ConversionRequest::Options options;
     options.request_type = ConversionRequest::PREDICTION;
+    options.use_actual_converter_for_realtime_conversion = true;
     if (request_.mixed_conversion()) {
       options.create_partial_candidates = true;
     }
@@ -297,7 +298,8 @@ absl::StatusOr<bool> QualityRegressionUtil::ConvertAndTest(
             .SetComposer(composer)
             .SetRequestView(request_)
             .SetConfigView(config_)
-            .SetOptions({.request_type = ConversionRequest::SUGGESTION})
+            .SetOptions({.request_type = ConversionRequest::SUGGESTION,
+                         .use_actual_converter_for_realtime_conversion = true})
             .Build();
     if (!converter_->StartPrediction(conv_req, &segments_)) {
       return absl::UnknownError(absl::StrCat(
