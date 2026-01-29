@@ -182,13 +182,13 @@ TEST_F(SymbolRewriterTest, TriggerRewriteEachTest) {
   }
 }
 
-TEST_F(SymbolRewriterTest, HentaiganaSymbolTest) {
+TEST_F(SymbolRewriterTest, RareSymbolTest) {
   SymbolRewriter symbol_rewriter(*data_manager_);
   const ConversionRequest request;
+  constexpr int kCandidatesSize = 100;
   {
     Segments segments;
     AddSegment("あ", {"あ"}, &segments);
-    constexpr int kCandidatesSize = 100;
     for (int i = 0; i < kCandidatesSize; ++i) {
       AddCandidate("test", segments.mutable_segment(0));
     }
@@ -212,6 +212,16 @@ TEST_F(SymbolRewriterTest, HentaiganaSymbolTest) {
         HasCandidateAndDescription(segments, 0, "\U0001B001", "江の変体仮名"));
     EXPECT_TRUE(
         HasCandidateAndDescription(segments, 0, "\U0001B121", "変体仮名"));
+  }
+
+  {
+    Segments segments;
+    AddSegment("いぬ", {"いぬ"}, &segments);
+    for (int i = 0; i < kCandidatesSize; ++i) {
+      AddCandidate("test", segments.mutable_segment(0));
+    }
+    EXPECT_TRUE(symbol_rewriter.Rewrite(request, &segments));
+    EXPECT_GT(GetCandidateIndex(segments, 0, "\U000130E1"), kCandidatesSize);
   }
 }
 

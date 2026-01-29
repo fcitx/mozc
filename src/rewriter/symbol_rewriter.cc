@@ -176,10 +176,18 @@ void AddDescForCurrentCandidates(const SerializedDictionary::IterRange& range,
   }
 }
 
-bool IsRareSymbolForDemotion(const SerializedDictionary::const_iterator& iter) {
+bool IsRareSymbolForDemotion(absl::string_view key,
+                             const SerializedDictionary::const_iterator& iter) {
   // Special Kana variants are rarely used and should always be the bottom not
   // to be shown over the single kanji.
   // TODO(taku): Consider demoting other rare symbols.
+
+  // Demote Hieroglyphs symbols when user doesn't explicitly want Hieroglyphs.
+  if (absl::StrContains(iter.description(), "ヒエログリフ") &&
+      key != "ひえろぐりふ") {
+    return true;
+  }
+
   static constexpr absl::string_view kSpecialKanaVariants[] = {
       "変体仮名", "濁点付き仮名", "鼻濁音", "アイヌ語カナ"};
 
@@ -272,7 +280,7 @@ void InsertCandidates(size_t default_offset, int32_t promotion_size,
   for (; iter != range.second; ++iter) {
     // The `range` is ordered by the preference, once the `iter` is categorized
     // as a rare symbol, the rest of candidates are also handled as rare symbols
-    if (IsRareSymbolForDemotion(iter)) {
+    if (IsRareSymbolForDemotion(candidate_key, iter)) {
       break;
     }
 
