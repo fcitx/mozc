@@ -750,6 +750,17 @@ void EngineConverter::Commit(const composer::Composer& composer,
   ResetState();
 }
 
+void EngineConverter::CommitContext(const composer::Composer& composer,
+                                    const commands::Context& context) {
+  const ConversionRequest conversion_request = ConversionRequestBuilder()
+                                                   .SetComposer(composer)
+                                                   .SetRequestView(*request_)
+                                                   .SetContextView(context)
+                                                   .SetConfigView(*config_)
+                                                   .Build();
+  converter_->CommitContext(conversion_request);
+}
+
 bool EngineConverter::CommitSuggestionInternal(
     const composer::Composer& composer, const commands::Context& context,
     size_t* consumed_key_size) {

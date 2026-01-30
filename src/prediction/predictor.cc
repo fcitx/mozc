@@ -137,6 +137,10 @@ void Predictor::Finish(const ConversionRequest& request,
   user_history_predictor_->Finish(request, results, revert_id);
 }
 
+void Predictor::CommitContext(const ConversionRequest& request) const {
+  user_history_predictor_->CommitContext(request);
+}
+
 // Since DictionaryPredictor is immutable, no need
 // to call DictionaryPredictor::Revert/Clear*/Finish methods.
 void Predictor::Revert(uint32_t revert_id) {

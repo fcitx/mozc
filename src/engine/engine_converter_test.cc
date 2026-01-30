@@ -3891,5 +3891,14 @@ TEST_F(EngineConverterTest, ResultTokensWithInnerSegements) {
   EXPECT_EQ(output.result().tokens(2).lid(), -1);
   EXPECT_EQ(output.result().tokens(2).rid(), 201);
 }
+
+TEST_F(EngineConverterTest, CommitContext) {
+  auto mock_converter = std::make_shared<MockConverter>();
+  EngineConverter converter(mock_converter, request_, config_);
+
+  EXPECT_CALL(*mock_converter, CommitContext(_)).WillOnce(Return());
+  converter.CommitContext(*composer_, Context::default_instance());
+}
+
 }  // namespace engine
 }  // namespace mozc

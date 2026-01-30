@@ -163,6 +163,9 @@ class ConverterInterface {
       size_t start_segment_index,
       absl::Span<const uint8_t> new_size_array) const = 0;
 
+  // Syncs user-modified context.
+  virtual void CommitContext(const ConversionRequest& request) const = 0;
+
  protected:
   ConverterInterface() = default;
 };

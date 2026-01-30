@@ -2033,6 +2033,11 @@ void UserHistoryPredictor::Revert(uint32_t revert_id) {
   last_committed_entries_.store(std::move(last_committed_entries));
 }
 
+void UserHistoryPredictor::CommitContext(
+    const ConversionRequest& request) const {
+  MaybeProcessPartialRevertEntry(request);
+}
+
 // static
 UserHistoryPredictor::MatchType UserHistoryPredictor::GetMatchType(
     absl::string_view lstr, absl::string_view rstr) {

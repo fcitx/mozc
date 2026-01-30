@@ -62,6 +62,9 @@ class PredictorInterface {
   // Reverts the last Finish operation.
   virtual void Revert(uint32_t revert_id) {}
 
+  // Syncs user-modified context.
+  virtual void CommitContext(const ConversionRequest& request) const {}
+
   // Clears all history data of UserHistoryPredictor.
   virtual bool ClearAllHistory() { return true; }
 

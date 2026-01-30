@@ -78,6 +78,9 @@ class UserHistoryPredictor : public PredictorInterface {
   // Revert last Finish operation.
   void Revert(uint32_t revert_id) override;
 
+  // Syncs user-modified context.
+  void CommitContext(const ConversionRequest& request) const override;
+
   // Sync user history data to local file.
   bool Sync() override;
 

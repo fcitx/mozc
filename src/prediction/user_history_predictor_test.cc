@@ -5486,6 +5486,24 @@ TEST_F(UserHistoryPredictorTest, PartialRevert) {
     EXPECT_TRUE(has_entry("きょうとだいがく", "京都大学"));
     EXPECT_FALSE(has_entry("そつぎょうした", "卒業した"));
   }
+
+  // Feed new context via CommitContext.
+  {
+    init_predictor();
+
+    context_.set_preceding_text("佐藤さんは京都");
+    SegmentsProxy segments_proxy;
+    const ConversionRequest convreq =
+        SetUpInputForSuggestion("", &composer_, &segments_proxy);
+    predictor->CommitContext(convreq);
+
+    EXPECT_TRUE(has_entry("さとうさんは", "佐藤さんは"));
+    EXPECT_TRUE(has_entry("さとうさん", "佐藤さん"));
+    EXPECT_TRUE(has_entry("きょうと", "京都"));
+    EXPECT_FALSE(has_entry("きょうとだいがくを", "京都大学を"));
+    EXPECT_FALSE(has_entry("きょうとだいがく", "京都大学"));
+    EXPECT_FALSE(has_entry("そつぎょうした", "卒業した"));
+  }
 }
 
 TEST_F(UserHistoryPredictorTest, PredictPrefixSpace) {

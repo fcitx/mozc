@@ -160,6 +160,8 @@ class MinimalConverter : public ConverterInterface {
                       absl::Span<const uint8_t> new_size_array) const override {
     return true;
   }
+
+  void CommitContext(const ConversionRequest& request) const override {}
 };
 }  // namespace
 

@@ -504,6 +504,10 @@ bool Converter::ResizeSegments(Segments* segments,
   return true;
 }
 
+void Converter::CommitContext(const ConversionRequest& request) const {
+  predictor_->CommitContext(request);
+}
+
 void Converter::ApplyConversion(Segments* segments,
                                 const ConversionRequest& request) const {
   if (!immutable_converter_->Convert(request, segments)) {

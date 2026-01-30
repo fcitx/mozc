@@ -61,6 +61,9 @@ class Predictor : public PredictorInterface {
   void Finish(const ConversionRequest& request,
               absl::Span<const Result> results, uint32_t revert_id) override;
 
+  // Syncs user-modified context.
+  void CommitContext(const ConversionRequest& request) const override;
+
   // Reverts the last Finish operation.
   void Revert(uint32_t revert_id) override;
 

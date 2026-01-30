@@ -140,6 +140,9 @@ class Converter final : public ConverterInterface {
       size_t start_segment_index,
       absl::Span<const uint8_t> new_size_array) const override;
 
+  // Syncs user-modified context.
+  void CommitContext(const ConversionRequest& request) const override;
+
   // Execute ImmutableConverter, Rewriters, SuppressionDictionary.
   // ApplyConversion does not initialize the Segment unlike StartConversion.
   void ApplyConversion(Segments* segments,
