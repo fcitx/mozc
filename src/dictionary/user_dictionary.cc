@@ -171,20 +171,15 @@ class UserDictionary::TokensIndex {
 
     for (const UserDictionaryStorage::UserDictionary& dic :
          storage.dictionaries()) {
-      if (dic.entries_size() == 0) {
-        continue;
-      }
-      const bool is_android_shortcuts =
-          (dic.name() == "__auto_imported_android_shortcuts_dictionary");
-
       for (const UserDictionaryStorage::UserDictionaryEntry& entry :
            dic.entries()) {
-        if (!user_dictionary::ValidateEntry(entry).ok()) {
-          continue;
-        }
         if (canceled_signal->load()) {
           LOG(INFO) << "User dictionary loading is canceled";
           return;
+        }
+
+        if (!user_dictionary::ValidateEntry(entry).ok()) {
+          continue;
         }
 
         // We cannot call NormalizeVoiceSoundMark inside NormalizeReading,
@@ -208,39 +203,15 @@ class UserDictionary::TokensIndex {
         if (entry.pos() == user_dictionary::UserDictionary::SUPPRESSION_WORD) {
           // "抑制単語"
           suppression_dictionary_.AddEntry(std::move(reading), entry.value());
-        } else if (entry.pos() == user_dictionary::UserDictionary::NO_POS) {
-          // In theory NO_POS works without this implementation, as it is
-          // covered in the UserPos::GetTokens function. However, that function
-          // is depending on the user_pos_*.data in the dictionary and there
-          // will not be corresponding POS tag. To avoid invalid behavior, this
-          // special treatment is added here.
-          // "品詞なし"
+        } else {
           const absl::string_view comment =
               absl::StripAsciiWhitespace(entry.comment());
-          UserPos::Token token{.key = reading,
-                               .value = entry.value(),
-                               .id = 0,
-                               .attributes = UserPos::Token::SHORTCUT,
-                               .comment = std::string(comment)};
-          // NO_POS has '名詞サ変' id as in user_pos.def
-          user_pos_.GetPosIds("名詞サ変", &token.id);
-          user_pos_tokens_.push_back(std::move(token));
-        } else {
           tokens.clear();
           user_pos_.GetTokens(reading, entry.value(),
                               user_dictionary::GetStringPosType(entry.pos()),
                               &tokens);
-          const absl::string_view comment =
-              absl::StripAsciiWhitespace(entry.comment());
           for (auto& token : tokens) {
             strings::Assign(token.comment, comment);
-            if (is_android_shortcuts &&
-                token.has_attribute(UserPos::Token::SUGGESTION_ONLY)) {
-              // TODO(b/295964970): This special implementation is planned to be
-              // removed after validating the safety of NO_POS implementation.
-              token.remove_attribute(UserPos::Token::SUGGESTION_ONLY);
-              token.add_attribute(UserPos::Token::SHORTCUT);
-            }
             user_pos_tokens_.push_back(std::move(token));
           }
         }
@@ -594,9 +565,8 @@ void UserDictionary::PopulateTokenFromUserPosToken(
   // * Overwrites POS ids.
   // Actual pos id of suggestion-only candidates are 名詞-サ変.
   // TODO(taku): We would like to change the POS to 名詞-サ変 in user-pos.def,
-  // because SUGGEST_ONLY is not POS.
-  if (user_pos_token.has_attribute(UserPos::Token::SUGGESTION_ONLY) ||
-      user_pos_token.has_attribute(UserPos::Token::SHORTCUT)) {
+  // because SUGGESTION_ONLY is not POS.
+  if (user_pos_token.has_attribute(UserPos::Token::SUGGESTION_ONLY)) {
     token->lid = token->rid = pos_matcher_.GetUnknownId();
   }
 
@@ -613,11 +583,10 @@ void UserDictionary::PopulateTokenFromUserPosToken(
     token->cost = 5000;
   }
 
-  // The words added via Android shortcut have adaptive cost based
-  // on the length of the key. Shorter keys have more penalty so that
-  // they are not shown in the context.
+  // The treatment for the words with default POS (NO_POS).
+  // Shorter keys have more penalty so that they are not shown in the context.
   // TODO(taku): Better to apply this cost for all user defined words?
-  if (user_pos_token.has_attribute(UserPos::Token::SHORTCUT) &&
+  if (user_pos_token.has_attribute(UserPos::Token::NO_POS) &&
       (request_type == PREFIX || request_type == EXACT)) {
     const int key_length = strings::AtLeastCharsLen(token->key, 4);
     token->cost += (4 - key_length) * 2000;

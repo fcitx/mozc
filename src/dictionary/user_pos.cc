@@ -129,7 +129,7 @@ bool UserPos::GetTokens(absl::string_view key, absl::string_view value,
   } else if (pos == kSuggestionOnlyPos) {
     attributes = UserPos::Token::SUGGESTION_ONLY;
   } else if (pos == kNoPos) {
-    attributes = UserPos::Token::SHORTCUT;
+    attributes = UserPos::Token::NO_POS;
   }
   if (is_non_ja_locale) {
     attributes |= UserPos::Token::NON_JA_LOCALE;

@@ -618,7 +618,7 @@ TEST_F(UserDictionaryTest, TestLookupExactWithSuggestionOnlyWords) {
               ElementsAre(Entry{"key", "noun", kNounId, kNounId}));
 }
 
-TEST_F(UserDictionaryTest, TestLookupWithShortCut) {
+TEST_F(UserDictionaryTest, TestLookupWithNoPos) {
   std::unique_ptr<UserDictionary> user_dic(CreateDictionary());
   user_dic->WaitForReloader();
 
@@ -640,13 +640,13 @@ TEST_F(UserDictionaryTest, TestLookupWithShortCut) {
     entry->set_value("noun");
     entry->set_pos(user_dictionary::UserDictionary::NOUN);
 
-    // SUGGESTION ONLY word is handled as SHORTCUT word.
+    // SUGGESTION ONLY word is handled as NO_POS word.
     entry = dic->add_entries();
     entry->set_key("key");
     entry->set_value("suggest_only");
     entry->set_pos(user_dictionary::UserDictionary::SUGGESTION_ONLY);
 
-    // NO POS word is handled as SHORTCUT word.
+    // NO POS word is handled as NO_POS word.
     entry = dic->add_entries();
     entry->set_key("key");
     entry->set_value("no_pos");
@@ -655,7 +655,7 @@ TEST_F(UserDictionaryTest, TestLookupWithShortCut) {
     user_dic->Load(storage.GetProto());
   }
 
-  // shortcut words are looked up.
+  // NO_POS words are looked up.
   const testing::MockDataManager mock_data_manager;
   const dictionary::PosMatcher pos_matcher(
       mock_data_manager.GetPosMatcherData());
@@ -664,7 +664,6 @@ TEST_F(UserDictionaryTest, TestLookupWithShortCut) {
   const Entry kExpected2[] = {
       {"key", "noun", kNounId, kNounId},
       {"key", "no_pos", kUnknownId, kUnknownId},
-      {"key", "suggest_only", kUnknownId, kUnknownId},
   };
   const Entry kExpectedPrediction[] = {
       {"key", "noun", kNounId, kNounId},
@@ -707,7 +706,7 @@ TEST_F(UserDictionaryTest, TestKeyNormalization) {
     entry->set_value("Google");
     entry->set_pos(user_dictionary::UserDictionary::NOUN);
 
-    // NO POS word is handled as SHORTCUT word.
+    // NO POS word is handled as NO_POS word.
     // voiced sound mark in「う゛」 will be normalized to be 「ゔ」.
     entry = dic->add_entries();
     entry->set_key("う゛ぃくとりー");
@@ -1015,41 +1014,40 @@ TEST_F(UserDictionaryTest, TestPopulateTokenFromUserPosToken) {
   EXPECT_EQ(token.cost, 5000);
 
   user_token.attributes = 0;
-  user_token.add_attribute(UserPos::Token::SHORTCUT);
+  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREDICTIVE,
                                      &token);
-  EXPECT_EQ(token.lid, pos_matcher.GetUnknownId());
-  EXPECT_EQ(token.rid, pos_matcher.GetUnknownId());
+  // NO_POS id is set via user_pos.def.
   EXPECT_EQ(token.cost, 5000);
 
   user_token.attributes = 0;
 
   user_token.key = "a";  // one char
-  user_token.add_attribute(UserPos::Token::SHORTCUT);
+  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
   EXPECT_EQ(token.cost, 5000 + 2000 * 3);
 
   user_token.key = "aa";
-  user_token.add_attribute(UserPos::Token::SHORTCUT);
+  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
   EXPECT_EQ(token.cost, 5000 + 2000 * 2);
 
   user_token.key = "aaa";
-  user_token.add_attribute(UserPos::Token::SHORTCUT);
+  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
   EXPECT_EQ(token.cost, 5000 + 2000);
 
   user_token.key = "aaaa";
-  user_token.add_attribute(UserPos::Token::SHORTCUT);
+  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
   EXPECT_EQ(token.cost, 5000);
 
   user_token.key = "aaaaaaa";
-  user_token.add_attribute(UserPos::Token::SHORTCUT);
+  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
   EXPECT_EQ(token.cost, 5000);

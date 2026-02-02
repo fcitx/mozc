@@ -97,7 +97,7 @@ class UserPos {
     // Attribute is used to dynamically assign cost, and is independent from the
     // POS.
     enum Attribute {
-      SHORTCUT = 1,  // Added via android shortcut, which has no explicit POS.
+      NO_POS = 1,           // The default POS on Android.
       ISOLATED_WORD = 2,    // 短縮よみ
       SUGGESTION_ONLY = 4,  //  SUGGESTION only.
       NON_JA_LOCALE = 8     // Locale is not Japanese.

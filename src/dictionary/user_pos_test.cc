@@ -118,7 +118,7 @@ TEST_F(UserPosTest, UserPosGetTokensWithAttributesTest) {
 
   EXPECT_TRUE(user_pos_->GetTokens("test", "test", "品詞なし", &tokens));
   EXPECT_EQ(tokens.size(), 1);
-  EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::SHORTCUT));
+  EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NO_POS));
 
   EXPECT_TRUE(
       user_pos_->GetTokens("test", "test", "サジェストのみ", "en", &tokens));
@@ -133,7 +133,7 @@ TEST_F(UserPosTest, UserPosGetTokensWithAttributesTest) {
 
   EXPECT_TRUE(user_pos_->GetTokens("test", "test", "品詞なし", "en", &tokens));
   EXPECT_EQ(tokens.size(), 1);
-  EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::SHORTCUT));
+  EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NO_POS));
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NON_JA_LOCALE));
 }
 
@@ -201,15 +201,15 @@ TEST_F(UserPosTest, Attributes) {
   UserPos::Token token;
 
   EXPECT_EQ(token.attributes, 0);
-  token.add_attribute(UserPos::Token::SHORTCUT);
+  token.add_attribute(UserPos::Token::NO_POS);
   token.add_attribute(UserPos::Token::SUGGESTION_ONLY);
 
-  EXPECT_TRUE(token.has_attribute(UserPos::Token::SHORTCUT));
+  EXPECT_TRUE(token.has_attribute(UserPos::Token::NO_POS));
   EXPECT_TRUE(token.has_attribute(UserPos::Token::SUGGESTION_ONLY));
   EXPECT_FALSE(token.has_attribute(UserPos::Token::ISOLATED_WORD));
 
   token.remove_attribute(UserPos::Token::SUGGESTION_ONLY);
-  EXPECT_TRUE(token.has_attribute(UserPos::Token::SHORTCUT));
+  EXPECT_TRUE(token.has_attribute(UserPos::Token::NO_POS));
   EXPECT_FALSE(token.has_attribute(UserPos::Token::SUGGESTION_ONLY));
   EXPECT_FALSE(token.has_attribute(UserPos::Token::ISOLATED_WORD));
 }
