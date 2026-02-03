@@ -33,6 +33,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -81,40 +82,40 @@ bool UserPos::IsValidPos(absl::string_view pos) const {
   return std::binary_search(begin(), end(), iter.index());
 }
 
-bool UserPos::GetPosIds(absl::string_view pos, uint16_t* id) const {
+std::optional<uint16_t> UserPos::GetPosIds(absl::string_view pos) const {
   const auto str_iter =
       std::lower_bound(string_array_.begin(), string_array_.end(), pos);
   if (str_iter == string_array_.end() || *str_iter != pos) {
-    return false;
+    return std::nullopt;
   }
   const auto token_iter = std::lower_bound(begin(), end(), str_iter.index());
   if (token_iter == end() || token_iter.pos_index() != str_iter.index()) {
-    return false;
+    return std::nullopt;
   }
-  *id = token_iter.conjugation_id();
-  return true;
+  return token_iter.conjugation_id();
 }
 
-bool UserPos::GetTokens(absl::string_view key, absl::string_view value,
-                        absl::string_view pos, absl::string_view locale,
-                        std::vector<Token>* tokens) const {
-  if (key.empty() || value.empty() || pos.empty() || tokens == nullptr) {
-    return false;
+std::vector<UserPos::Token> UserPos::GetTokens(absl::string_view key,
+                                               absl::string_view value,
+                                               absl::string_view pos,
+                                               absl::string_view locale) const {
+  if (key.empty() || value.empty() || pos.empty()) {
+    return {};
   }
 
-  tokens->clear();
   const auto str_iter =
       std::lower_bound(string_array_.begin(), string_array_.end(), pos);
   if (str_iter == string_array_.end() || *str_iter != pos) {
-    return false;
+    return {};
   }
   const auto [first, last] = std::equal_range(begin(), end(), str_iter.index());
   if (first == last) {
-    return false;
+    return {};
   }
   const ptrdiff_t size = last - first;
   CHECK_GE(size, 1);
-  tokens->resize(size);
+
+  std::vector<Token> tokens(size);
 
   // TODO(taku)  Change the cost by seeing cost_type
   const bool is_non_ja_locale = !locale.empty() && !locale.starts_with("ja");
@@ -136,10 +137,10 @@ bool UserPos::GetTokens(absl::string_view key, absl::string_view value,
   }
 
   if (size == 1) {  // no conjugation
-    strings::Assign(tokens->front().key, key);
-    strings::Assign(tokens->front().value, value);
-    tokens->front().id = first.conjugation_id();
-    tokens->front().attributes = attributes;
+    strings::Assign(tokens.front().key, key);
+    strings::Assign(tokens.front().value, value);
+    tokens.front().id = first.conjugation_id();
+    tokens.front().attributes = attributes;
   } else {
     // expand all other forms
     absl::string_view key_stem = key;
@@ -156,7 +157,7 @@ bool UserPos::GetTokens(absl::string_view key, absl::string_view value,
       key_stem.remove_suffix(base_key_suffix.size());
       value_stem.remove_suffix(base_value_suffix.size());
     }
-    auto dest = tokens->begin();
+    auto dest = tokens.begin();
     for (auto src = first; src != last; ++src, ++dest) {
       const absl::string_view key_suffix =
           string_array_[src.key_suffix_index()];
@@ -169,7 +170,7 @@ bool UserPos::GetTokens(absl::string_view key, absl::string_view value,
     }
   }
 
-  return true;
+  return tokens;
 }
 
 std::unique_ptr<UserPos> UserPos::CreateFromDataManager(

@@ -111,8 +111,7 @@ TEST(DictionaryGeneratorTest, SmokeTest) {
   dictionary::PosMatcher pos_matcher(data_manager.GetPosMatcherData());
   std::unique_ptr<dictionary::UserPos> user_pos =
       dictionary::UserPos::CreateFromDataManager(data_manager);
-  uint16_t pos;
-  user_pos->GetPosIds("句読点", &pos);
+  const uint16_t pos = user_pos->GetPosIds("句読点").value();
   const std::string expected = absl::StrCat(
       MakeExpectedRaw(",", "，", pos, 0, "てん", "カンマ"), "\n",
       MakeExpectedRaw(",", "、", pos, 10, "てん", "読点"), "\n",

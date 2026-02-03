@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -149,27 +150,25 @@ class UserPosMock : public UserPos {
   //  verb (base form) | 200 | 200
   //  verb (-ed form)  | 210 | 210
   //  verb (-ing form) | 220 | 220
-  bool GetTokens(absl::string_view key, absl::string_view value,
-                 absl::string_view pos, absl::string_view locale,
-                 std::vector<UserPos::Token>* tokens) const override {
-    if (key.empty() || value.empty() || pos.empty() || tokens == nullptr) {
-      return false;
+  std::vector<UserPos::Token> GetTokens(
+      absl::string_view key, absl::string_view value, absl::string_view pos,
+      absl::string_view locale) const override {
+    std::vector<UserPos::Token> tokens;
+    if (key.empty() || value.empty() || pos.empty()) {
+      return tokens;
     }
 
-    tokens->clear();
     if (pos == kNoun) {
-      PushBackToken(key, value, 100, tokens);
-      return true;
+      PushBackToken(key, value, 100, &tokens);
     } else if (pos == kVerb) {
-      PushBackToken(key, value, 200, tokens);
+      PushBackToken(key, value, 200, &tokens);
       PushBackToken(absl::StrCat(key, "ed"), absl::StrCat(value, "ed"), 210,
-                    tokens);
+                    &tokens);
       PushBackToken(absl::StrCat(key, "ing"), absl::StrCat(value, "ing"), 220,
-                    tokens);
-      return true;
-    } else {
-      return false;
+                    &tokens);
     }
+
+    return tokens;
   }
 
   std::vector<std::string> GetPosList() const override {
@@ -177,8 +176,8 @@ class UserPosMock : public UserPos {
   }
   int GetPosListDefaultIndex() const override { return 0; }
 
-  bool GetPosIds(absl::string_view pos, uint16_t* id) const override {
-    return false;
+  std::optional<uint16_t> GetPosIds(absl::string_view pos) const override {
+    return std::nullopt;
   }
 
   static constexpr absl::string_view kNoun = "名詞";

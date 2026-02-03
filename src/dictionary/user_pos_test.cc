@@ -80,11 +80,9 @@ TEST_F(UserPosTest, UserPosBasicTest) {
               pos_list.end());
   EXPECT_TRUE(std::find(pos_list.begin(), pos_list.end(), "品詞なし") !=
               pos_list.end());
-  uint16_t id = 0;
   for (size_t i = 0; i < pos_list.size(); ++i) {
     EXPECT_TRUE(user_pos_->IsValidPos(pos_list[i]));
-    EXPECT_TRUE(user_pos_->GetPosIds(pos_list[i], &id));
-    EXPECT_GT(id, 0);
+    EXPECT_GT(user_pos_->GetPosIds(pos_list[i]).value(), 0);
   }
 }
 
@@ -92,58 +90,54 @@ TEST_F(UserPosTest, UserPosGetTokensTest) {
   const std::vector<std::string> pos_list = user_pos_->GetPosList();
 
   std::vector<UserPos::Token> tokens;
-  EXPECT_FALSE(user_pos_->GetTokens("", "test", pos_list[0], &tokens));
-  EXPECT_FALSE(user_pos_->GetTokens("test", "", pos_list[0], &tokens));
-  EXPECT_FALSE(user_pos_->GetTokens("test", "test", "", &tokens));
-  EXPECT_TRUE(user_pos_->GetTokens("test", "test", pos_list[0], &tokens));
+  EXPECT_TRUE(user_pos_->GetTokens("", "test", pos_list[0]).empty());
+  EXPECT_TRUE(user_pos_->GetTokens("test", "", pos_list[0]).empty());
+  EXPECT_TRUE(user_pos_->GetTokens("test", "test", "").empty());
+  EXPECT_FALSE(user_pos_->GetTokens("test", "test", pos_list[0]).empty());
 
   // http://b/2674666
-  EXPECT_TRUE(user_pos_->GetTokens("あか", "赤", "形容詞", &tokens));
+  EXPECT_FALSE(user_pos_->GetTokens("あか", "赤", "形容詞").empty());
 
   for (size_t i = 0; i < pos_list.size(); ++i) {
-    EXPECT_TRUE(user_pos_->GetTokens("test", "test", pos_list[i], &tokens));
+    EXPECT_FALSE(user_pos_->GetTokens("test", "test", pos_list[i]).empty());
   }
 }
 
 TEST_F(UserPosTest, UserPosGetTokensWithAttributesTest) {
   std::vector<UserPos::Token> tokens;
 
-  EXPECT_TRUE(user_pos_->GetTokens("test", "test", "サジェストのみ", &tokens));
+  tokens = user_pos_->GetTokens("test", "test", "サジェストのみ");
   EXPECT_EQ(tokens.size(), 1);
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::SUGGESTION_ONLY));
 
-  EXPECT_TRUE(user_pos_->GetTokens("test", "test", "短縮よみ", &tokens));
+  tokens = user_pos_->GetTokens("test", "test", "短縮よみ");
   EXPECT_EQ(tokens.size(), 1);
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::ISOLATED_WORD));
 
-  EXPECT_TRUE(user_pos_->GetTokens("test", "test", "品詞なし", &tokens));
+  tokens = user_pos_->GetTokens("test", "test", "品詞なし");
   EXPECT_EQ(tokens.size(), 1);
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NO_POS));
 
-  EXPECT_TRUE(
-      user_pos_->GetTokens("test", "test", "サジェストのみ", "en", &tokens));
+  tokens = user_pos_->GetTokens("test", "test", "サジェストのみ", "en");
   EXPECT_EQ(tokens.size(), 1);
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::SUGGESTION_ONLY));
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NON_JA_LOCALE));
 
-  EXPECT_TRUE(user_pos_->GetTokens("test", "test", "短縮よみ", "en", &tokens));
+  tokens = user_pos_->GetTokens("test", "test", "短縮よみ", "en");
   EXPECT_EQ(tokens.size(), 1);
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::ISOLATED_WORD));
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NON_JA_LOCALE));
 
-  EXPECT_TRUE(user_pos_->GetTokens("test", "test", "品詞なし", "en", &tokens));
+  tokens = user_pos_->GetTokens("test", "test", "品詞なし", "en");
   EXPECT_EQ(tokens.size(), 1);
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NO_POS));
   EXPECT_TRUE(tokens[0].has_attribute(UserPos::Token::NON_JA_LOCALE));
 }
 
 TEST_F(UserPosTest, UserPosGetTokensWithLocaleTest) {
-  const std::vector<std::string> pos_list = user_pos_->GetPosList();
-
-  std::vector<UserPos::Token> tokens, tokens_ja, tokens_en;
-  EXPECT_TRUE(user_pos_->GetTokens("あか", "赤", "形容詞", "", &tokens));
-  EXPECT_TRUE(user_pos_->GetTokens("あか", "赤", "形容詞", "ja", &tokens_ja));
-  EXPECT_TRUE(user_pos_->GetTokens("あか", "赤", "形容詞", "en", &tokens_en));
+  auto tokens = user_pos_->GetTokens("あか", "赤", "形容詞", "");
+  auto tokens_ja = user_pos_->GetTokens("あか", "赤", "形容詞", "ja");
+  auto tokens_en = user_pos_->GetTokens("あか", "赤", "形容詞", "en");
   EXPECT_EQ(tokens.size(), tokens_ja.size());
   EXPECT_EQ(tokens.size(), tokens_en.size());
 
@@ -155,9 +149,10 @@ TEST_F(UserPosTest, UserPosGetTokensWithLocaleTest) {
 }
 
 TEST_F(UserPosTest, ConjugationTest) {
-  std::vector<UserPos::Token> tokens1, tokens2;
-  EXPECT_TRUE(user_pos_->GetTokens("わら", "嗤", "動詞ワ行五段", &tokens1));
-  EXPECT_TRUE(user_pos_->GetTokens("わらう", "嗤う", "動詞ワ行五段", &tokens2));
+  auto tokens1 = user_pos_->GetTokens("わら", "嗤", "動詞ワ行五段");
+  auto tokens2 = user_pos_->GetTokens("わらう", "嗤う", "動詞ワ行五段");
+  EXPECT_FALSE(tokens1.empty());
+  EXPECT_FALSE(tokens2.empty());
   EXPECT_EQ(tokens1.size(), tokens2.size());
   for (size_t i = 0; i < tokens1.size(); ++i) {
     EXPECT_EQ(tokens1[i].key, tokens2[i].key);
@@ -166,8 +161,8 @@ TEST_F(UserPosTest, ConjugationTest) {
     EXPECT_EQ(tokens1[i].attributes, tokens2[i].attributes);
   }
 
-  EXPECT_TRUE(user_pos_->GetTokens("おそれ", "惧れ", "動詞一段", &tokens1));
-  EXPECT_TRUE(user_pos_->GetTokens("おそれる", "惧れる", "動詞一段", &tokens2));
+  tokens1 = user_pos_->GetTokens("おそれ", "惧れ", "動詞一段");
+  tokens2 = user_pos_->GetTokens("おそれる", "惧れる", "動詞一段");
   EXPECT_EQ(tokens1.size(), tokens2.size());
   for (size_t i = 0; i < tokens1.size(); ++i) {
     EXPECT_EQ(tokens1[i].key, tokens2[i].key);

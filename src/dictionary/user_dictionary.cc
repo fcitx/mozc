@@ -167,7 +167,6 @@ class UserDictionary::TokensIndex {
     DCHECK(canceled_signal);
     user_pos_tokens_.clear();
     absl::flat_hash_set<uint64_t> seen;
-    std::vector<UserPos::Token> tokens;
 
     for (const UserDictionaryStorage::UserDictionary& dic :
          storage.dictionaries()) {
@@ -206,11 +205,9 @@ class UserDictionary::TokensIndex {
         } else {
           const absl::string_view comment =
               absl::StripAsciiWhitespace(entry.comment());
-          tokens.clear();
-          user_pos_.GetTokens(reading, entry.value(),
-                              user_dictionary::GetStringPosType(entry.pos()),
-                              &tokens);
-          for (auto& token : tokens) {
+          for (auto& token : user_pos_.GetTokens(
+                   reading, entry.value(),
+                   user_dictionary::GetStringPosType(entry.pos()))) {
             strings::Assign(token.comment, comment);
             user_pos_tokens_.push_back(std::move(token));
           }
