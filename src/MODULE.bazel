@@ -33,7 +33,7 @@ module(name = "mozc")
 # https://github.com/abseil/abseil-cpp
 bazel_dep(
     name = "abseil-cpp",
-    version = "20250814.0",
+    version = "20250814.1",
     repo_name = "com_google_absl",
 )
 
@@ -41,7 +41,7 @@ bazel_dep(
 # https://github.com/protocolbuffers/protobuf
 bazel_dep(
     name = "protobuf",
-    version = "32.0",
+    version = "33.4",
     repo_name = "com_google_protobuf",
 )
 
@@ -64,7 +64,7 @@ bazel_dep(
 # https://github.com/bazelbuild/bazel-skylib/
 bazel_dep(
     name = "bazel_skylib",
-    version = "1.8.1",
+    version = "1.8.2",
 )
 
 # rules_pkg: 1.1.0 2025-03-06
@@ -86,7 +86,7 @@ single_version_override(
 # https://github.com/bazelbuild/rules_python/
 bazel_dep(
     name = "rules_python",
-    version = "1.5.4",
+    version = "1.8.0",
 )
 
 # Bazel macOS build (4.1.2 2025-08-07)
@@ -103,7 +103,7 @@ bazel_dep(
 ## https://github.com/bazelbuild/apple_support/blob/d87e8b07f3345e750834dbb6ce38c7c7d3b8b44b/README.md#bazel-7-setup
 bazel_dep(
     name = "apple_support",
-    version = "1.23.1",
+    version = "1.24.2",
     repo_name = "build_bazel_apple_support",
 )
 
@@ -123,7 +123,7 @@ bazel_dep(
 # https://github.com/bazelbuild/rules_cc/
 bazel_dep(
     name = "rules_cc",
-    version = "0.2.2",
+    version = "0.2.16",
 )
 single_version_override(
     module_name = "rules_cc",
@@ -134,7 +134,7 @@ single_version_override(
         "bazel/rules_cc_windows_cc_configure.bzl.patch",
         "bazel/rules_cc_windows_cc_toolchain_config.bzl.patch",
     ],
-    version = "0.2.2",
+    version = "0.2.16",
 )
 
 cc_configure = use_extension(

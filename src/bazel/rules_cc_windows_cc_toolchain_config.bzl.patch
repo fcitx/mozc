@@ -1,6 +1,6 @@
 --- cc/private/toolchain/windows_cc_toolchain_config.bzl
 +++ cc/private/toolchain/windows_cc_toolchain_config.bzl
-@@ -89,7 +89,7 @@ all_link_actions = [
+@@ -96,7 +96,7 @@
  ]
  
  def _use_msvc_toolchain(ctx):
@@ -9,20 +9,12 @@
  
  def _impl(ctx):
      if _use_msvc_toolchain(ctx):
-@@ -752,7 +752,6 @@
+@@ -813,7 +813,7 @@
+                     ],
+                     flag_groups = [
                          flag_group(
-                             flags = [
-                                 "/DNOMINMAX",
--                                "/D_WIN32_WINNT=0x0601",
-                                 "/D_CRT_SECURE_NO_DEPRECATE",
-                                 "/D_CRT_SECURE_NO_WARNINGS",
-                                 "/bigobj",
-@@ -762,7 +761,7 @@
-                                 "/wd4291",
-                                 "/wd4250",
-                                 "/wd4996",
--                            ],
-+                            ] + ctx.attr.default_compile_flags,
+-                            flags = default_compile_flags_list,
++                            flags = default_compile_flags_list + ctx.attr.default_compile_flags,
                          ),
                      ],
                  ),
