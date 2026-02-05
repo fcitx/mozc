@@ -43,7 +43,7 @@ jobs:
           useradd -m builduser
       - name: Install dependencies
         run: |
-          pacman -Syu --noconfirm base-devel clang cmake ninja extra-cmake-modules fmt libuv boost git qt6-base qt6-wayland libxkbcommon qt6-webengine bazel python
+          pacman -Syu --noconfirm base-devel clang cmake ninja extra-cmake-modules fmt libuv boost git qt6-base qt6-wayland libxkbcommon qt6-webengine bazelisk python
       - uses: actions/checkout@v4
         with:
           repository: fcitx/fcitx5
