@@ -142,6 +142,10 @@ bool Engine::ClearUnusedUserPrediction() {
   return converter_ && converter_->predictor().ClearUnusedHistory();
 }
 
+bool Engine::AddUserHistory(absl::string_view key, absl::string_view value) {
+  return converter_ && converter_->AddUserHistory(key, value);
+}
+
 bool Engine::MaybeReloadEngine(EngineReloadResponse* response) {
   if (!converter_ || always_wait_for_testing_) {
     loader_.Wait();

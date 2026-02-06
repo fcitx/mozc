@@ -72,8 +72,12 @@ class PredictorInterface {
   virtual bool ClearUnusedHistory() { return true; }
 
   // Clears a specific history data of UserHistoryPredictor.
-  virtual bool ClearHistoryEntry(const absl::string_view key,
-                                 const absl::string_view value) {
+  virtual bool ClearHistoryEntry(absl::string_view key,
+                                 absl::string_view value) {
+    return true;
+  }
+
+  virtual bool AddHistoryEntry(absl::string_view key, absl::string_view value) {
     return true;
   }
 

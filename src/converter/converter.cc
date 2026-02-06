@@ -45,6 +45,7 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/random/random.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -661,19 +662,48 @@ bool Converter::Wait() {
   return predictor().Wait();
 }
 
-std::optional<std::string> Converter::GetReading(absl::string_view text) const {
+bool Converter::AddUserHistory(absl::string_view key, absl::string_view value) {
+  value = absl::StripAsciiWhitespace(value);
+  key = absl::StripAsciiWhitespace(key);
+
+  static constexpr int kMaxValueSize = 128;
+  if (value.empty() || value.size() >= kMaxValueSize) {
+    return false;
+  }
+
+  // When key is empty, use reverse conversion.
+  std::string reading;
+  if (key.empty()) {
+    auto result = GetReading(value, /* multi_segment */ true);
+    if (!result.has_value()) return false;
+    reading = std::move(result.value());
+    key = reading;
+  }
+
+  return predictor().AddHistoryEntry(key, value);
+}
+
+std::optional<std::string> Converter::GetReading(absl::string_view text,
+                                                 bool multi_segment) const {
   Segments segments;
   if (!StartReverseConversion(&segments, text)) {
     LOG(ERROR) << "Reverse conversion failed to get the reading of " << text;
     return std::nullopt;
   }
-  if (segments.conversion_segments_size() != 1 ||
-      segments.conversion_segment(0).candidates_size() == 0) {
+
+  if (segments.conversion_segments_size() == 0 ||
+      (!multi_segment && segments.conversion_segments_size() > 1)) {
     LOG(ERROR) << "Reverse conversion returned an invalid result for " << text;
     return std::nullopt;
   }
-  return std::move(
-      segments.mutable_conversion_segment(0)->mutable_candidate(0)->value);
+
+  std::string reading;
+  for (const Segment& segment : segments) {
+    if (segment.candidates_size() == 0) return std::nullopt;
+    absl::StrAppend(&reading, segment.candidate(0).value);
+  }
+
+  return reading;
 }
 
 void Converter::PopulateReadingOfCommittedCandidateIfMissing(

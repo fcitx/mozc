@@ -157,6 +157,10 @@ class Converter final : public ConverterInterface {
   // Waits for pending operations executed in different threads.
   bool Wait();
 
+  // Adds `key` and `value` to the user history storage.
+  // Reverse conversion is used when the `key` is empty.
+  bool AddUserHistory(absl::string_view key, absl::string_view value);
+
   prediction::PredictorInterface& predictor() const {
     DCHECK(predictor_);
     return *predictor_;
@@ -222,7 +226,11 @@ class Converter final : public ConverterInterface {
   bool GetLastConnectivePart(absl::string_view preceding_text, std::string* key,
                              std::string* value, uint16_t* id) const;
 
-  std::optional<std::string> GetReading(absl::string_view text) const;
+  // Gets the reading of `text`.
+  // If `multi_segment` is true, `text` can consist of multiple segments.
+  // Otherwise, only allows `text` to be one dictionary entry.
+  std::optional<std::string> GetReading(absl::string_view text,
+                                        bool multi_segment = false) const;
 
   void PopulateReadingOfCommittedCandidateIfMissing(Segments* segments) const;
 

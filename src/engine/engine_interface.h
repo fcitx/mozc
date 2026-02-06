@@ -88,6 +88,11 @@ class EngineInterface {
   // Clears unused user prediction data.
   virtual bool ClearUnusedUserPrediction() { return true; }
 
+  // Adds key/value to user history data. `key` can be empty.
+  virtual bool AddUserHistory(absl::string_view key, absl::string_view value) {
+    return true;
+  }
+
   // Gets the user POS list.
   virtual std::vector<std::string> GetPosList() const { return {}; }
 

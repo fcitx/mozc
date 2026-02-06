@@ -545,6 +545,35 @@ bool UserHistoryPredictor::ClearHistoryEntry(absl::string_view key,
   return deleted;
 }
 
+bool UserHistoryPredictor::AddHistoryEntry(absl::string_view key,
+                                           absl::string_view value) {
+  key = absl::StripAsciiWhitespace(key);
+  value = absl::StripAsciiWhitespace(value);
+
+  if (!Util::IsValidUtf8(key) || !Util::IsValidUtf8(value) || key.empty() ||
+      value.empty() || key.size() > kMaxStringLength ||
+      value.size() > kMaxStringLength || !StartsWithValidLetter(value) ||
+      EndsWithPunctuation(value)) {
+    return false;
+  }
+
+  EntrySnapshot entry =
+      storage_.Insert(UserHistoryStorage::Fingerprint(key, value));
+  if (!entry) {
+    return false;
+  }
+
+  entry->set_key(key);
+  entry->set_value(value);
+  entry->set_removed(false);
+  entry->set_suggestion_freq(entry->suggestion_freq() + 1);
+
+  const uint64_t last_access_time = absl::ToUnixSeconds(Clock::GetAbslTime());
+  entry->set_last_access_time(last_access_time);
+
+  return true;
+}
+
 // static
 std::optional<int> UserHistoryPredictor::GetBigramEntryLruOrder(
     const Entry& entry, const Entry& prev_entry) {

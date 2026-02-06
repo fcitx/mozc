@@ -1002,6 +1002,11 @@ message ApplicationInfo {
   reserved 3;  // deprecated timezone_offset
 }
 
+message UserHistoryData {
+  optional string key = 1;
+  optional string value = 2;
+}
+
 message Input {
   enum CommandType {
     NONE = 0;
@@ -1090,10 +1095,13 @@ message Input {
     // Import user dictionary from client.
     IMPORT_USER_DICTIONARY = 31;
 
+    // Add a specific entry to the user history storage.
+    ADD_USER_HISTORY = 32;
+
     // Number of commands.
     // When new command is added, the command should use below number
     // and NUM_OF_COMMANDS should be incremented.
-    NUM_OF_COMMANDS = 32;
+    NUM_OF_COMMANDS = 33;
   }
   required CommandType type = 1;
 
@@ -1171,6 +1179,8 @@ message Input {
   optional bool request_suggestion = 14 [default = true];
 
   optional mozc.EngineReloadRequest engine_reload_request = 15;
+
+  optional UserHistoryData user_history_data = 18;
 
   reserved 16;  // deprecated check_spelling_request
 }

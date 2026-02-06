@@ -262,6 +262,12 @@ bool SessionHandler::ClearUnusedUserPrediction(commands::Command* command) {
   return true;
 }
 
+bool SessionHandler::AddUserHistory(commands::Command* command) {
+  const auto& user_history_data = command->input().user_history_data();
+  return engine_->AddUserHistory(user_history_data.key(),
+                                 user_history_data.value());
+}
+
 bool SessionHandler::GetConfig(commands::Command* command) {
   MOZC_VLOG(1) << "Getting config";
   *command->mutable_output()->mutable_config() =
@@ -358,6 +364,9 @@ bool SessionHandler::EvalCommand(commands::Command* command) {
       break;
     case commands::Input::IMPORT_USER_DICTIONARY:
       eval_succeeded = ImportUserDictionary(command);
+      break;
+    case commands::Input::ADD_USER_HISTORY:
+      eval_succeeded = AddUserHistory(command);
       break;
     case commands::Input::SEND_ENGINE_RELOAD_REQUEST:
       eval_succeeded = SendEngineReloadRequest(command);

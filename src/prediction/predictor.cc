@@ -155,9 +155,14 @@ bool Predictor::ClearUnusedHistory() {
   return user_history_predictor_->ClearUnusedHistory();
 }
 
-bool Predictor::ClearHistoryEntry(const absl::string_view key,
-                                  const absl::string_view value) {
+bool Predictor::ClearHistoryEntry(absl::string_view key,
+                                  absl::string_view value) {
   return user_history_predictor_->ClearHistoryEntry(key, value);
+}
+
+bool Predictor::AddHistoryEntry(absl::string_view key,
+                                absl::string_view value) {
+  return user_history_predictor_->AddHistoryEntry(key, value);
 }
 
 bool Predictor::Wait() { return user_history_predictor_->Wait(); }

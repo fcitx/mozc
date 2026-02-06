@@ -77,6 +77,9 @@ class Predictor : public PredictorInterface {
   bool ClearHistoryEntry(absl::string_view key,
                          absl::string_view value) override;
 
+  // Adds key/value to the user history storage.
+  bool AddHistoryEntry(absl::string_view key, absl::string_view value) override;
+
   // Syncs user history.
   bool Sync() override;
 

@@ -5730,4 +5730,26 @@ TEST_F(UserHistoryPredictorTest, MaybeRewritePrefixSpace) {
   }
 }
 
+TEST_F(UserHistoryPredictorTest, AddHistoryEntryTest) {
+  UserHistoryPredictor* predictor = GetUserHistoryPredictorWithClearedHistory();
+
+  EXPECT_FALSE(IsSuggested(predictor, "とうきょう", "東京"));
+  EXPECT_TRUE(predictor->AddHistoryEntry("とうきょう", "東京"));
+  EXPECT_TRUE(IsSuggested(predictor, "とうきょう", "東京"));
+
+  // Empty chars
+  EXPECT_FALSE(predictor->AddHistoryEntry("", ""));
+  EXPECT_FALSE(predictor->AddHistoryEntry("おおさか", ""));
+  EXPECT_FALSE(predictor->AddHistoryEntry("", "大阪"));
+
+  // starts or ends with invalid chars
+  EXPECT_FALSE(predictor->AddHistoryEntry("おおさか", "大阪."));
+  EXPECT_FALSE(predictor->AddHistoryEntry("おおさか", ".大阪"));
+
+  // Removes head and trailing whitespaces.
+  EXPECT_FALSE(IsSuggested(predictor, "おおさか", "大阪"));
+  EXPECT_TRUE(predictor->AddHistoryEntry(" おおさか   ", "  大阪 "));
+  EXPECT_TRUE(IsSuggested(predictor, "おおさか", "大阪"));
+}
+
 }  // namespace mozc::prediction
