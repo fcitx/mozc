@@ -145,6 +145,10 @@ struct Result {
   // Adjustment for `wcost` made by the typing correction. This value can be
   // zero, positive (penalty) or negative (bonus), and it is added to `wcost`.
   int typing_correction_adjustment = 0;
+
+  // The probability of post correction. When zero, this candidate is not
+  // handed by the post-correction component.
+  float post_correction_prob = 0.0;
 #ifndef NDEBUG
   std::string log;
 #endif  // NDEBUG
@@ -167,11 +171,12 @@ struct Result {
         &sink,
         "key: %s, value: %s, types: %d, wcost: %d, cost: %d, cost_before: %d, "
         "lid: %d, rid: %d, attrs: %d, bdd: %s, consumed_key_size: %d, penalty: "
-        "%d, tc_adjustment: %d, removed: %v",
+        "%d, tc_adjustment: %d, removed: %v, post_correction_prob: %f",
         r.key, r.value, r.types, r.wcost, r.cost, r.cost_before_rescoring,
         r.lid, r.rid, r.candidate_attributes,
         absl::StrJoin(r.inner_segment_boundary, ","), r.consumed_key_size,
-        r.penalty, r.typing_correction_adjustment, r.removed);
+        r.penalty, r.typing_correction_adjustment, r.removed,
+        r.post_correction_prob);
 #ifndef NDEBUG
     sink.Append(", log:\n");
     for (absl::string_view line : absl::StrSplit(r.log, '\n')) {
