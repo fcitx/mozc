@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "composer/composer.h"
 #include "converter/segments.h"
 #include "dictionary/dictionary_interface.h"
@@ -157,7 +158,7 @@ class DateRewriter : public RewriterInterface {
   // number of segments processed. The `num_done_out` is not modified if the
   // rewrite is not done.
   static bool RewriteDate(Segment* segment,
-                          const std::vector<std::string>& extra_formats,
+                          absl::Span<const std::string> extra_formats,
                           size_t& num_done_out);
   static bool RewriteEra(Segments::range segments_range, size_t& num_done_out);
   static bool RewriteAd(Segments::range segments_range, size_t& num_done_out);
