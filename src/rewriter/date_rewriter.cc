@@ -60,6 +60,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/civil_time.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "base/clock.h"
 #include "base/japanese_util.h"
 #include "base/number_util.h"
@@ -898,7 +899,7 @@ absl::CivilMinute GetCivilMinuteWithDiff(int type, int diff,
 
 std::vector<std::string> GetConversions(
     const DateRewriter::DateData& data,
-    const std::vector<std::string>& extra_formats) {
+    absl::Span<const std::string> extra_formats) {
   std::vector<std::string> results;
   const absl::TimeZone tz = Clock::GetTimeZone();
   const absl::CivilMinute cm = GetCivilMinuteWithDiff(data.type, data.diff, tz);
@@ -966,7 +967,7 @@ std::vector<std::string> GetConversions(
 }  // namespace
 
 bool DateRewriter::RewriteDate(Segment* segment,
-                               const std::vector<std::string>& extra_formats,
+                               absl::Span<const std::string> extra_formats,
                                size_t& num_done_out) {
   absl::string_view key = segment->key();
   auto rit = std::find_if(std::begin(kDateData), std::end(kDateData),
@@ -1532,7 +1533,7 @@ bool DateRewriter::Rewrite(const ConversionRequest& request,
   }
 
   bool modified = false;
-const std::vector<std::string> extra_formats = GetExtraFormats(dictionary_);
+  const std::vector<std::string> extra_formats = GetExtraFormats(dictionary_);
   size_t num_done = 1;
   for (Segments::range rest_segments = conversion_segments;
        !rest_segments.empty(); rest_segments = rest_segments.drop(num_done)) {

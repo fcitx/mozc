@@ -122,6 +122,10 @@ class EngineConverter : public EngineConverterInterface {
   void Commit(const composer::Composer& composer,
               const commands::Context& context) override;
 
+  // Syncs user-modified context.
+  void CommitContext(const composer::Composer& composer,
+                     const commands::Context& context) override;
+
   // Fixes the suggestion candidate. Stores the number of characters in the key
   // of the committed candidate to committed_key_size.
   // For example, assume that "日本語" was suggested as a candidate for "にほ".

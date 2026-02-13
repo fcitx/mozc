@@ -61,6 +61,9 @@ class Predictor : public PredictorInterface {
   void Finish(const ConversionRequest& request,
               absl::Span<const Result> results, uint32_t revert_id) override;
 
+  // Syncs user-modified context.
+  void CommitContext(const ConversionRequest& request) const override;
+
   // Reverts the last Finish operation.
   void Revert(uint32_t revert_id) override;
 
@@ -73,6 +76,9 @@ class Predictor : public PredictorInterface {
   // Clears a specific user history data of UserHistoryPredictor.
   bool ClearHistoryEntry(absl::string_view key,
                          absl::string_view value) override;
+
+  // Adds key/value to the user history storage.
+  bool AddHistoryEntry(absl::string_view key, absl::string_view value) override;
 
   // Syncs user history.
   bool Sync() override;

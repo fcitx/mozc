@@ -62,6 +62,9 @@ class PredictorInterface {
   // Reverts the last Finish operation.
   virtual void Revert(uint32_t revert_id) {}
 
+  // Syncs user-modified context.
+  virtual void CommitContext(const ConversionRequest& request) const {}
+
   // Clears all history data of UserHistoryPredictor.
   virtual bool ClearAllHistory() { return true; }
 
@@ -69,8 +72,12 @@ class PredictorInterface {
   virtual bool ClearUnusedHistory() { return true; }
 
   // Clears a specific history data of UserHistoryPredictor.
-  virtual bool ClearHistoryEntry(const absl::string_view key,
-                                 const absl::string_view value) {
+  virtual bool ClearHistoryEntry(absl::string_view key,
+                                 absl::string_view value) {
+    return true;
+  }
+
+  virtual bool AddHistoryEntry(absl::string_view key, absl::string_view value) {
     return true;
   }
 

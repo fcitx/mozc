@@ -603,6 +603,7 @@ int main(int argc, char** argv) {
   } else if (absl::GetFlag(FLAGS_engine_type) == "mobile") {
     mozc::request_test_util::FillMobileRequest(&request);
     config.set_use_kana_modifier_insensitive_conversion(true);
+    config.set_use_typing_correction(true);
   } else {
     LOG(FATAL) << "Invalid type: --engine_type="
                << absl::GetFlag(FLAGS_engine_type);

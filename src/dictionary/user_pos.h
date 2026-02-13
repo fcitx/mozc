@@ -34,6 +34,7 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -97,7 +98,7 @@ class UserPos {
     // Attribute is used to dynamically assign cost, and is independent from the
     // POS.
     enum Attribute {
-      SHORTCUT = 1,  // Added via android shortcut, which has no explicit POS.
+      NO_POS = 1,           // The default POS on Android.
       ISOLATED_WORD = 2,    // 短縮よみ
       SUGGESTION_ONLY = 4,  //  SUGGESTION only.
       NON_JA_LOCALE = 8     // Locale is not Japanese.
@@ -108,17 +109,6 @@ class UserPos {
       return attributes & attr;
     }
     inline void remove_attribute(Attribute attr) { attributes &= ~attr; }
-
-    void swap(Token& other) noexcept {
-      static_assert(std::is_nothrow_swappable_v<std::string>);
-      using std::swap;
-      swap(key, other.key);
-      swap(value, other.value);
-      swap(id, other.id);
-      swap(attributes, other.attributes);
-      swap(comment, other.comment);
-    }
-    friend void swap(Token& lhs, Token& rhs) noexcept { lhs.swap(rhs); }
   };
 
   class iterator {
@@ -229,19 +219,20 @@ class UserPos {
   virtual std::vector<std::string> GetPosList() const { return pos_list_; }
   virtual int GetPosListDefaultIndex() const { return pos_list_default_index_; }
   virtual bool IsValidPos(absl::string_view pos) const;
-  virtual bool GetPosIds(absl::string_view pos, uint16_t* id) const;
-  virtual bool GetTokens(absl::string_view key, absl::string_view value,
-                         absl::string_view pos, absl::string_view locale,
-                         std::vector<Token>* tokens) const;
+  virtual std::optional<uint16_t> GetPosIds(absl::string_view pos) const;
+  virtual std::vector<UserPos::Token> GetTokens(absl::string_view key,
+                                                absl::string_view value,
+                                                absl::string_view pos,
+                                                absl::string_view locale) const;
 
   iterator begin() const { return iterator(token_array_data_.data()); }
   iterator end() const {
     return iterator(token_array_data_.data() + token_array_data_.size());
   }
 
-  bool GetTokens(absl::string_view key, absl::string_view value,
-                 absl::string_view pos, std::vector<Token>* tokens) const {
-    return GetTokens(key, value, pos, "", tokens);
+  std::vector<Token> GetTokens(absl::string_view key, absl::string_view value,
+                               absl::string_view pos) const {
+    return GetTokens(key, value, pos, "");
   }
 
  protected:

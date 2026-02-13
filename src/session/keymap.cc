@@ -294,6 +294,11 @@ bool KeyMapManager::LoadStreamWithErrors(std::istream* ifs,
   key_event.Clear();
   KeyParser::ParseKey("Shift", &key_event);
   keymap_composition_.AddRule(key_event, CompositionState::INSERT_CHARACTER);
+
+  key_event.Clear();
+  key_event.set_special_key(commands::KeyEvent::IME_ACTION);
+  keymap_precomposition_.AddRule(key_event, PrecompositionState::IME_ACTION);
+
   return true;
 }
 

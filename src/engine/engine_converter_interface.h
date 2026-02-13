@@ -134,6 +134,12 @@ class EngineConverterInterface {
   virtual void Commit(const composer::Composer& composer,
                       const commands::Context& context) = 0;
 
+  // Commit the current context and update the converter's state.
+  // Used for synchronizing context updates with the converter whenever the user
+  // performs an edit (e.g., via Backspace).
+  virtual void CommitContext(const composer::Composer& composer,
+                             const commands::Context& context) = 0;
+
   // Fix the suggestion candidate.  True is returned if the selected
   // candidate is successfully committed.
   virtual bool CommitSuggestionByIndex(size_t index,

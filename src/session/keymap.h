@@ -91,6 +91,9 @@ struct PrecompositionState {
     CANCEL_AND_IME_OFF,       // Cancel composition and turn off IME
     COMMIT_FIRST_SUGGESTION,  // ATOK's Shift-Enter style
     PREDICT_AND_CONVERT,
+
+    // For search button on mobile device.
+    IME_ACTION,
   };
 };
 

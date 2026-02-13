@@ -227,6 +227,10 @@ class Session {
   // Stops key toggling in the composer.
   bool StopKeyToggling(mozc::commands::Command* command);
 
+  // Special IME action key on mobile, such as Search, Send, Go, and Next
+  // keys.
+  bool ImeAction(mozc::commands::Command* command);
+
   bool ReportBug(mozc::commands::Command* command);
 
   void SetConfig(std::shared_ptr<const mozc::config::Config> config);

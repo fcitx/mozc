@@ -224,7 +224,7 @@ TEST(KeyParserTest, Combination) {
 
 TEST(KeyParserTest, GetSpecialKeyString) {
   // Strings are defined in gui/config_dialog/keybinding_editor.cc
-  EXPECT_EQ(KeyEvent::NUM_SPECIALKEYS, 77);
+  EXPECT_EQ(KeyEvent::NUM_SPECIALKEYS, 78);
   EXPECT_EQ(KeyParser::GetSpecialKeyString(KeyEvent::ON), "on");
   EXPECT_EQ(KeyParser::GetSpecialKeyString(KeyEvent::OFF), "off");
   EXPECT_EQ(KeyParser::GetSpecialKeyString(KeyEvent::LEFT), "left");
@@ -307,6 +307,7 @@ TEST(KeyParserTest, GetSpecialKeyString) {
   EXPECT_EQ(KeyParser::GetSpecialKeyString(KeyEvent::VIRTUAL_UP), "virtualup");
   EXPECT_EQ(KeyParser::GetSpecialKeyString(KeyEvent::VIRTUAL_DOWN),
             "virtualdown");
+  EXPECT_EQ(KeyParser::GetSpecialKeyString(KeyEvent::IME_ACTION), "imeaction");
   EXPECT_EQ(KeyParser::GetSpecialKeyString(KeyEvent::UNDEFINED_KEY),
             "undefinedkey");
 }

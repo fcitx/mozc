@@ -698,6 +698,9 @@ bool Session::SendKeyPrecompositionState(commands::Command* command) {
       return EchoBackAndClearUndoContext(command);
     case keymap::PrecompositionState::RECONVERT:
       return RequestConvertReverse(command);
+
+    case keymap::PrecompositionState::IME_ACTION:
+      return ImeAction(command);
   }
   return false;
 }
@@ -2889,6 +2892,23 @@ bool Session::HandleIndirectImeOnOff(commands::Command* command) {
       return false;
     }
   }
+  return true;
+}
+
+bool Session::ImeAction(commands::Command* command) {
+  if (context_->state() != ImeContext::PRECOMPOSITION ||
+      context_->composer().GetInputFieldType() != commands::Context::NORMAL) {
+    return false;
+  }
+
+  // ImeAction is triggered when the mobile-specific IME action buttons such as
+  // Search, Go, or Next, are tapped. After a user finishes an IME session, they
+  // might still perform manual edits using the Backspace key. To sync these
+  // edits with the converter, we call CommitContext. Typical use case is the
+  // partial-revert on user history training.
+  context_->mutable_converter()->CommitContext(context_->composer(),
+                                               command->input().context());
+
   return true;
 }
 

@@ -94,6 +94,7 @@ class Engine : public EngineInterface {
   bool ClearUserHistory() override;
   bool ClearUserPrediction() override;
   bool ClearUnusedUserPrediction() override;
+  bool AddUserHistory(absl::string_view key, absl::string_view value) override;
 
   absl::Status ReloadModules(std::unique_ptr<engine::Modules> modules);
 

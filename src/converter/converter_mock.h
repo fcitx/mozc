@@ -97,6 +97,8 @@ class StrictMockConverter : public ConverterInterface {
                size_t start_segment_index,
                absl::Span<const uint8_t> new_size_array),
               (const, override));
+  MOCK_METHOD(void, CommitContext, (const ConversionRequest& request),
+              (const, override));
 };
 
 typedef ::testing::NiceMock<StrictMockConverter> MockConverter;

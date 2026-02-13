@@ -5486,6 +5486,24 @@ TEST_F(UserHistoryPredictorTest, PartialRevert) {
     EXPECT_TRUE(has_entry("きょうとだいがく", "京都大学"));
     EXPECT_FALSE(has_entry("そつぎょうした", "卒業した"));
   }
+
+  // Feed new context via CommitContext.
+  {
+    init_predictor();
+
+    context_.set_preceding_text("佐藤さんは京都");
+    SegmentsProxy segments_proxy;
+    const ConversionRequest convreq =
+        SetUpInputForSuggestion("", &composer_, &segments_proxy);
+    predictor->CommitContext(convreq);
+
+    EXPECT_TRUE(has_entry("さとうさんは", "佐藤さんは"));
+    EXPECT_TRUE(has_entry("さとうさん", "佐藤さん"));
+    EXPECT_TRUE(has_entry("きょうと", "京都"));
+    EXPECT_FALSE(has_entry("きょうとだいがくを", "京都大学を"));
+    EXPECT_FALSE(has_entry("きょうとだいがく", "京都大学"));
+    EXPECT_FALSE(has_entry("そつぎょうした", "卒業した"));
+  }
 }
 
 TEST_F(UserHistoryPredictorTest, PredictPrefixSpace) {
@@ -5710,6 +5728,28 @@ TEST_F(UserHistoryPredictorTest, MaybeRewritePrefixSpace) {
     EXPECT_TRUE(result.display_value.empty());
     EXPECT_TRUE(result.inner_segment_boundary.empty());
   }
+}
+
+TEST_F(UserHistoryPredictorTest, AddHistoryEntryTest) {
+  UserHistoryPredictor* predictor = GetUserHistoryPredictorWithClearedHistory();
+
+  EXPECT_FALSE(IsSuggested(predictor, "とうきょう", "東京"));
+  EXPECT_TRUE(predictor->AddHistoryEntry("とうきょう", "東京"));
+  EXPECT_TRUE(IsSuggested(predictor, "とうきょう", "東京"));
+
+  // Empty chars
+  EXPECT_FALSE(predictor->AddHistoryEntry("", ""));
+  EXPECT_FALSE(predictor->AddHistoryEntry("おおさか", ""));
+  EXPECT_FALSE(predictor->AddHistoryEntry("", "大阪"));
+
+  // starts or ends with invalid chars
+  EXPECT_FALSE(predictor->AddHistoryEntry("おおさか", "大阪."));
+  EXPECT_FALSE(predictor->AddHistoryEntry("おおさか", ".大阪"));
+
+  // Removes head and trailing whitespaces.
+  EXPECT_FALSE(IsSuggested(predictor, "おおさか", "大阪"));
+  EXPECT_TRUE(predictor->AddHistoryEntry(" おおさか   ", "  大阪 "));
+  EXPECT_TRUE(IsSuggested(predictor, "おおさか", "大阪"));
 }
 
 }  // namespace mozc::prediction

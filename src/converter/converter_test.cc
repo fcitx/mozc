@@ -231,6 +231,10 @@ class MockPredictor : public mozc::prediction::PredictorInterface {
               (const, override));
   MOCK_METHOD(void, Revert, (uint32_t), (override));
   MOCK_METHOD(absl::string_view, GetPredictorName, (), (const, override));
+  MOCK_METHOD(void, CommitContext, (const ConversionRequest&),
+              (const, override));
+  MOCK_METHOD(bool, AddHistoryEntry,
+              (absl::string_view key, absl::string_view value), (override));
 };
 
 class MockRewriter : public RewriterInterface {
@@ -2539,6 +2543,62 @@ TEST_F(ConverterTest, Bugfix424676259) {
   EXPECT_EQ(candidate.content_value, "３：３０");
   EXPECT_EQ(candidate.inner_segment_boundary,
             results[0].inner_segment_boundary);
+}
+
+TEST_F(ConverterTest, CommitContext) {
+  auto mock_predictor = absl::make_unique<MockPredictor>();
+  auto mock_rewriter = absl::make_unique<MockRewriter>();
+
+  EXPECT_CALL(*mock_predictor, CommitContext(_)).WillOnce(Return());
+
+  std::unique_ptr<engine::Modules> modules =
+      engine::Modules::Create(std::make_unique<testing::MockDataManager>())
+          .value();
+
+  auto converter = std::make_unique<Converter>(
+      std::move(modules),
+      [](const engine::Modules& modules) {
+        return std::make_unique<ImmutableConverter>(modules);
+      },
+      [&mock_predictor](
+          const engine::Modules& modules, const ConverterInterface& converter,
+          const ImmutableConverterInterface& immutable_converter) {
+        return std::move(mock_predictor);
+      },
+      [&mock_rewriter](const engine::Modules& modules) {
+        return std::move(mock_rewriter);
+      });
+
+  const ConversionRequest convreq = ConversionRequestBuilder().Build();
+  converter->CommitContext(convreq);
+}
+
+TEST_F(ConverterTest, AddUserHistory) {
+  auto mock_predictor = absl::make_unique<MockPredictor>();
+  auto mock_rewriter = absl::make_unique<MockRewriter>();
+
+  EXPECT_CALL(*mock_predictor, AddHistoryEntry("key", "value"))
+      .WillOnce(Return(true));
+
+  std::unique_ptr<engine::Modules> modules =
+      engine::Modules::Create(std::make_unique<testing::MockDataManager>())
+          .value();
+
+  auto converter = std::make_unique<Converter>(
+      std::move(modules),
+      [](const engine::Modules& modules) {
+        return std::make_unique<ImmutableConverter>(modules);
+      },
+      [&mock_predictor](
+          const engine::Modules& modules, const ConverterInterface& converter,
+          const ImmutableConverterInterface& immutable_converter) {
+        return std::move(mock_predictor);
+      },
+      [&mock_rewriter](const engine::Modules& modules) {
+        return std::move(mock_rewriter);
+      });
+
+  EXPECT_TRUE(converter->AddUserHistory("key", "value"));
 }
 
 }  // namespace converter

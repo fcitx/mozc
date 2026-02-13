@@ -114,7 +114,7 @@ bool DictionaryGenerator::Output(std::ostream& os) const {
     } else if (pos == "括弧閉") {
       id = close_bracket_id_;
     } else {
-      CHECK(user_pos_->GetPosIds(pos, &id)) << "Unknown POS type: " << pos;
+      id = user_pos_->GetPosIds(pos).value();
     }
 
     // Output in mozc dictionary format

@@ -137,6 +137,10 @@ void Predictor::Finish(const ConversionRequest& request,
   user_history_predictor_->Finish(request, results, revert_id);
 }
 
+void Predictor::CommitContext(const ConversionRequest& request) const {
+  user_history_predictor_->CommitContext(request);
+}
+
 // Since DictionaryPredictor is immutable, no need
 // to call DictionaryPredictor::Revert/Clear*/Finish methods.
 void Predictor::Revert(uint32_t revert_id) {
@@ -151,9 +155,14 @@ bool Predictor::ClearUnusedHistory() {
   return user_history_predictor_->ClearUnusedHistory();
 }
 
-bool Predictor::ClearHistoryEntry(const absl::string_view key,
-                                  const absl::string_view value) {
+bool Predictor::ClearHistoryEntry(absl::string_view key,
+                                  absl::string_view value) {
   return user_history_predictor_->ClearHistoryEntry(key, value);
+}
+
+bool Predictor::AddHistoryEntry(absl::string_view key,
+                                absl::string_view value) {
+  return user_history_predictor_->AddHistoryEntry(key, value);
 }
 
 bool Predictor::Wait() { return user_history_predictor_->Wait(); }

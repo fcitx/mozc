@@ -78,6 +78,9 @@ class UserHistoryPredictor : public PredictorInterface {
   // Revert last Finish operation.
   void Revert(uint32_t revert_id) override;
 
+  // Syncs user-modified context.
+  void CommitContext(const ConversionRequest& request) const override;
+
   // Sync user history data to local file.
   bool Sync() override;
 
@@ -93,6 +96,9 @@ class UserHistoryPredictor : public PredictorInterface {
   // Clears a specific history entry.
   bool ClearHistoryEntry(absl::string_view key,
                          absl::string_view value) override;
+
+  // Adds key/value to user history storage.
+  bool AddHistoryEntry(absl::string_view key, absl::string_view value) override;
 
   // Waits for syncer task.
   bool Wait() override;

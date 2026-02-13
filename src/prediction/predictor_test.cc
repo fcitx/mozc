@@ -29,6 +29,7 @@
 
 #include "prediction/predictor.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -404,15 +405,18 @@ TEST_F(MixedDecodingPredictorTest, FillPos) {
 }
 
 TEST_F(MixedDecodingPredictorTest, MixCandidates) {
-  auto is_top_no_deletable = [&](const std::vector<Result>& predictor_results,
-                                 const std::vector<Result>& history_results) {
+  auto is_top_no_deletable = [&](std::vector<Result> predictor_results,
+                                 std::vector<Result> history_results) {
     auto mock_dictionary_predictor = std::make_unique<MockPredictor>();
     auto mock_history_predictor = std::make_unique<MockPredictor>();
 
+    const size_t expected_size =
+        predictor_results.size() + history_results.size();
+
     EXPECT_CALL(*mock_history_predictor, Predict(_))
-        .WillOnce(Return(history_results));
+        .WillOnce(Return(std::move(history_results)));
     EXPECT_CALL(*mock_dictionary_predictor, Predict(_))
-        .WillOnce(Return(predictor_results));
+        .WillOnce(Return(std::move(predictor_results)));
 
     auto predictor =
         std::make_unique<Predictor>(std::move(mock_dictionary_predictor),
@@ -422,8 +426,7 @@ TEST_F(MixedDecodingPredictorTest, MixCandidates) {
         CreateConversionRequest(ConversionRequest::SUGGESTION);
     const std::vector<Result> results = predictor->Predict(convreq);
 
-    EXPECT_EQ(results.size(),
-              predictor_results.size() + history_results.size());
+    EXPECT_EQ(results.size(), expected_size);
     return results[0].candidate_attributes & converter::Attribute::NO_DELETABLE;
   };
 
@@ -433,7 +436,8 @@ TEST_F(MixedDecodingPredictorTest, MixCandidates) {
     predictor_results[0].key = history_results[0].key = "key";
     predictor_results[0].value = history_results[0].value = "value";
 
-    EXPECT_TRUE(is_top_no_deletable(predictor_results, history_results));
+    EXPECT_TRUE(is_top_no_deletable(std::move(predictor_results),
+                                    std::move(history_results)));
   }
 
   {
@@ -445,7 +449,8 @@ TEST_F(MixedDecodingPredictorTest, MixCandidates) {
     predictor_results[0].value = "value1";
     history_results[0].value = "value2";
 
-    EXPECT_FALSE(is_top_no_deletable(predictor_results, history_results));
+    EXPECT_FALSE(is_top_no_deletable(std::move(predictor_results),
+                                     std::move(history_results)));
   }
 
   {
@@ -455,7 +460,8 @@ TEST_F(MixedDecodingPredictorTest, MixCandidates) {
     predictor_results[0].key = history_results[0].key = "key";
     predictor_results[0].value = history_results[0].value = "value";
 
-    EXPECT_FALSE(is_top_no_deletable(predictor_results, history_results));
+    EXPECT_FALSE(is_top_no_deletable(std::move(predictor_results),
+                                     std::move(history_results)));
   }
 }
 
