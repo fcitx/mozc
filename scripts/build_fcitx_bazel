@@ -2,4 +2,4 @@
 
 _BUILD_TARGETS="${_BUILD_TARGETS:-unix/fcitx:fcitx-mozc.so server:mozc_server gui/tool:mozc_tool}"
 
-bazel build -c opt --copt=-fPIC  --config oss_linux "$@" $_BUILD_TARGETS
+bazel build -c opt --copt=-fPIC  --config stable_channel --config oss_linux "$@" $_BUILD_TARGETS
