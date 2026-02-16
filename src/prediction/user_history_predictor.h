@@ -30,7 +30,6 @@
 #ifndef MOZC_PREDICTION_USER_HISTORY_PREDICTOR_H_
 #define MOZC_PREDICTION_USER_HISTORY_PREDICTOR_H_
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -44,10 +43,8 @@
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "base/container/freelist.h"
+#include "base/container/arena.h"
 #include "base/container/trie.h"
 #include "base/thread.h"
 #include "composer/query.h"
@@ -59,7 +56,6 @@
 #include "prediction/user_history_predictor.pb.h"
 #include "prediction/user_history_storage.h"
 #include "request/conversion_request.h"
-#include "storage/encrypted_string_storage.h"
 #include "storage/lru_cache.h"
 
 namespace mozc::prediction {
@@ -221,7 +217,7 @@ class UserHistoryPredictor : public PredictorInterface {
     // Default object pool size for EntryPriorityQueue
     static constexpr size_t kEntryPoolSize = 16;
     Agenda agenda_;
-    FreeList<Entry> pool_;
+    Arena<Entry> pool_;
     absl::flat_hash_set<size_t> seen_;
   };
 

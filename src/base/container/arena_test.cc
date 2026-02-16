@@ -27,35 +27,93 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef MOZC_CONVERTER_NODE_ALLOCATOR_H_
-#define MOZC_CONVERTER_NODE_ALLOCATOR_H_
-
-#include "absl/log/check.h"
 #include "base/container/arena.h"
-#include "converter/node.h"
+
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "testing/gmock.h"
+#include "testing/gunit.h"
+
+using ::testing::ElementsAre;
 
 namespace mozc {
+namespace {
 
-class NodeAllocator {
- public:
-  NodeAllocator() : node_arena_(1024) {}
-  NodeAllocator(const NodeAllocator&) = delete;
-  NodeAllocator& operator=(const NodeAllocator&) = delete;
+struct DestructorTracker {
+  ~DestructorTracker() { seq.push_back(val); }
 
-  Node* NewNode() {
-    Node* node = node_arena_.Alloc();
-    DCHECK(node);
-    node->Init();
-    return node;
-  }
-
-  // Frees all nodes allocateed by NewNode().
-  void Free() { node_arena_.Clear(); }
-
- private:
-  Arena<Node> node_arena_;
+  int val;
+  std::vector<int>& seq;
 };
 
-}  // namespace mozc
+TEST(ArenaTest, BasicAllocation) {
+  Arena<int> arena(2);
 
-#endif  // MOZC_CONVERTER_NODE_ALLOCATOR_H_
+  int* p1 = arena.Alloc(1);
+  int* p2 = arena.Alloc(2);
+  int* p3 = arena.Alloc(3);
+
+  EXPECT_EQ(*p1, 1);
+  EXPECT_EQ(*p2, 2);
+  EXPECT_EQ(*p3, 3);
+}
+
+TEST(ArenaTest, DestructorOrder) {
+  std::vector<int> seq;
+  {
+    Arena<DestructorTracker> arena(2);
+
+    static_cast<void>(arena.Alloc(1, seq));
+    static_cast<void>(arena.Alloc(2, seq));
+    static_cast<void>(arena.Alloc(3, seq));
+  }
+
+  EXPECT_THAT(seq, ElementsAre(3, 2, 1));
+}
+
+TEST(ArenaTest, Clear) {
+  std::vector<int> seq;
+  Arena<DestructorTracker> arena(10);
+
+  static_cast<void>(arena.Alloc(1, seq));
+  static_cast<void>(arena.Alloc(2, seq));
+  arena.Clear();
+
+  EXPECT_THAT(seq, ElementsAre(2, 1));
+
+  static_cast<void>(arena.Alloc(3, seq));
+  arena.Clear();
+
+  EXPECT_THAT(seq, ElementsAre(2, 1, 3));
+}
+
+TEST(ArenaTest, Move) {
+  Arena<int> arena1(10);
+  int* p1 = arena1.Alloc(42);
+
+  Arena<int> arena2(std::move(arena1));
+  int* p2 = arena2.Alloc(43);
+
+  Arena<int> arena3(42);
+  arena3 = std::move(arena2);
+
+  EXPECT_EQ(*p1, 42);
+  EXPECT_EQ(*p2, 43);
+}
+
+TEST(ObjectPoolTest, Reuse) {
+  ObjectPool<std::string> pool(10);
+
+  std::string* s1 = pool.Alloc("hello");
+  void* addr1 = s1;
+  pool.Release(s1);
+  std::string* s2 = pool.Alloc("world");
+  void* addr2 = s2;
+
+  EXPECT_EQ(addr1, addr2);
+}
+
+}  // namespace
+}  // namespace mozc

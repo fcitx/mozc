@@ -39,7 +39,7 @@
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "base/container/freelist.h"
+#include "base/container/arena.h"
 #include "converter/attribute.h"
 #include "converter/candidate.h"
 #include "converter/node.h"
@@ -98,14 +98,14 @@ class CandidateFilterTest : public ::testing::Test {
             mock_data_manager_.GetSuggestionFilterData())) {}
 
   void SetUp() override {
-    candidate_freelist_ = std::make_unique<FreeList<Candidate>>(1024);
-    node_freelist_ = std::make_unique<FreeList<Node>>(1024);
+    candidate_arena_ = std::make_unique<Arena<Candidate>>(1024);
+    node_arena_ = std::make_unique<Arena<Node>>(1024);
   }
 
   void TearDown() override {
     ::testing::Mock::VerifyAndClearExpectations(&mock_user_dictionary_);
-    candidate_freelist_->Free();
-    node_freelist_->Free();
+    candidate_arena_->Clear();
+    node_arena_->Clear();
   }
 
   void GetDefaultNodes(std::vector<const Node*>* nodes) {
@@ -124,13 +124,13 @@ class CandidateFilterTest : public ::testing::Test {
   }
 
   Node* NewNode() {
-    Node* n = node_freelist_->Alloc();
+    Node* n = node_arena_->Alloc();
     n->Init();
     return n;
   }
 
   Candidate* NewCandidate() {
-    Candidate* c = candidate_freelist_->Alloc();
+    Candidate* c = candidate_arena_->Alloc();
     c->cost = 100;
     c->structure_cost = 100;
     return c;
@@ -155,8 +155,8 @@ class CandidateFilterTest : public ::testing::Test {
   MockUserDictionary mock_user_dictionary_;
   const SuggestionFilter suggestion_filter_;
 
-  std::unique_ptr<FreeList<Candidate>> candidate_freelist_;
-  std::unique_ptr<FreeList<Node>> node_freelist_;
+  std::unique_ptr<Arena<Candidate>> candidate_arena_;
+  std::unique_ptr<Arena<Node>> node_arena_;
 };
 
 class CandidateFilterTestWithParam

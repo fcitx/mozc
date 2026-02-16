@@ -516,7 +516,7 @@ bool Segments::Resize(size_t start_index, absl::Span<const uint8_t> new_sizes) {
 }
 
 void Segments::clear_segments() {
-  pool_.Free();
+  pool_.Clear();
   resized_ = false;
   segments_.clear();
 }

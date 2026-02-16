@@ -44,7 +44,7 @@
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "base/container/freelist.h"
+#include "base/container/arena.h"
 #include "base/strings/assign.h"
 #include "base/util.h"
 #include "converter/candidate.h"

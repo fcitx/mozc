@@ -54,7 +54,7 @@ class SegmentsPoolAccessorTestPeer : testing::TestPeer<Segments> {
   explicit SegmentsPoolAccessorTestPeer(Segments& segments)
       : testing::TestPeer<Segments>(segments) {}
 
-  size_t released_size() const { return value_.pool_.released_size(); }
+  size_t released_size() const { return value_.pool_.NumReusable(); }
 };
 
 using ::testing::ElementsAre;

@@ -37,7 +37,7 @@
 #include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "base/container/freelist.h"
+#include "base/container/arena.h"
 #include "converter/candidate.h"
 #include "converter/candidate_filter.h"
 #include "converter/connector.h"
@@ -205,7 +205,7 @@ class NBestGenerator {
 
   int GetTransitionCost(const Node& lnode, const Node& rnode) const;
 
-  // Create queue element from freelist
+  // Create queue element from arena
   const QueueElement* absl_nonnull CreateNewElement(
       const Node* absl_nonnull node, const QueueElement* absl_nullable next,
       int32_t fx, int32_t gx, int32_t structure_gx, int32_t w_gx);
@@ -221,7 +221,7 @@ class NBestGenerator {
   const Node* absl_nullable end_node_ = nullptr;
 
   Agenda agenda_;
-  FreeList<QueueElement> freelist_;
+  Arena<QueueElement> arena_;
   std::vector<const Node* absl_nonnull> top_nodes_;
   converter::CandidateFilter filter_;
   bool viterbi_result_checked_ = false;
