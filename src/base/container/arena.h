@@ -99,7 +99,7 @@ class Arena final {
 
  private:
   // Like std::destroy_n, but destroys in reverse order.
-  void destroy_n_reverse(T* absl_nonnull first, size_t n) {
+  static void destroy_n_reverse(T* absl_nonnull first, size_t n) {
     if constexpr (!std::is_trivially_destructible_v<T>) {
       while (n > 0) {
         std::destroy_at(first + --n);
