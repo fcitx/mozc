@@ -38,6 +38,24 @@ load(
 package(default_visibility = ["//:__subpackages__"])
 
 mozc_cc_library(
+    name = "arena",
+    hdrs = ["arena.h"],
+    deps = [
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+mozc_cc_test(
+    name = "arena_test",
+    srcs = ["arena_test.cc"],
+    deps = [
+        ":arena",
+        "//testing:gunit_main",
+    ],
+)
+
+mozc_cc_library(
     name = "bitarray",
     hdrs = ["bitarray.h"],
 )
@@ -117,25 +135,6 @@ mozc_cc_test(
         ":flat_set",
         "//testing:gunit_main",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-mozc_cc_library(
-    name = "freelist",
-    hdrs = ["freelist.h"],
-    visibility = ["//:__subpackages__"],
-    deps = [
-        "@com_google_absl//absl/base:nullability",
-    ],
-)
-
-mozc_cc_test(
-    name = "freelist_test",
-    size = "small",
-    srcs = ["freelist_test.cc"],
-    deps = [
-        ":freelist",
-        "//testing:gunit_main",
     ],
 )
 

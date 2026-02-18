@@ -67,7 +67,7 @@ using ::mozc::converter::CandidateFilter;
 using ::mozc::dictionary::PosMatcher;
 using ::mozc::dictionary::UserDictionaryInterface;
 
-constexpr int kFreeListSize = 512;
+constexpr int kArenaChunkSize = 512;
 constexpr int kCostDiff = 3453;  // log prob of 1/1000
 
 bool IsBetweenAlphabetKeys(const Node& left, const Node& right) {
@@ -83,7 +83,7 @@ NBestGenerator::CreateNewElement(const Node* absl_nonnull node,
                                  const QueueElement* absl_nullable next,
                                  int32_t fx, int32_t gx, int32_t structure_gx,
                                  int32_t w_gx) {
-  QueueElement* absl_nonnull elm = freelist_.Alloc();
+  QueueElement* absl_nonnull elm = arena_.Alloc();
   elm->node = node;
   elm->next = next;
   elm->fx = fx;
@@ -118,20 +118,20 @@ NBestGenerator::NBestGenerator(const UserDictionaryInterface& user_dictionary,
       connector_(connector),
       pos_matcher_(pos_matcher),
       lattice_(lattice),
-      freelist_(kFreeListSize),
+      arena_(kArenaChunkSize),
       filter_(user_dictionary_, pos_matcher, suggestion_filter) {
   if (!lattice_.has_lattice()) {
     LOG(ERROR) << "lattice is not available";
     return;
   }
-  agenda_.Reserve(kFreeListSize);
+  agenda_.Reserve(kArenaChunkSize);
 }
 
 void NBestGenerator::Reset(const Node* absl_nonnull begin_node,
                            const Node* absl_nonnull end_node,
                            const Options options) {
   agenda_.Clear();
-  freelist_.Free();
+  arena_.Clear();
   top_nodes_.clear();
   filter_.Reset();
   viterbi_result_checked_ = false;

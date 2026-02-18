@@ -30,7 +30,6 @@
 #include "prediction/user_history_predictor.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
@@ -57,13 +56,10 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "base/clock.h"
-#include "base/container/freelist.h"
 #include "base/container/trie.h"
-#include "base/hash.h"
 #include "base/japanese_util.h"
 #include "base/util.h"
 #include "base/vlog.h"
@@ -79,7 +75,6 @@
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "request/conversion_request.h"
-#include "storage/encrypted_string_storage.h"
 #include "storage/lru_cache.h"
 #include "transliteration/transliteration.h"
 
