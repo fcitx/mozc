@@ -128,20 +128,21 @@ class MockDataAndPredictor {
   explicit MockDataAndPredictor(
       std::unique_ptr<engine::SupplementalModelInterface> supplemental_model) {
     auto mock_aggregator = std::make_unique<MockAggregator>();
-    auto mock_decoder = std::make_unique<MockRealtimeDecoder>();
+    mock_decoder_ = std::make_unique<MockRealtimeDecoder>();
     modules_ = engine::ModulesPresetBuilder()
                    .PresetSupplementalModel(std::move(supplemental_model))
                    .Build(std::make_unique<testing::MockDataManager>())
                    .value();
     // TODO(taku): avoid sharing the pointer owned by std::unique_ptr.
     mock_aggregator_ = mock_aggregator.get();
-    mock_decoder_ = mock_decoder.get();
     predictor_ = absl::WrapUnique(new DictionaryPredictor(
-        *modules_, std::move(mock_aggregator), std::move(mock_decoder)));
+        *modules_, std::move(mock_aggregator), *mock_decoder_));
   }
 
   MockAggregator* mutable_aggregator() { return mock_aggregator_; }
-  MockRealtimeDecoder* mutable_realtime_decoder() { return mock_decoder_; }
+  MockRealtimeDecoder* mutable_realtime_decoder() {
+    return mock_decoder_.get();
+  }
 
   const Connector& connector() { return modules_->GetConnector(); }
   const PosMatcher& pos_matcher() { return modules_->GetPosMatcher(); }
@@ -155,7 +156,7 @@ class MockDataAndPredictor {
 
  private:
   MockAggregator* mock_aggregator_ = nullptr;
-  MockRealtimeDecoder* mock_decoder_ = nullptr;
+  std::unique_ptr<MockRealtimeDecoder> mock_decoder_;
   std::unique_ptr<engine::Modules> modules_;
   std::unique_ptr<DictionaryPredictor> predictor_;
 };
@@ -1700,34 +1701,6 @@ TEST_F(DictionaryPredictorTest, FilterNwpSuffixCandidates) {
       EXPECT_EQ(results[0].value, "テスト");
     }
   }
-}
-
-TEST_F(DictionaryPredictorTest, DemoteFirstN_test) {
-  // Tests of DemoteFirstN in result.h
-  const std::vector<std::string> results = {"d1", "k1", "d2", "k2", "d3", "k3",
-                                            "d4", "k4", "d5", "k5", "d6", "k6",
-                                            "d7", "k7", "d8", "k8", "d9", "k9"};
-  auto demote = [&](int n) {
-    std::vector<std::string> input = results;
-    DemoteFirstN(absl::MakeSpan(input), n,
-                 [](const std::string& x) { return x[0] == 'd'; });
-    return absl::StrJoin(input, " ");
-  };
-
-  EXPECT_EQ(demote(0), "d1 k1 d2 k2 d3 k3 d4 k4 d5 k5 d6 k6 d7 k7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(1), "k1 d1 d2 k2 d3 k3 d4 k4 d5 k5 d6 k6 d7 k7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(2), "k1 k2 d1 d2 d3 k3 d4 k4 d5 k5 d6 k6 d7 k7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(3), "k1 k2 k3 d1 d2 d3 d4 k4 d5 k5 d6 k6 d7 k7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(4), "k1 k2 k3 k4 d1 d2 d3 d4 d5 k5 d6 k6 d7 k7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(5), "k1 k2 k3 k4 k5 d1 d2 d3 d4 d5 d6 k6 d7 k7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(6), "k1 k2 k3 k4 k5 k6 d1 d2 d3 d4 d5 d6 d7 k7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(7), "k1 k2 k3 k4 k5 k6 k7 d1 d2 d3 d4 d5 d6 d7 d8 k8 d9 k9");
-  EXPECT_EQ(demote(8), "k1 k2 k3 k4 k5 k6 k7 k8 d1 d2 d3 d4 d5 d6 d7 d8 d9 k9");
-  EXPECT_EQ(demote(9), "k1 k2 k3 k4 k5 k6 k7 k8 k9 d1 d2 d3 d4 d5 d6 d7 d8 d9");
-  EXPECT_EQ(demote(10),
-            "k1 k2 k3 k4 k5 k6 k7 k8 k9 d1 d2 d3 d4 d5 d6 d7 d8 d9");
-  EXPECT_EQ(demote(100),
-            "k1 k2 k3 k4 k5 k6 k7 k8 k9 d1 d2 d3 d4 d5 d6 d7 d8 d9");
 }
 
 }  // namespace
