@@ -71,7 +71,7 @@ class CheckCandSizeDictionaryPredictor : public PredictorInterface {
         predictor_name_("CheckCandSizeDictionaryPredictor") {}
 
   std::vector<Result> Predict(const ConversionRequest& request) const override {
-    EXPECT_EQ(request.max_dictionary_prediction_candidates_size(),
+    EXPECT_EQ(request.options().max_dictionary_prediction_candidates_size,
               expected_cand_size_);
     return std::vector<Result>(1);
   }
@@ -94,11 +94,11 @@ class CheckCandSizeUserHistoryPredictor : public PredictorInterface {
         predictor_name_("CheckCandSizeUserHistoryPredictor") {}
 
   std::vector<Result> Predict(const ConversionRequest& request) const override {
-    EXPECT_EQ(request.max_user_history_prediction_candidates_size(),
+    EXPECT_EQ(request.options().max_user_history_prediction_candidates_size,
               expected_cand_size_);
-    EXPECT_EQ(
-        request.max_user_history_prediction_candidates_size_for_zero_query(),
-        expected_cand_size_for_zero_query_);
+    EXPECT_EQ(request.options()
+                  .max_user_history_prediction_candidates_size_for_zero_query,
+              expected_cand_size_for_zero_query_);
     return std::vector<Result>(1);
   }
 
@@ -225,7 +225,7 @@ TEST_F(MixedDecodingPredictorTest, CallPredictorsForMobilePrediction) {
 TEST_F(MixedDecodingPredictorTest, CallPredictorsForMobilePartialPrediction) {
   auto predictor = std::make_unique<Predictor>(
       *modules_, std::make_unique<CheckCandSizeDictionaryPredictor>(200),
-      std::make_unique<UserHistoryPredictor>(*modules_));
+      std::make_unique<CheckCandSizeUserHistoryPredictor>(3, 4));
   const ConversionRequest convreq =
       CreateConversionRequest(ConversionRequest::PARTIAL_PREDICTION);
   EXPECT_FALSE(predictor->Predict(convreq).empty());

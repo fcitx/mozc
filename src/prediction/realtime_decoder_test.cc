@@ -30,6 +30,8 @@
 #include "prediction/realtime_decoder.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,6 +42,7 @@
 #include "converter/immutable_converter_interface.h"
 #include "converter/inner_segment.h"
 #include "converter/segments.h"
+#include "data_manager/testing/mock_data_manager.h"
 #include "prediction/result.h"
 #include "request/conversion_request.h"
 #include "testing/gmock.h"
@@ -51,6 +54,7 @@ using ::testing::_;
 using ::testing::DoAll;
 using ::testing::Return;
 using ::testing::SetArgPointee;
+using ::testing::Truly;
 
 // Simple immutable converter mock for the realtime conversion test
 class MockImmutableConverter : public ImmutableConverterInterface {
@@ -75,6 +79,14 @@ class MockImmutableConverter : public ImmutableConverterInterface {
     candidate->key = key;
     return true;
   }
+};
+
+class MockRealtimeDecoder : public RealtimeDecoder {
+ public:
+  using RealtimeDecoder::RealtimeDecoder;
+
+  MOCK_METHOD(std::vector<Result>, Decode, (const ConversionRequest& request),
+              (const, override));
 };
 
 TEST(RealtimeDecoderTest, Decode) {
@@ -194,6 +206,43 @@ TEST(RealtimeDecoderTest, Decode) {
       }
     }
     EXPECT_TRUE(realtime_top_found);
+  }
+}
+
+TEST(RealtimeDecoderTest, DecodeSuffix) {
+  MockConverter converter;
+  MockImmutableConverter immutable_converter;
+
+  const MockRealtimeDecoder decoder(immutable_converter, converter);
+
+  std::vector<Result> results(1);
+  results[0].value = "さんに";
+  results[0].key = "さんに";
+  results[0].cost = 1000;
+
+  for (const uint16_t prefix_rid : {0, 20, 100}) {
+    // Only called once as the result is cached.
+    EXPECT_CALL(
+        decoder, Decode(Truly([&](const ConversionRequest& req) {
+          const auto& options = req.options();
+          return (options.max_conversion_candidates_size == 1 &&
+                  !options.create_partial_candidates &&
+                  !options.kana_modifier_insensitive_conversion &&
+                  !options.use_actual_converter_for_realtime_conversion &&
+                  options.bos_id == prefix_rid &&
+                  (prefix_rid > 0 == options.disable_prefix_penalty) &&
+                  req.key() == results[0].key);
+        })))
+        .WillOnce(Return(results));
+
+    for (int i = 0; i < 10; ++i) {
+      const ConversionRequest convreq = ConversionRequestBuilder().Build();
+      const auto result =
+          decoder.DecodeSuffix(convreq, prefix_rid, "さんに").value();
+      EXPECT_EQ(result.key, results[0].key);
+      EXPECT_EQ(result.value, results[0].value);
+      EXPECT_EQ(result.cost, results[0].cost);
+    }
   }
 }
 

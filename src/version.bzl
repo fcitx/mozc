@@ -27,33 +27,34 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# immutable_converter.gyp defines targets for immutable_converter that is
-# located in the middle of converter.gyp and converter_base.gyp.
-# This separated file is necessary to avoid circular dependencies.
-{
-  'targets': [
-    {
-      'target_name': 'immutable_converter',
-      'type': 'static_library',
-      'sources': [
-        'immutable_converter.cc',
-        'key_corrector.cc',
-      ],
-      'dependencies': [
-        '<(mozc_oss_src_dir)/base/base.gyp:base',
-        '<(mozc_oss_src_dir)/base/base.gyp:japanese_util',
-        '<(mozc_oss_src_dir)/config/config.gyp:config_handler',
-        '<(mozc_oss_src_dir)/converter/converter_base.gyp:connector',
-        '<(mozc_oss_src_dir)/converter/converter_base.gyp:segmenter',
-        '<(mozc_oss_src_dir)/converter/converter_base.gyp:segments',
-        '<(mozc_oss_src_dir)/dictionary/dictionary.gyp:suffix_dictionary',
-        '<(mozc_oss_src_dir)/dictionary/pos_matcher.gyp:pos_matcher',
-        '<(mozc_oss_src_dir)/engine/engine_base.gyp:modules',
-        '<(mozc_oss_src_dir)/protocol/protocol.gyp:commands_proto',
-        '<(mozc_oss_src_dir)/protocol/protocol.gyp:config_proto',
-        '<(mozc_oss_src_dir)/request/request.gyp:conversion_request',
-        '<(mozc_oss_src_dir)/rewriter/rewriter_base.gyp:gen_rewriter_files#host',
-      ],
-    },
-  ],
-}
+MAJOR = 3
+
+MINOR = 33
+
+# BUILD number used for the OSS version.
+BUILD_OSS = 6133
+
+# Number to be increased. This value may be replaced by other tools.
+BUILD = BUILD_OSS
+
+# Represent the platform and release channel.
+REVISION = 100
+
+# LINT.IfChange
+DEFAULT_BUILD_LABEL_MACOS = "%d.%d.%d.%d" % (MAJOR, MINOR, BUILD, REVISION + 1)
+# LINT.ThenChange(//data/version/BUILD.bazel)
+
+# This version represents the version of Mozc IME engine (converter, predictor,
+# etc.).  This version info is included both in the Mozc server and in the Mozc
+# data set file so that the Mozc server can accept only the compatible version
+# of data set file.  The engine version must be incremented when:
+#  * POS matcher definition and/or conversion models were changed,
+#  * New data are added to the data set file, and/or
+#  * Any changes that loose data compatibility are made.
+ENGINE_VERSION = 24
+
+# This version is used to manage the data version and is included only in the
+# data set file.  DATA_VERSION can be incremented without updating
+# ENGINE_VERSION as long as it's compatible with the engine.
+# This version should be reset to 0 when ENGINE_VERSION is incremented.
+DATA_VERSION = 11

@@ -70,7 +70,6 @@ In this step, additional build dependencies will be downloaded, including:
 *   [Ninja 1.11.0](https://github.com/ninja-build/ninja/releases/tag/v1.11.0)
 *   [Qt 6.9.1](https://download.qt.io/archive/qt/6.8/6.8.0/submodules/qtbase-everywhere-src-6.9.1.tar.xz)
 *   [.NET tools](../dotnet-tools.json)
-*   [git submodules](../.gitmodules)
 
 ## Build
 
@@ -174,7 +173,7 @@ even if downloaded from https://github.com/google/mozc/.
 
 --------------------------------------------------------------------------------
 
-## Build Mozc for Linux Desktop with GYP (deprecated):
+## Build with GYP (deprecated):
 
 ⚠️ The GYP build is deprecated and no longer supported.
 
