@@ -205,9 +205,8 @@ class UserDictionary::TokensIndex {
         } else {
           const absl::string_view comment =
               absl::StripAsciiWhitespace(entry.comment());
-          for (auto& token : user_pos_.GetTokens(
-                   reading, entry.value(),
-                   user_dictionary::GetStringPosType(entry.pos()))) {
+          for (auto& token :
+               user_pos_.GetTokens(reading, entry.value(), entry.pos())) {
             strings::Assign(token.comment, comment);
             user_pos_tokens_.push_back(std::move(token));
           }
@@ -409,7 +408,8 @@ void UserDictionary::LookupPrefix(absl::string_view key,
     if (user_pos_token.key > key) {
       break;
     }
-    if (user_pos_token.has_attribute(UserPos::Token::SUGGESTION_ONLY)) {
+    if (user_pos_token.pos_type() ==
+        user_dictionary::UserDictionary::SUGGESTION_ONLY) {
       continue;
     }
     if (!key.starts_with(user_pos_token.key)) {
@@ -468,7 +468,8 @@ void UserDictionary::LookupExact(absl::string_view key,
   Token token;
   for (; begin != end; ++begin) {
     const UserPos::Token& user_pos_token = *begin;
-    if (user_pos_token.has_attribute(UserPos::Token::SUGGESTION_ONLY)) {
+    if (user_pos_token.pos_type() ==
+        user_dictionary::UserDictionary::SUGGESTION_ONLY) {
       continue;
     }
     PopulateTokenFromUserPosToken(user_pos_token, EXACT, &token);
@@ -563,7 +564,8 @@ void UserDictionary::PopulateTokenFromUserPosToken(
   // Actual pos id of suggestion-only candidates are 名詞-サ変.
   // TODO(taku): We would like to change the POS to 名詞-サ変 in user-pos.def,
   // because SUGGESTION_ONLY is not POS.
-  if (user_pos_token.has_attribute(UserPos::Token::SUGGESTION_ONLY)) {
+  if (user_pos_token.pos_type() ==
+      user_dictionary::UserDictionary::SUGGESTION_ONLY) {
     token->lid = token->rid = pos_matcher_.GetUnknownId();
   }
 
@@ -571,19 +573,15 @@ void UserDictionary::PopulateTokenFromUserPosToken(
   // Locale is not Japanese.
   if (user_pos_token.has_attribute(UserPos::Token::NON_JA_LOCALE)) {
     token->cost = 10000;
-  } else if (user_pos_token.has_attribute(UserPos::Token::ISOLATED_WORD)) {
-    // Set smaller cost for "短縮よみ" in order to make
-    // the rank of the word higher than others.
-    token->cost = 200;
   } else {
-    // default user dictionary cost.
-    token->cost = 5000;
+    token->cost = UserPos::GetCostFromPosType(user_pos_token.pos_type());
+    DCHECK_GT(token->cost, 0);
   }
 
   // The treatment for the words with default POS (NO_POS).
   // Shorter keys have more penalty so that they are not shown in the context.
   // TODO(taku): Better to apply this cost for all user defined words?
-  if (user_pos_token.has_attribute(UserPos::Token::NO_POS) &&
+  if (user_pos_token.pos_type() == user_dictionary::UserDictionary::NO_POS &&
       (request_type == PREFIX || request_type == EXACT)) {
     const int key_length = strings::AtLeastCharsLen(token->key, 4);
     token->cost += (4 - key_length) * 2000;

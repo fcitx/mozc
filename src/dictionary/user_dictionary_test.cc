@@ -58,6 +58,7 @@
 #include "dictionary/dictionary_token.h"
 #include "dictionary/pos_matcher.h"
 #include "dictionary/user_dictionary_storage.h"
+#include "dictionary/user_dictionary_util.h"
 #include "dictionary/user_pos.h"
 #include "protocol/config.pb.h"
 #include "protocol/user_dictionary_storage.pb.h"
@@ -135,9 +136,6 @@ void PushBackToken(absl::string_view key, absl::string_view value, uint16_t id,
 // inflection.
 class UserPosMock : public UserPos {
  public:
-  // This method returns true if the given pos is "noun" or "verb".
-  bool IsValidPos(absl::string_view pos) const override { return true; }
-
   // Given a verb, this method expands it to three different forms,
   // i.e. base form (the word itself), "-ed" form and "-ing" form. For
   // example, if the given word is "play", the method returns "play",
@@ -151,16 +149,17 @@ class UserPosMock : public UserPos {
   //  verb (-ed form)  | 210 | 210
   //  verb (-ing form) | 220 | 220
   std::vector<UserPos::Token> GetTokens(
-      absl::string_view key, absl::string_view value, absl::string_view pos,
+      absl::string_view key, absl::string_view value,
+      user_dictionary::UserDictionary::PosType pos_type,
       absl::string_view locale) const override {
     std::vector<UserPos::Token> tokens;
-    if (key.empty() || value.empty() || pos.empty()) {
+    if (key.empty() || value.empty()) {
       return tokens;
     }
 
-    if (pos == kNoun) {
+    if (pos_type == kNoun) {
       PushBackToken(key, value, 100, &tokens);
-    } else if (pos == kVerb) {
+    } else if (pos_type == kVerb) {
       PushBackToken(key, value, 200, &tokens);
       PushBackToken(absl::StrCat(key, "ed"), absl::StrCat(value, "ed"), 210,
                     &tokens);
@@ -171,17 +170,17 @@ class UserPosMock : public UserPos {
     return tokens;
   }
 
-  std::vector<std::string> GetPosList() const override {
-    return {{kNoun.data(), kNoun.size()}};
-  }
+  std::vector<std::string> GetPosList() const override { return {"名詞"}; }
   int GetPosListDefaultIndex() const override { return 0; }
 
   std::optional<uint16_t> GetPosIds(absl::string_view pos) const override {
     return std::nullopt;
   }
 
-  static constexpr absl::string_view kNoun = "名詞";
-  static constexpr absl::string_view kVerb = "動詞ワ行五段";
+  static constexpr user_dictionary::UserDictionary::PosType kNoun =
+      user_dictionary::UserDictionary::NOUN;
+  static constexpr user_dictionary::UserDictionary::PosType kVerb =
+      user_dictionary::UserDictionary::WA_GROUP1_VERB;
 };
 
 class UserDictionaryTest : public testing::TestWithTempUserProfile {
@@ -981,7 +980,10 @@ TEST_F(UserDictionaryTest, TestPopulateTokenFromUserPosToken) {
       mock_data_manager.GetPosMatcherData());
 
   UserPos::Token user_token{.key = "key", .value = "value", .id = 10};
+  user_token.set_pos_type(user_dictionary::UserDictionary::
+                              SA_IRREGULAR_CONJUGATION_NOUN);  // 名詞サ変
 
+  const int expected_cost = UserPos::GetCostFromPosType(user_token.pos_type());
   Token token;
 
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
@@ -990,7 +992,7 @@ TEST_F(UserDictionaryTest, TestPopulateTokenFromUserPosToken) {
   EXPECT_EQ(token.value, "value");
   EXPECT_EQ(token.lid, 10);
   EXPECT_EQ(token.rid, 10);
-  EXPECT_EQ(token.cost, 5000);
+  EXPECT_EQ(token.cost, expected_cost);
   EXPECT_EQ(token.attributes, Token::USER_DICTIONARY);
 
   user_token.add_attribute(UserPos::Token::NON_JA_LOCALE);
@@ -999,57 +1001,53 @@ TEST_F(UserDictionaryTest, TestPopulateTokenFromUserPosToken) {
   EXPECT_EQ(token.cost, 10000);
 
   user_token.attributes = 0;
-  user_token.add_attribute(UserPos::Token::ISOLATED_WORD);
+  user_token.set_pos_type(user_dictionary::UserDictionary::ABBREVIATION);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
   EXPECT_EQ(token.cost, 200);
 
   user_token.attributes = 0;
-  user_token.add_attribute(UserPos::Token::SUGGESTION_ONLY);
+  user_token.set_pos_type(user_dictionary::UserDictionary::SUGGESTION_ONLY);
   dic->PopulateTokenFromUserPosToken(
       user_token, UserDictionary::UserDictionary::PREFIX, &token);
   EXPECT_EQ(token.lid, pos_matcher.GetUnknownId());
   EXPECT_EQ(token.rid, pos_matcher.GetUnknownId());
-  EXPECT_EQ(token.cost, 5000);
+  EXPECT_EQ(token.cost, expected_cost);
 
   user_token.attributes = 0;
-  user_token.add_attribute(UserPos::Token::NO_POS);
+  user_token.set_pos_type(user_dictionary::UserDictionary::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREDICTIVE,
                                      &token);
   // NO_POS id is set via user_pos.def.
-  EXPECT_EQ(token.cost, 5000);
+  EXPECT_EQ(token.cost, expected_cost);
 
   user_token.attributes = 0;
+  user_token.set_pos_type(user_dictionary::UserDictionary::NO_POS);
 
   user_token.key = "a";  // one char
-  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
-  EXPECT_EQ(token.cost, 5000 + 2000 * 3);
+  EXPECT_EQ(token.cost, expected_cost + 2000 * 3);
 
   user_token.key = "aa";
-  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
-  EXPECT_EQ(token.cost, 5000 + 2000 * 2);
+  EXPECT_EQ(token.cost, expected_cost + 2000 * 2);
 
   user_token.key = "aaa";
-  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
-  EXPECT_EQ(token.cost, 5000 + 2000);
+  EXPECT_EQ(token.cost, expected_cost + 2000);
 
   user_token.key = "aaaa";
-  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
-  EXPECT_EQ(token.cost, 5000);
+  EXPECT_EQ(token.cost, expected_cost);
 
   user_token.key = "aaaaaaa";
-  user_token.add_attribute(UserPos::Token::NO_POS);
   dic->PopulateTokenFromUserPosToken(user_token, UserDictionary::PREFIX,
                                      &token);
-  EXPECT_EQ(token.cost, 5000);
+  EXPECT_EQ(token.cost, expected_cost);
 }
 
 TEST_F(UserDictionaryTest, AsyncImportTest) {

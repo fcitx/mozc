@@ -186,6 +186,7 @@ mozc_cc_test(
         ":pos_matcher",
         ":user_dictionary",
         ":user_dictionary_storage",
+        ":user_dictionary_util",
         ":user_pos",
         "//base:file_util",
         "//base:random",
@@ -294,6 +295,29 @@ run_binary(
     tool = ":gen_pos_map",
 )
 
+mozc_py_binary(
+    name = "gen_pos_cost_map",
+    srcs = ["gen_pos_cost_map.py"],
+    visibility = ["//data_manager:__subpackages__"],
+    deps = [
+        "//build_tools:code_generator_util",
+    ],
+)
+
+run_binary(
+    name = "pos_cost_map",
+    srcs = [
+        "//data/rules:user_pos.def",
+    ],
+    outs = ["pos_cost_map.inc"],
+    args = [
+        "--user_pos_file=" +
+        "$(location //data/rules:user_pos.def)",
+        "--output=$(location pos_cost_map.inc)",
+    ],
+    tool = ":gen_pos_cost_map",
+)
+
 mozc_cc_library(
     name = "user_dictionary_storage",
     srcs = ["user_dictionary_storage.cc"],
@@ -304,6 +328,7 @@ mozc_cc_library(
     ],
     deps = [
         ":user_dictionary_util",
+        ":user_pos",
         "//base:config_file_stream",
         "//base:file_stream",
         "//base:file_util",
@@ -354,7 +379,6 @@ mozc_cc_library(
         "//:__subpackages__",
     ],
     deps = [
-        ":user_pos",
         "//base:vlog",
         "//base/strings:japanese",
         "//base/strings:unicode",
@@ -375,6 +399,7 @@ mozc_cc_test(
         "//protocol:user_dictionary_storage_cc_proto",
         "//testing:gunit_main",
         "//testing:testing_util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -401,6 +426,8 @@ mozc_cc_library(
         "//protocol:user_dictionary_storage_cc_proto",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
@@ -477,6 +504,7 @@ mozc_cc_library(
     name = "user_pos",
     srcs = ["user_pos.cc"],
     hdrs = ["user_pos.h"],
+    textual_hdrs = [":pos_cost_map"],
     visibility = [
         "//converter:__pkg__",
         "//engine:__pkg__",
@@ -488,9 +516,15 @@ mozc_cc_library(
         "//base/container:serialized_string_array",
         "//base/strings:assign",
         "//data_manager",
+        "//protocol:user_dictionary_storage_cc_proto",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -502,6 +536,7 @@ mozc_cc_test(
         ":user_pos",
         "//data_manager/testing:mock_data_manager",
         "//testing:gunit_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],

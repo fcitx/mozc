@@ -132,14 +132,6 @@ bool AllowPartialMatch(const ConversionRequest& request) {
              .user_history_allow_partial_match();
 }
 
-bool AllowExactMatch(const ConversionRequest& request) {
-  return IsMixedConversionEnabled(request) &&
-         CacheInnerSegmentBoundaryEnabled(request) &&
-         request.request()
-             .decoder_experiment_params()
-             .user_history_allow_exact_match();
-}
-
 bool IsZeroQuerySuggestionEnabled(const ConversionRequest& request) {
   return request.request().zero_query_suggestion();
 }
@@ -347,6 +339,7 @@ UserHistoryPredictor::UserHistoryPredictor(const engine::Modules& modules,
     : dictionary_(modules.GetDictionary()),
       user_dictionary_(modules.GetUserDictionary()),
       modules_(modules),
+      storage_(modules_.GetUserHistoryStorage()),
       revert_cache_(kRevertCacheSize),
       decoder_(decoder) {}
 
@@ -1100,6 +1093,42 @@ bool UserHistoryPredictor::GetKeyValueForPartialMatch(
   return true;
 }
 
+// static
+bool UserHistoryPredictor::AllowLowFreqFullSentenceEntryMatch(
+    const ConversionRequest& request, absl::string_view request_key,
+    const UserHistoryPredictor::MatchType mtype, const Entry& entry) {
+  // The flag is named `user_history_allow_exact_match`, but it will also
+  // include prefix matching under specific conditions. This affects how
+  // full-sentence entries with a low frequency are utilized. This is an
+  // experimental flag and is removed in the future.
+  if (!IsMixedConversionEnabled(request) ||
+      !CacheInnerSegmentBoundaryEnabled(request) ||
+      !request.request()
+           .decoder_experiment_params()
+           .user_history_allow_exact_match()) {
+    return false;
+  }
+
+  // exact match.
+  if (mtype == MatchType::EXACT_MATCH) {
+    return true;
+  }
+
+  // prefix match.
+  if (mtype == MatchType::LEFT_PREFIX_MATCH) {
+    const converter::InnerSegments inner_segments(
+        entry.key(), entry.value(), entry.inner_segment_boundary());
+    // Returns true only when request_key reaches the key of the last segment.
+    // key="わたしのな", entry="わたしの|なまえ" => OK
+    // key="わたしの",   entry="わたしの|なまえ" => NG
+    return inner_segments
+               .GetPrefixKeyAndValue(entry.inner_segment_boundary_size() - 1)
+               .first.size() < request_key.size();
+  }
+
+  return false;
+}
+
 bool UserHistoryPredictor::LookupEntry(
     const ConversionRequest& request, absl::string_view request_key,
     absl::string_view key_base,
@@ -1133,14 +1162,10 @@ bool UserHistoryPredictor::LookupEntry(
     return false;
   }
 
-  // Full sentence with low frequency is not suggested, but
-  // allow exact match when AllowExactMatch() returns true.
-  // if (low_freq_full_sentence_entry) {
-  //   if (exact_match && allow_exact_match) { keep the process. }
-  //   return false
-  // }
+  // Full sentence with low frequency is suppressed unless
+  // AllowLowFreqFullSentenceEntryMatch() returns true.
   if (IsLowFreqFullSentenceEntry(request, entry) &&
-      !(mtype == MatchType::EXACT_MATCH && AllowExactMatch(request))) {
+      !AllowLowFreqFullSentenceEntryMatch(request, request_key, mtype, entry)) {
     return false;
   }
 
@@ -1789,7 +1814,7 @@ bool UserHistoryPredictor::IsValidEntryIgnoringRemovedField(
     return false;
   }
 
-  if (entry.key().ends_with(" ")) {
+  if (entry.key().ends_with(' ')) {
     // Invalid user history entry from alphanumeric input.
     return false;
   }

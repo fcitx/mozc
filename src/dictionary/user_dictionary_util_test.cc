@@ -29,10 +29,9 @@
 
 #include "dictionary/user_dictionary_util.h"
 
-#include <cstdint>
-#include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "protocol/user_dictionary_storage.pb.h"
 #include "testing/gmock.h"
@@ -192,7 +191,7 @@ TEST(UserDictionaryUtilTest, ValidateEntry) {
             ValidateEntry(entry).raw_code());
 
   entry = base_entry;
-  entry.set_key("ふ頭");  // Non-Hiragana chararcters are also acceptable.
+  entry.set_key("ふ頭");  // Non-Hiragana characters are also acceptable.
   EXPECT_OK(ValidateEntry(entry));
 
   entry = base_entry;
@@ -247,21 +246,6 @@ TEST(UserDictionaryUtilTest, ValidateDictionaryName) {
 
   EXPECT_EQ(ExtendedErrorCode::DICTIONARY_NAME_CONTAINS_INVALID_CHARACTER,
             ValidateDictionaryName("a\nbc").raw_code());
-}
-
-TEST(UserDictionaryUtilTest, ToPosType) {
-  EXPECT_EQ(ToPosType("品詞なし"), UserDictionary::NO_POS);
-  EXPECT_EQ(ToPosType("サジェストのみ"), UserDictionary::SUGGESTION_ONLY);
-  EXPECT_EQ(ToPosType("動詞ワ行五段"), UserDictionary::WA_GROUP1_VERB);
-  EXPECT_EQ(ToPosType("抑制単語"), UserDictionary::SUPPRESSION_WORD);
-}
-
-TEST(UserDictionaryUtilTest, GetStringPosType) {
-  EXPECT_EQ(GetStringPosType(UserDictionary::NO_POS), "品詞なし");
-  EXPECT_EQ(GetStringPosType(UserDictionary::SUGGESTION_ONLY),
-            "サジェストのみ");
-  EXPECT_EQ(GetStringPosType(UserDictionary::WA_GROUP1_VERB), "動詞ワ行五段");
-  EXPECT_EQ(GetStringPosType(UserDictionary::SUPPRESSION_WORD), "抑制単語");
 }
 
 }  // namespace

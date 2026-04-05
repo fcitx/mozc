@@ -36,6 +36,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
@@ -45,7 +46,6 @@
 #include "base/strings/japanese.h"
 #include "base/strings/unicode.h"
 #include "base/vlog.h"
-#include "dictionary/user_pos.h"
 #include "protocol/user_dictionary_storage.pb.h"
 
 namespace mozc {
@@ -207,45 +207,6 @@ absl::Status ValidateDictionaryName(const absl::string_view dictionary_name) {
   }
 
   return absl::OkStatus();
-}
-
-namespace {
-// The index of each element should be matched with the actual value of enum.
-// See also user_dictionary_storage.proto for the definition of the enum.
-constexpr absl::string_view kPosTypeStringTable[] = {
-    "品詞なし",     "名詞",           "短縮よみ",     "サジェストのみ",
-    "固有名詞",     "人名",           "姓",           "名",
-    "組織",         "地名",           "名詞サ変",     "名詞形動",
-    "数",           "アルファベット", "記号",         "顔文字",
-
-    "副詞",         "連体詞",         "接続詞",       "感動詞",
-    "接頭語",       "助数詞",         "接尾一般",     "接尾人名",
-    "接尾地名",     "動詞ワ行五段",   "動詞カ行五段", "動詞サ行五段",
-    "動詞タ行五段", "動詞ナ行五段",   "動詞マ行五段", "動詞ラ行五段",
-    "動詞ガ行五段", "動詞バ行五段",   "動詞ハ行四段", "動詞一段",
-    "動詞カ変",     "動詞サ変",       "動詞ザ変",     "動詞ラ変",
-    "形容詞",       "終助詞",         "句読点",       "独立語",
-    "抑制単語",
-};
-}  // namespace
-
-absl::string_view GetStringPosType(
-    user_dictionary::UserDictionary::PosType pos_type) {
-  if (user_dictionary::UserDictionary::PosType_IsValid(pos_type)) {
-    return kPosTypeStringTable[pos_type];
-  }
-  return {};
-}
-
-user_dictionary::UserDictionary::PosType ToPosType(
-    absl::string_view string_pos_type) {
-  int index = -1;  // not found by default.
-  if (auto it = absl::c_find(kPosTypeStringTable, string_pos_type);
-      it != std::end(kPosTypeStringTable)) {
-    index = std::distance(std::begin(kPosTypeStringTable), it);
-  }
-
-  return static_cast<user_dictionary::UserDictionary::PosType>(index);
 }
 
 }  // namespace user_dictionary

@@ -474,12 +474,18 @@ class UserHistoryPredictor : public PredictorInterface {
   bool IsProperNoun(const ConversionRequest& request,
                     const Result& result) const;
 
+  // Returns true if the low frequency full sentence entry can be
+  // suggested.
+  static bool AllowLowFreqFullSentenceEntryMatch(
+      const ConversionRequest& request, absl::string_view request_key,
+      const UserHistoryPredictor::MatchType mtype, const Entry& entry);
+
   const dictionary::DictionaryInterface& dictionary_;
   const dictionary::UserDictionaryInterface& user_dictionary_;
   const engine::Modules& modules_;
 
-  // TODO(taku): Moves UserHistory to modules.
-  UserHistoryStorage storage_;
+  // Initialized via modules_.
+  UserHistoryStorage& storage_;
 
   // Internal LRU cache to store dic_key/Entry to be reverted.
   storage::LruCache<uint64_t, RevertEntries> revert_cache_;

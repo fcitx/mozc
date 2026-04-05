@@ -44,6 +44,7 @@
 #include "base/bits.h"
 #include "base/container/serialized_string_array.h"
 #include "data_manager/data_manager.h"
+#include "protocol/user_dictionary_storage.pb.h"
 
 namespace mozc {
 namespace dictionary {
@@ -84,24 +85,21 @@ namespace dictionary {
 // tokens having the same POS index.
 class UserPos {
  public:
-  static constexpr size_t kTokenByteLength = 8;
-
   struct Token {
     std::string key;
     std::string value;
-    uint16_t id = 0;
-    uint16_t attributes = 0;
+    uint16_t id = 0;  // internal POS id used for lid/rid.
+    uint8_t attributes = 0;
+    uint8_t raw_pos_type = 0;  // POS information. UserDictionary::PosType.
     // The actual cost of user dictionary entries are populated
     // in the dictionary lookup time via PopulateTokenFromUserPosToken.
     std::string comment;  // This field comes from user dictionary.
 
     // Attribute is used to dynamically assign cost, and is independent from the
     // POS.
+    // TODO(taku): Better to remove it as we only have one field.
     enum Attribute {
-      NO_POS = 1,           // The default POS on Android.
-      ISOLATED_WORD = 2,    // 短縮よみ
-      SUGGESTION_ONLY = 4,  //  SUGGESTION only.
-      NON_JA_LOCALE = 8     // Locale is not Japanese.
+      NON_JA_LOCALE = 1  // Locale is not Japanese.
     };
 
     inline void add_attribute(Attribute attr) { attributes |= attr; }
@@ -109,100 +107,15 @@ class UserPos {
       return attributes & attr;
     }
     inline void remove_attribute(Attribute attr) { attributes &= ~attr; }
+    inline user_dictionary::UserDictionary::PosType pos_type() const {
+      return static_cast<::mozc::user_dictionary::UserDictionary::PosType>(
+          raw_pos_type);
+    }
+    inline void set_pos_type(
+        user_dictionary::UserDictionary::PosType pos_type) {
+      raw_pos_type = static_cast<uint8_t>(pos_type);
+    }
   };
-
-  class iterator {
-   public:
-    using iterator_category = std::random_access_iterator_tag;
-    using value_type = uint16_t;
-    using difference_type = std::ptrdiff_t;
-    using pointer = uint16_t*;
-    using reference = uint16_t&;
-
-    iterator() = default;
-    explicit iterator(const char* ptr) : ptr_(ptr) {}
-    iterator(const iterator& x) = default;
-
-    uint16_t pos_index() const { return LoadUnaligned<uint16_t>(ptr_); }
-    uint16_t value_suffix_index() const {
-      return LoadUnaligned<uint16_t>(ptr_ + 2);
-    }
-    uint16_t key_suffix_index() const {
-      return LoadUnaligned<uint16_t>(ptr_ + 4);
-    }
-    uint16_t conjugation_id() const {
-      return LoadUnaligned<uint16_t>(ptr_ + 6);
-    }
-
-    uint16_t operator*() const { return pos_index(); }
-
-    void swap(iterator& x) {
-      using std::swap;
-      swap(ptr_, x.ptr_);
-    }
-
-    friend void swap(iterator& x, iterator& y) { x.swap(y); }
-
-    iterator& operator++() {
-      ptr_ += kTokenByteLength;
-      return *this;
-    }
-
-    iterator operator++(int) {
-      const char* tmp = ptr_;
-      ptr_ += kTokenByteLength;
-      return iterator(tmp);
-    }
-
-    iterator& operator--() {
-      ptr_ -= kTokenByteLength;
-      return *this;
-    }
-
-    iterator operator--(int) {
-      const char* tmp = ptr_;
-      ptr_ -= kTokenByteLength;
-      return iterator(tmp);
-    }
-
-    iterator& operator+=(difference_type n) {
-      ptr_ += n * kTokenByteLength;
-      return *this;
-    }
-
-    iterator& operator-=(difference_type n) {
-      ptr_ -= n * kTokenByteLength;
-      return *this;
-    }
-
-    friend iterator operator+(iterator x, difference_type n) {
-      return iterator(x.ptr_ + n * kTokenByteLength);
-    }
-
-    friend iterator operator+(difference_type n, iterator x) {
-      return iterator(x.ptr_ + n * kTokenByteLength);
-    }
-
-    friend iterator operator-(iterator x, difference_type n) {
-      return iterator(x.ptr_ - n * kTokenByteLength);
-    }
-
-    friend difference_type operator-(iterator x, iterator y) {
-      return (x.ptr_ - y.ptr_) / kTokenByteLength;
-    }
-
-    friend bool operator==(iterator x, iterator y) { return x.ptr_ == y.ptr_; }
-    friend bool operator!=(iterator x, iterator y) { return x.ptr_ != y.ptr_; }
-    friend bool operator<(iterator x, iterator y) { return x.ptr_ < y.ptr_; }
-    friend bool operator<=(iterator x, iterator y) { return x.ptr_ <= y.ptr_; }
-    friend bool operator>(iterator x, iterator y) { return x.ptr_ > y.ptr_; }
-    friend bool operator>=(iterator x, iterator y) { return x.ptr_ >= y.ptr_; }
-
-   private:
-    const char* ptr_ = nullptr;
-  };
-
-  using const_iterator = iterator;
 
   static std::unique_ptr<UserPos> CreateFromDataManager(
       const DataManager& manager);
@@ -218,31 +131,79 @@ class UserPos {
   // Virutal for testing/mocking.
   virtual std::vector<std::string> GetPosList() const { return pos_list_; }
   virtual int GetPosListDefaultIndex() const { return pos_list_default_index_; }
-  virtual bool IsValidPos(absl::string_view pos) const;
   virtual std::optional<uint16_t> GetPosIds(absl::string_view pos) const;
-  virtual std::vector<UserPos::Token> GetTokens(absl::string_view key,
-                                                absl::string_view value,
-                                                absl::string_view pos,
-                                                absl::string_view locale) const;
+  virtual bool IsValidPos(absl::string_view pos) const {
+    return GetPosIds(pos).has_value();
+  }
+  virtual std::vector<UserPos::Token> GetTokens(
+      absl::string_view key, absl::string_view value,
+      user_dictionary::UserDictionary::PosType pos_type,
+      absl::string_view locale) const;
 
-  iterator begin() const { return iterator(token_array_data_.data()); }
-  iterator end() const {
-    return iterator(token_array_data_.data() + token_array_data_.size());
+  std::vector<UserPos::Token> GetTokens(absl::string_view key,
+                                        absl::string_view value,
+                                        absl::string_view pos,
+                                        absl::string_view locale) const {
+    return GetTokens(key, value, ToPosType(pos), locale);
   }
 
-  std::vector<Token> GetTokens(absl::string_view key, absl::string_view value,
-                               absl::string_view pos) const {
-    return GetTokens(key, value, pos, "");
+  std::vector<Token> GetTokens(
+      absl::string_view key, absl::string_view value,
+      user_dictionary::UserDictionary::PosType pos_type) const {
+    return GetTokens(key, value, pos_type, "");
   }
+
+  std::vector<UserPos::Token> GetTokens(absl::string_view key,
+                                        absl::string_view value,
+                                        absl::string_view pos) const {
+    return GetTokens(key, value, ToPosType(pos), "");
+  }
+
+  // Returns the string representation of PosType, or empty string if the given
+  // pos is invalid.
+  // For historical reason, the pos was represented in Japanese characters.
+  static absl::string_view GetStringPosType(
+      user_dictionary::UserDictionary::PosType pos_type);
+
+  // Returns the cost of PosType. if cost is not defined, the default cost
+  // is returned.
+  static uint16_t GetCostFromPosType(
+      user_dictionary::UserDictionary::PosType pos_type);
+
+  // Returns the string representation of PosType. INVALID if the given pos is
+  // invalid.
+  static user_dictionary::UserDictionary::PosType ToPosType(
+      absl::string_view string_pos_type);
 
  protected:
   // For testing.
   UserPos() = default;
 
  private:
+  struct TokenArrayData {
+    uint16_t pos_index;
+    uint16_t value_suffix_index;
+    uint16_t key_suffix_index;
+    uint16_t conjugation_id;
+  };
+
+  static_assert(sizeof(TokenArrayData) == 8);
+
   void InitPosList();
 
+  inline TokenArrayData GetTokenArrayData(size_t i) const {
+    const char* ptr = token_array_data_.data() + i * sizeof(TokenArrayData);
+    return {LoadUnaligned<uint16_t>(ptr), LoadUnaligned<uint16_t>(ptr + 2),
+            LoadUnaligned<uint16_t>(ptr + 4), LoadUnaligned<uint16_t>(ptr + 6)};
+  }
+
+  inline size_t TokenArrayDataSize() const {
+    return token_array_data_.size() / sizeof(TokenArrayData);
+  }
+
   absl::string_view token_array_data_;
+  // token_array_index_[pos_type] = {index to token_array_data_};
+  std::vector<std::vector<int>> token_array_index_;
   SerializedStringArray string_array_;
   std::vector<std::string> pos_list_;
   int pos_list_default_index_ = 0;

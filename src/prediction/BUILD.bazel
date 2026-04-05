@@ -71,6 +71,9 @@ mozc_cc_library(
     name = "user_history_storage",
     srcs = ["user_history_storage.cc"],
     hdrs = ["user_history_storage.h"],
+    visibility = [
+        "//engine:__pkg__",
+    ],
     deps = [
         ":user_history_predictor_cc_proto",
         "//base:config_file_stream",
@@ -267,6 +270,15 @@ mozc_cc_library(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+mozc_cc_test(
+    name = "result_test",
+    srcs = ["result_test.cc"],
+    deps = [
+        ":result",
+        "//testing:gunit_main",
     ],
 )
 
