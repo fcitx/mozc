@@ -108,6 +108,7 @@ class FileUtilImpl : public FileUtilInterface {
   absl::Status CreateHardLink(zstring_view from, zstring_view to) override;
   absl::StatusOr<FileTimeStamp> GetModificationTime(
       zstring_view filename) const override;
+  absl::StatusOr<std::string> ReadSymlink(zstring_view filename) const override;
 };
 
 using FileUtilSingleton = SingletonMockable<FileUtilInterface, FileUtilImpl>;
@@ -565,32 +566,30 @@ std::string FileUtil::JoinPath(
 }
 
 // TODO(taku): what happens if filename == '/foo/bar/../bar/..
-std::string FileUtil::Dirname(zstring_view filename) {
-  const std::string filename_str(filename.c_str());
-  const std::string::size_type p = filename_str.find_last_of(kFileDelimiter);
-  if (p == std::string::npos) {
+std::string FileUtil::Dirname(absl::string_view filename) {
+  const size_t p = filename.find_last_of(kFileDelimiter);
+  if (p == absl::string_view::npos) {
     return "";
   }
-  return filename_str.substr(0, p);
+  return std::string(filename.substr(0, p));
 }
 
-std::string FileUtil::Basename(zstring_view filename) {
-  std::string filename_str(filename.c_str());
-  const std::string::size_type p = filename_str.find_last_of(kFileDelimiter);
-  if (p == std::string::npos) {
-    return filename_str;
+std::string FileUtil::Basename(absl::string_view filename) {
+  const size_t p = filename.find_last_of(kFileDelimiter);
+  if (p == absl::string_view::npos) {
+    return std::string(filename);
   }
-  return filename_str.substr(p + 1, filename_str.size() - p);
+  return std::string(filename.substr(p + 1));
 }
 
-std::string FileUtil::NormalizeDirectorySeparator(zstring_view path) {
-  if constexpr (TargetIsWindows()) {
+std::string FileUtil::NormalizeDirectorySeparator(absl::string_view path) {
+  if constexpr (port::IsWindows()) {
     constexpr absl::string_view kFileDelimiterForUnix = "/";
     constexpr absl::string_view kFileDelimiterForWindows = "\\";
     return absl::StrReplaceAll(
         path, {{kFileDelimiterForUnix, kFileDelimiterForWindows}});
   }
-  return std::string(path.view());
+  return std::string(path);
 }
 
 absl::StatusOr<FileTimeStamp> FileUtil::GetModificationTime(
@@ -622,6 +621,23 @@ absl::StatusOr<FileTimeStamp> FileUtilImpl::GetModificationTime(
   }
   return stat_info.st_mtime;
 #endif  // _WIN32
+}
+
+absl::StatusOr<std::string> FileUtil::ReadSymlink(zstring_view filename) {
+  return FileUtilSingleton::Get()->ReadSymlink(filename);
+}
+
+absl::StatusOr<std::string> FileUtilImpl::ReadSymlink(
+    zstring_view filename) const {
+  const std::filesystem::path path = filename.c_str();
+  std::error_code error_code;
+  const std::filesystem::path link_path =
+      std::filesystem::read_symlink(path, error_code);
+  if (error_code) {
+    return absl::UnknownError(
+        absl::StrCat(error_code.message(), " (code=", error_code.value(), ")"));
+  }
+  return link_path.string();
 }
 
 absl::StatusOr<std::string> FileUtil::GetContents(

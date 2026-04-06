@@ -29,21 +29,21 @@
 
 #include "base/init_mozc.h"
 
-#include <string>
+#include "absl/strings/string_view.h"
+#include "base/port.h"
+#include "base/system_util.h"
 
-#include "absl/flags/flag.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #endif  // _WIN32
 
+#include <string>
+
+#include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 #include "base/file_util.h"
 #include "base/log_file.h"
-
-#ifndef MOZC_BUILDTOOL_BUILD
-#include "base/system_util.h"
-#endif  // MOZC_BUILDTOOL_BUILD
 
 // Even if log_dir is modified in the middle of the process, the
 // logging directory will not be changed because the logging stream is
@@ -60,10 +60,6 @@ ABSL_RETIRED_FLAG(
     bool, colored_log, true,
     "[Deprecated; no-op] Enables colored log messages on tty devices");
 
-
-ABSL_FLAG(std::string, program_invocation_name, "",
-          "Program name copied from argv[0].");
-
 namespace mozc {
 namespace {
 
@@ -74,18 +70,26 @@ LONG CALLBACK ExitProcessExceptionFilter(EXCEPTION_POINTERS* ExceptionInfo) {
   ::ExitProcess(static_cast<UINT>(-1));
   return EXCEPTION_EXECUTE_HANDLER;
 }
+
+void SetUnhandledExceptionFilterForWindows() {
+  // InitMozc() is supposed to be used for code generator or other programs
+  // which are not included in the production code. In these code, we don't
+  // want to show any error messages when exceptions are raised. This is
+  // important to keep our continuous build stable.
+  ::SetUnhandledExceptionFilter(ExitProcessExceptionFilter);
+}
+#else  // _WIN32
+void SetUnhandledExceptionFilterForWindows() {}
 #endif  // _WIN32
 
-std::string GetLogFilePathFromProgramName(const std::string& program_name) {
-  const std::string basename = FileUtil::Basename(program_name) + ".log";
-  if (absl::GetFlag(FLAGS_log_dir).empty()) {
-#ifdef MOZC_BUILDTOOL_BUILD
-    return basename;
-#else   // MOZC_BUILDTOOL_BUILD
-    return FileUtil::JoinPath(SystemUtil::GetLoggingDirectory(), basename);
-#endif  // !MOZC_BUILDTOOL_BUILD
-  }
-  return FileUtil::JoinPath(absl::GetFlag(FLAGS_log_dir), basename);
+std::string GetLogFilePathFromProgramName(absl::string_view program_name) {
+  const std::string basename = program_name.empty()
+                                   ? "UNKNOWN.log"
+                                   : FileUtil::Basename(program_name) + ".log";
+  const std::string& flag_log_dir = absl::GetFlag(FLAGS_log_dir);
+  const std::string log_dir =
+      flag_log_dir.empty() ? SystemUtil::GetLoggingDirectory() : flag_log_dir;
+  return FileUtil::JoinPath(log_dir, basename);
 }
 
 void ParseCommandLineFlags(int argc, char** argv) {
@@ -98,20 +102,17 @@ void ParseCommandLineFlags(int argc, char** argv) {
 }
 
 }  // namespace
+}  // namespace mozc
 
+namespace mozc {
 void InitMozc(const char* arg0, int* argc, char*** argv) {
-  absl::SetFlag(&FLAGS_program_invocation_name, *argv[0]);
-#ifdef _WIN32
-  // InitMozc() is supposed to be used for code generator or
-  // other programs which are not included in the production code.
-  // In these code, we don't want to show any error messages when
-  // exceptions are raised. This is important to keep
-  // our continuous build stable.
-  ::SetUnhandledExceptionFilter(ExitProcessExceptionFilter);
-#endif  // _WIN32
-  ParseCommandLineFlags(*argc, *argv);
+  absl::string_view program_name = (arg0 != nullptr ? arg0 : "");
+  mozc::SystemUtil::SetProgramInvocationName(program_name);
 
-  const std::string program_name = *argc > 0 ? (*argv)[0] : "UNKNOWN";
+  if constexpr (port::IsWindows()) {
+    SetUnhandledExceptionFilterForWindows();
+  }
+  ParseCommandLineFlags(*argc, *argv);
   RegisterLogFileSink(GetLogFilePathFromProgramName(program_name));
 }
 

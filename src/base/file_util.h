@@ -80,6 +80,8 @@ class FileUtilInterface {
   virtual absl::Status CreateHardLink(zstring_view from, zstring_view to) = 0;
   virtual absl::StatusOr<FileTimeStamp> GetModificationTime(
       zstring_view filename) const = 0;
+  virtual absl::StatusOr<std::string> ReadSymlink(
+      zstring_view filename) const = 0;
 
  protected:
   FileUtilInterface() = default;
@@ -161,17 +163,21 @@ class FileUtil {
     return JoinPath({path1, path2});
   }
 
-  static std::string Basename(zstring_view filename);
-  static std::string Dirname(zstring_view filename);
+  static std::string Basename(absl::string_view filename);
+  static std::string Dirname(absl::string_view filename);
 
   // Returns the normalized path by replacing '/' with '\\' on Windows.
   // Does nothing on other platforms.
-  static std::string NormalizeDirectorySeparator(zstring_view path);
+  static std::string NormalizeDirectorySeparator(absl::string_view path);
 
   // Returns the modification time in `modified_at`.
   // Returns false if something went wrong.
   static absl::StatusOr<FileTimeStamp> GetModificationTime(
       zstring_view filename);
+
+  // Returns the file path resolved from the given symbolic link.
+  // This is a wrapper of std::filesystem::read_symlink.
+  static absl::StatusOr<std::string> ReadSymlink(zstring_view filename);
 
   // Reads the contents of the file `filename` and returns it.
   static absl::StatusOr<std::string> GetContents(
