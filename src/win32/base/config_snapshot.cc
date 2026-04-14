@@ -30,9 +30,11 @@
 #include "win32/base/config_snapshot.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
 
 #include "config/config_handler.h"
+#include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "session/key_info_util.h"
 
@@ -62,7 +64,7 @@ StaticConfigSnapshot GetConfigSnapshotImpl() {
       config->use_keyboard_to_change_preedit_method();
   snapshot.use_mode_indicator = config->use_mode_indicator();
 
-  const auto &direct_mode_keys =
+  const auto& direct_mode_keys =
       KeyInfoUtil::ExtractSortedDirectModeKeys(*config);
   const size_t size_to_be_copied =
       std::min(direct_mode_keys.size(), kMaxDirectModeKeys);
@@ -82,7 +84,7 @@ ConfigSnapshot::Info::Info()
       use_mode_indicator(false) {}
 
 // static
-bool ConfigSnapshot::Get(Info *info) {
+bool ConfigSnapshot::Get(Info* info) {
   // Note: Thread-safety is not required.
   static const StaticConfigSnapshot cached_snapshot = GetConfigSnapshotImpl();
   info->use_kana_input = cached_snapshot.use_kana_input;

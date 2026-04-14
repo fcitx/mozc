@@ -46,7 +46,6 @@
 #include "win32/tip/tip_candidate_list.h"
 #include "win32/tip/tip_edit_session.h"
 #include "win32/tip/tip_query_provider.h"
-#include "win32/tip/tip_surrounding_text.h"
 
 namespace mozc {
 namespace win32 {
@@ -63,13 +62,13 @@ constexpr std::wstring_view kReconvertFunctionDisplayName =
 
 }  // namespace
 
-STDMETHODIMP TipReconvertFunction::GetDisplayName(BSTR *absl_nullable name) {
+STDMETHODIMP TipReconvertFunction::GetDisplayName(BSTR* absl_nullable name) {
   return SaveToOutParam(MakeUniqueBSTR(kReconvertFunctionDisplayName), name);
 }
 
 STDMETHODIMP TipReconvertFunction::QueryRange(
-    ITfRange *absl_nullable range, ITfRange **absl_nullable new_range,
-    BOOL *absl_nullable opt_convertible) {
+    ITfRange* absl_nullable range, ITfRange** absl_nullable new_range,
+    BOOL* absl_nullable opt_convertible) {
   if (range == nullptr) {
     return E_INVALIDARG;
   }
@@ -85,8 +84,8 @@ STDMETHODIMP TipReconvertFunction::QueryRange(
 
   std::wstring selected_text;
   bool is_composing = false;
-  if (!TipEditSession::GetTextSync(text_service_.get(), range,
-                                   &selected_text, &is_composing)) {
+  if (!TipEditSession::GetTextSync(text_service_.get(), range, &selected_text,
+                                   &is_composing)) {
     return E_FAIL;
   }
 
@@ -112,8 +111,8 @@ STDMETHODIMP TipReconvertFunction::QueryRange(
 
 STDMETHODIMP
 TipReconvertFunction::GetReconversion(
-    ITfRange *absl_nullable range,
-    ITfCandidateList **absl_nullable candidate_list) {
+    ITfRange* absl_nullable range,
+    ITfCandidateList** absl_nullable candidate_list) {
   if (range == nullptr) {
     return E_INVALIDARG;
   }
@@ -143,7 +142,7 @@ TipCandidateOnFinalize TipReconvertFunction::OnCandidateFinalize(
   };
 }
 
-STDMETHODIMP TipReconvertFunction::Reconvert(ITfRange *absl_nullable range) {
+STDMETHODIMP TipReconvertFunction::Reconvert(ITfRange* absl_nullable range) {
   if (range == nullptr) {
     return E_INVALIDARG;
   }

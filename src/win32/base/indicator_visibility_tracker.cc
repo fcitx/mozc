@@ -31,6 +31,7 @@
 
 #include "absl/time/time.h"
 #include "base/stopwatch.h"
+#include "win32/base/keyboard.h"
 
 namespace mozc {
 namespace win32 {
@@ -48,7 +49,6 @@ IndicatorVisibilityTracker::Action GetDefaultAction(bool previously_visible,
 
 }  // namespace
 
-
 IndicatorVisibilityTracker::Action
 IndicatorVisibilityTracker::OnDissociateContext() {
   const bool original = visible_;
@@ -58,7 +58,7 @@ IndicatorVisibilityTracker::OnDissociateContext() {
 }
 
 IndicatorVisibilityTracker::Action IndicatorVisibilityTracker::OnTestKey(
-    const VirtualKey &key, bool is_down, bool eaten) {
+    const VirtualKey& key, bool is_down, bool eaten) {
   if (!is_down) {
     return kNothing;
   }
@@ -69,7 +69,7 @@ IndicatorVisibilityTracker::Action IndicatorVisibilityTracker::OnTestKey(
 }
 
 IndicatorVisibilityTracker::Action IndicatorVisibilityTracker::OnKey(
-    const VirtualKey &key, bool is_down, bool eaten) {
+    const VirtualKey& key, bool is_down, bool eaten) {
   if (!is_down) {
     return kNothing;
   }

@@ -32,7 +32,6 @@
 #include <ctffunc.h>
 #include <objbase.h>
 #include <oleauto.h>
-#include <wil/com.h>
 
 #include <utility>
 #include <vector>
@@ -47,13 +46,13 @@ namespace win32 {
 namespace tsf {
 
 STDMETHODIMP TipCandidateList::EnumCandidates(
-    IEnumTfCandidates **absl_nullable enum_candidate) {
+    IEnumTfCandidates** absl_nullable enum_candidate) {
   return SaveToOutParam(MakeComPtr<TipEnumCandidates>(candidates_),
                         enum_candidate);
 }
 
 STDMETHODIMP TipCandidateList::GetCandidate(
-    ULONG index, ITfCandidateString **absl_nullable candidate_string) {
+    ULONG index, ITfCandidateString** absl_nullable candidate_string) {
   if (index >= candidates_.size()) {
     return E_FAIL;
   }
@@ -62,7 +61,7 @@ STDMETHODIMP TipCandidateList::GetCandidate(
       candidate_string);
 }
 
-STDMETHODIMP TipCandidateList::GetCandidateNum(ULONG *absl_nullable count) {
+STDMETHODIMP TipCandidateList::GetCandidateNum(ULONG* absl_nullable count) {
   return SaveToOutParam(candidates_.size(), count);
 }
 

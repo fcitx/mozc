@@ -51,17 +51,15 @@ namespace win32 {
 namespace tsf {
 namespace {
 
-using ::testing::AssertionFailure;
 using ::testing::AssertionResult;
-using ::testing::AssertionSuccess;
 using ::testing::IsNull;
 using ::testing::NotNull;
 
 class MockCallbackResult {
  public:
   MockCallbackResult() : on_finalize_called_(false), index_(0) {}
-  MockCallbackResult(const MockCallbackResult &) = delete;
-  MockCallbackResult &operator=(const MockCallbackResult &) = delete;
+  MockCallbackResult(const MockCallbackResult&) = delete;
+  MockCallbackResult& operator=(const MockCallbackResult&) = delete;
 
   void Reset() {
     on_finalize_called_ = false;
@@ -81,7 +79,7 @@ class MockCallbackResult {
 
   size_t index() const { return index_; }
 
-  const std::wstring &candidate() const { return candidate_; }
+  const std::wstring& candidate() const { return candidate_; }
 
  private:
   bool on_finalize_called_;
@@ -109,7 +107,7 @@ TEST(TipCandidateListTest, EmptyCandidate) {
   EXPECT_HRESULT_SUCCEEDED(candidate_list->EnumCandidates(&enum_candidates));
   ASSERT_THAT(enum_candidates, NotNull());
 
-  ITfCandidateString *buffer[3] = {};
+  ITfCandidateString* buffer[3] = {};
   ULONG num_fetched = 0;
   EXPECT_EQ(enum_candidates->Next(std::size(buffer), buffer, &num_fetched),
             S_FALSE);
@@ -151,7 +149,7 @@ TEST(TipCandidateListTest, NonEmptyCandidates) {
 
   for (size_t offset = 0; offset < source.size();) {
     constexpr size_t kBufferSize = 10;
-    ITfCandidateString *buffer[kBufferSize] = {};
+    ITfCandidateString* buffer[kBufferSize] = {};
     wil::com_ptr_nothrow<ITfCandidateString> strings[kBufferSize];
     ULONG num_fetched = 0;
     HRESULT hr = enum_candidates->Next(kBufferSize, buffer, &num_fetched);
