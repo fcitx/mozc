@@ -38,6 +38,7 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -73,24 +74,10 @@ namespace mozc {
 namespace dictionary {
 namespace {
 
-struct TokenGreaterThan {
-  bool operator()(const TokenInfo& lhs, const TokenInfo& rhs) const {
-    if (lhs.token->lid != rhs.token->lid) {
-      return lhs.token->lid > rhs.token->lid;
-    }
-    if (lhs.token->rid != rhs.token->rid) {
-      return lhs.token->rid > rhs.token->rid;
-    }
-    if (lhs.id_in_value_trie != rhs.id_in_value_trie) {
-      return lhs.id_in_value_trie < rhs.id_in_value_trie;
-    }
-    return lhs.token->attributes < rhs.token->attributes;
-  }
-};
-
 void WriteSectionToFile(const DictionaryFileSection& section,
-                        const std::string& filename) {
-  if (absl::Status s = FileUtil::SetContents(filename, section.image);
+                        absl::string_view filename) {
+  if (absl::Status s =
+          FileUtil::SetContents(std::string(filename), section.image);
       !s.ok()) {
     LOG(ERROR) << "Cannot write a section to " << filename;
   }
@@ -126,14 +113,14 @@ void SystemDictionaryBuilder::BuildFromTokensInternal(
   BuildTokenArray(key_info_list);
 }
 
-void SystemDictionaryBuilder::WriteToFile(
-    const std::string& output_file) const {
-  OutputFileStream ofs(output_file, std::ios::binary | std::ios::out);
+void SystemDictionaryBuilder::WriteToFile(absl::string_view output_file) const {
+  OutputFileStream ofs(std::string(output_file),
+                       std::ios::binary | std::ios::out);
   WriteToStream(output_file, &ofs);
 }
 
 void SystemDictionaryBuilder::WriteToStream(
-    const absl::string_view intermediate_output_file_base_path,
+    absl::string_view intermediate_output_file_base_path,
     std::ostream* output_stream) const {
   // Memory images of each section
   std::vector<DictionaryFileSection> sections;
@@ -322,9 +309,8 @@ void SystemDictionaryBuilder::BuildValueTrie(const KeyInfoList& key_info_list) {
         // These values will be stored in token array as flags
         continue;
       }
-      std::string value_str;
-      codec_->EncodeValue(token_info.token->value, &value_str);
-      value_trie_builder_.Add(value_str);
+      std::string value_str = codec_->EncodeValue(token_info.token->value);
+      value_trie_builder_.Add(std::move(value_str));
     }
   }
   value_trie_builder_.Build();
@@ -333,8 +319,8 @@ void SystemDictionaryBuilder::BuildValueTrie(const KeyInfoList& key_info_list) {
 void SystemDictionaryBuilder::SetIdForValue(KeyInfoList* key_info_list) const {
   for (KeyInfo& key_info : *key_info_list) {
     for (TokenInfo& token_info : key_info.tokens) {
-      std::string value_str;
-      codec_->EncodeValue(token_info.token->value, &value_str);
+      const std::string value_str =
+          codec_->EncodeValue(token_info.token->value);
       token_info.id_in_value_trie = value_trie_builder_.GetId(value_str);
     }
   }
@@ -342,8 +328,15 @@ void SystemDictionaryBuilder::SetIdForValue(KeyInfoList* key_info_list) const {
 
 void SystemDictionaryBuilder::SortTokenInfo(KeyInfoList* key_info_list) const {
   for (KeyInfo& key_info : *key_info_list) {
-    std::stable_sort(key_info.tokens.begin(), key_info.tokens.end(),
-                     TokenGreaterThan());
+    std::stable_sort(
+        key_info.tokens.begin(), key_info.tokens.end(),
+        [](const TokenInfo& lhs, const TokenInfo& rhs) {
+          // Note lid/rid: the order is swapped.
+          return std::tie(rhs.token->lid, rhs.token->rid, lhs.id_in_value_trie,
+                          lhs.token->attributes) <
+                 std::tie(lhs.token->lid, lhs.token->rid, rhs.id_in_value_trie,
+                          rhs.token->attributes);
+        });
   }
 }
 
@@ -436,18 +429,15 @@ void SystemDictionaryBuilder::SetValueType(KeyInfoList* key_info_list) const {
 
 void SystemDictionaryBuilder::BuildKeyTrie(const KeyInfoList& key_info_list) {
   for (const KeyInfo& key_info : key_info_list) {
-    std::string key_str;
-    codec_->EncodeKey(key_info.key, &key_str);
-    key_trie_builder_.Add(key_str);
+    key_trie_builder_.Add(codec_->EncodeKey(key_info.key));
   }
   key_trie_builder_.Build();
 }
 
 void SystemDictionaryBuilder::SetIdForKey(KeyInfoList* key_info_list) const {
   for (KeyInfo& key_info : *key_info_list) {
-    std::string key_str;
-    codec_->EncodeKey(key_info.key, &key_str);
-    key_info.id_in_key_trie = key_trie_builder_.GetId(key_str);
+    key_info.id_in_key_trie =
+        key_trie_builder_.GetId(codec_->EncodeKey(key_info.key));
   }
 }
 
@@ -464,9 +454,7 @@ void SystemDictionaryBuilder::BuildTokenArray(
     }
 
     for (const KeyInfo* key_info : id_to_keyinfo_table) {
-      std::string tokens_str;
-      codec_->EncodeTokens(key_info->tokens, &tokens_str);
-      token_array_builder_.Add(tokens_str);
+      token_array_builder_.Add(codec_->EncodeTokens(key_info->tokens));
     }
   }
 
