@@ -36,6 +36,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "testing/gunit.h"
 
 namespace mozc {
@@ -51,7 +52,7 @@ class DataManagerTestBase : public ::testing::Test {
                       // The following three are used in segmenter test.
                       size_t lsize, size_t rsize, IsBoundaryFunc is_boundary,
                       // The following two are used in connector test.
-                      const std::string& connection_txt_file,
+                      absl::string_view connection_txt_file,
                       int expected_resolution,
                       // The following two are used in suggestion filter test.
                       std::vector<std::string> dictionary_files,

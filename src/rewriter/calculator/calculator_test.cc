@@ -131,6 +131,17 @@ TEST(CalculatorTest, BasicTest) {
 
   // Issue 3082576: 7472.4 - 7465.6 = 6.7999999999993 is not expected.
   VerifyCalculationInString(calculator, "7472.4-7465.6=", "6.8");
+
+  // Additional coverage for syntax errors and invalid token sequences.
+  VerifyRejection(calculator, "++=");
+  VerifyRejection(calculator, "(1+)=");
+  VerifyRejection(calculator, "+=");
+
+  // Full-width and half-width space mix cases.
+  VerifyCalculation(calculator, "1 ＋　1=", "2");
+
+  // Overflow and extreme values.
+  VerifyRejection(calculator, "1e1000=");
 }
 
 // Test large number of queries.  Test data is located at
@@ -172,6 +183,19 @@ TEST(CalculatorTest, StressTest) {
 #endif  // !defined(__ANDROID__) || !defined(__i386__)
   }
   LOG(INFO) << "done " << lineno << " tests from " << filename << std::endl;
+}
+
+TEST(CalculatorTest, LimitAndValidationTest) {
+  Calculator calculator;
+  std::string unused_result;
+
+  // Large but valid operations under limit (e.g. 100 unary operations).
+  std::string valid_case = std::string(100, '+') + "1=";
+  EXPECT_TRUE(calculator.CalculateString(valid_case, &unused_result));
+
+  // Directly violating input length limit (e.g. 2100 bytes).
+  std::string over_length_case = std::string(2100, '+') + "1=";
+  EXPECT_FALSE(calculator.CalculateString(over_length_case, &unused_result));
 }
 
 }  // namespace mozc
