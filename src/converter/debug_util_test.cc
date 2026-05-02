@@ -27,41 +27,45 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef MOZC_BASE_VERSION_H_
-#define MOZC_BASE_VERSION_H_
+#include "converter/debug_util.h"
 
 #include <string>
 
-#include "absl/strings/string_view.h"
+#include "converter/lattice.h"
+#include "converter/node.h"
+#include "testing/gunit.h"
 
 namespace mozc {
+namespace converter {
+namespace {
 
-class Version {
- public:
-  Version(const Version&) = delete;
-  Version& operator=(const Version&) = delete;
+TEST(DebugUtilTest, DumpNodesEmpty) {
+  Lattice lattice;
+  lattice.SetKey("");
 
-  // Get current mozc version (former called MOZC_VERSION)
-  static std::string GetMozcVersion();
+  const std::string dump = DumpNodes(lattice);
+  EXPECT_FALSE(dump.empty());
+  // The header and BOS node should be output.
+  EXPECT_NE(dump.find("BOS"), std::string::npos);
+}
 
-#ifdef _WIN32
-  // Get current mozc version (former called MOZC_VERSION) by std::wstring
-  static std::wstring GetMozcVersionW();
-#endif  // _WIN32
+TEST(DebugUtilTest, DumpNodesSimple) {
+  Lattice lattice;
+  lattice.SetKey("a");
 
-  static int GetMozcVersionMajor();
-  static int GetMozcVersionMinor();
-  static int GetMozcVersionBuildNumber();
-  static int GetMozcVersionRevision();
-  static const char* GetMozcEngineVersion();
+  Node* n1 = lattice.NewNode();
+  n1->key = "a";
+  n1->value = "A";
+  n1->begin_pos = 0;
+  n1->end_pos = 1;
+  lattice.Insert(0, n1);
 
-  // Returns true if lhs is less than rhs in the lexical order.
-  // CompareVersion("1.2.3.4", "1.2.3.4") => false
-  // CompareVersion("1.2.3.4", "5.2.3.4") => true
-  // CompareVersion("1.25.3.4", "1.2.3.4") => false
-  static bool CompareVersion(absl::string_view lhs, absl::string_view rhs);
-};
+  const std::string dump = DumpNodes(lattice);
+  EXPECT_FALSE(dump.empty());
+  EXPECT_NE(dump.find("BOS"), std::string::npos);
+  EXPECT_NE(dump.find("\ta\tA\t"), std::string::npos);
+}
 
+}  // namespace
+}  // namespace converter
 }  // namespace mozc
-
-#endif  // MOZC_BASE_VERSION_H_

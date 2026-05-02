@@ -27,41 +27,22 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef MOZC_BASE_VERSION_H_
-#define MOZC_BASE_VERSION_H_
+#ifndef MOZC_CONVERTER_DEBUG_UTIL_H_
+#define MOZC_CONVERTER_DEBUG_UTIL_H_
 
 #include <string>
 
-#include "absl/strings/string_view.h"
+#include "converter/lattice.h"
 
 namespace mozc {
+namespace converter {
 
-class Version {
- public:
-  Version(const Version&) = delete;
-  Version& operator=(const Version&) = delete;
+// Dumps all nodes in the given lattice in TSV format.
+// The output format includes id, key, value, begin_pos, end_pos, lid, rid,
+// wcost, cost, bnext, enext, prev, and next for each node.
+std::string DumpNodes(const Lattice& lattice);
 
-  // Get current mozc version (former called MOZC_VERSION)
-  static std::string GetMozcVersion();
-
-#ifdef _WIN32
-  // Get current mozc version (former called MOZC_VERSION) by std::wstring
-  static std::wstring GetMozcVersionW();
-#endif  // _WIN32
-
-  static int GetMozcVersionMajor();
-  static int GetMozcVersionMinor();
-  static int GetMozcVersionBuildNumber();
-  static int GetMozcVersionRevision();
-  static const char* GetMozcEngineVersion();
-
-  // Returns true if lhs is less than rhs in the lexical order.
-  // CompareVersion("1.2.3.4", "1.2.3.4") => false
-  // CompareVersion("1.2.3.4", "5.2.3.4") => true
-  // CompareVersion("1.25.3.4", "1.2.3.4") => false
-  static bool CompareVersion(absl::string_view lhs, absl::string_view rhs);
-};
-
+}  // namespace converter
 }  // namespace mozc
 
-#endif  // MOZC_BASE_VERSION_H_
+#endif  // MOZC_CONVERTER_DEBUG_UTIL_H_
