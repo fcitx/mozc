@@ -41,6 +41,7 @@
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "base/japanese_util.h"
 #include "base/number_util.h"
 
@@ -318,110 +319,107 @@ Calculator::Calculator() {
   operator_map_["abs"] = TokenType::FUNC_ABS;
 }
 
-bool Calculator::CalculateString(const absl::string_view key,
-                                 std::string* result) const {
-  DCHECK(result);
+std::optional<std::string> Calculator::CalculateString(
+    const absl::string_view key) const {
   if (key.empty() || key.size() > kMaxInputLength) {
     LOG(ERROR) << "Key is empty or too long.";
-    return false;
+    return std::nullopt;
   }
   std::string normalized_key =
       japanese_util::FullWidthAsciiToHalfWidthAscii(key);
 
-  absl::string_view expression_body;
-  if (normalized_key.front() == '=') {
-    // Expression starts with '='.
-    expression_body =
-        absl::string_view(normalized_key.data() + 1, normalized_key.size() - 1);
-  } else if (normalized_key.back() == '=') {
-    // Expression is ended with '='.
-    expression_body =
-        absl::string_view(normalized_key.data(), normalized_key.size() - 1);
-  } else {
-    // Expression does not start nor end with '='.
-    result->clear();
-    return false;
+  if (normalized_key.starts_with('=') && normalized_key.ends_with('=')) {
+    return std::nullopt;
+  }
+  absl::string_view expression_body = normalized_key;
+  if (!absl::ConsumePrefix(&expression_body, "=") &&
+      !absl::ConsumeSuffix(&expression_body, "=")) {
+    return std::nullopt;
   }
 
-  TokenSequence tokens;
-  if (!Tokenize(expression_body, &tokens)) {
+  std::optional<TokenSequence> tokens = Tokenize(expression_body);
+  if (!tokens.has_value()) {
     // normalized_key is not valid sequence of tokens
-    result->clear();
-    return false;
+    return std::nullopt;
   }
 
-  double result_value = 0.0;
-  if (!CalculateTokens(tokens, &result_value)) {
+  std::optional<double> result_value = CalculateTokens(*tokens);
+  if (!result_value.has_value()) {
     // Calculation is failed. Syntax error or arithmetic error such as
     // overflow, divide-by-zero, etc.
-    result->clear();
-    return false;
+    return std::nullopt;
   }
-  *result = absl::StrFormat("%.8g", result_value);
-  return true;
+  return absl::StrFormat("%.8g", *result_value);
 }
 
-bool Calculator::Tokenize(absl::string_view expression_body,
-                          TokenSequence* tokens) const {
-  const char* current = expression_body.data();
-  const char* end = expression_body.data() + expression_body.size();
+std::optional<Calculator::TokenSequence> Calculator::Tokenize(
+    absl::string_view expression_body) const {
   int num_operator = 0;  // Number of operators or functions appeared
   int num_value = 0;     // Number of values appeared
 
-  DCHECK(tokens);
-  tokens->clear();
+  TokenSequence tokens;
+  absl::string_view rest = expression_body;
 
-  while (current < end) {
+  while (!rest.empty()) {
     // Skip spaces
-    while ((*current == ' ') || (*current == '\t')) {
-      ++current;
+    while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t')) {
+      rest.remove_prefix(1);
     }
-    const char* token_begin = current;
+    if (rest.empty()) {
+      break;
+    }
 
     // Read value token
-    while (((*current >= '0') && (*current <= '9')) || (*current == '.')) {
-      ++current;
+    size_t value_len = 0;
+    while (value_len < rest.size() &&
+           (absl::ascii_isdigit(rest[value_len]) ||
+            rest[value_len] == '.')) {
+      ++value_len;
     }
-    if (token_begin < current) {
-      std::string number_token(token_begin, current - token_begin);
+    if (value_len > 0) {
+      const absl::string_view number_token = rest.substr(0, value_len);
       double value = 0.0;
       if (!NumberUtil::SafeStrToDouble(number_token, &value)) {
-        return false;
+        return std::nullopt;
       }
-      tokens->push_back({TokenType::INTEGER, value});
+      tokens.push_back({TokenType::INTEGER, value});
       ++num_value;
+      rest.remove_prefix(value_len);
       continue;
     }
 
     // Read alphabetical function name token
-    if (absl::ascii_isalpha(*current)) {
-      while (current < end && absl::ascii_isalpha(*current)) {
-        ++current;
+    if (absl::ascii_isalpha(rest.front())) {
+      size_t func_len = 0;
+      while (func_len < rest.size() && absl::ascii_isalpha(rest[func_len])) {
+        ++func_len;
       }
-      std::string name(token_begin, current - token_begin);
+      std::string name(rest.data(), func_len);
       absl::AsciiStrToLower(&name);
       const auto func_it = operator_map_.find(name);
       if (func_it != operator_map_.end()) {
-        tokens->push_back({func_it->second, 0.0});
+        tokens.push_back({func_it->second, 0.0});
+        rest.remove_prefix(func_len);
         ++num_operator;
         continue;
       }
-      return false;
+      return std::nullopt;
     }
 
     // Read operator token
+    bool matched_operator = false;
     for (size_t length = 1; length <= kMaxLengthOfOperator; ++length) {
-      if (current + length > end) {
-        // Invalid token
-        return false;
+      if (length > rest.size()) {
+        break;
       }
-      absl::string_view window(current, length);
+      const absl::string_view window = rest.substr(0, length);
       const auto op_it = operator_map_.find(window);
       if (op_it == operator_map_.end()) {
         continue;
       }
-      tokens->push_back({op_it->second, 0.0});
-      current += length;
+      tokens.push_back({op_it->second, 0.0});
+      rest.remove_prefix(length);
+      matched_operator = true;
       // Does not count parenthesis as an operator.
       if ((op_it->second != TokenType::LP) &&
           (op_it->second != TokenType::RP)) {
@@ -429,34 +427,32 @@ bool Calculator::Tokenize(absl::string_view expression_body,
       }
       break;
     }
-    if (token_begin < current) {
+    if (matched_operator) {
       continue;
     }
 
     // Invalid token
-    return false;
+    return std::nullopt;
   }
 
   if (num_operator == 0 || num_value == 0) {
     // Must contain at least one operator and one value.
-    return false;
+    return std::nullopt;
   }
-  return true;
+  return tokens;
 }
 
-bool Calculator::CalculateTokens(const TokenSequence& tokens,
-                                 double* result_value) const {
-  DCHECK(result_value);
+std::optional<double> Calculator::CalculateTokens(
+    const TokenSequence& tokens) const {
   ParserContext ctx{tokens, 0};
   std::optional<double> result = ParseExpression(ctx);
   if (!result.has_value()) {
-    return false;
+    return std::nullopt;
   }
   if (ctx.pos != ctx.tokens.size()) {
-    return false;
+    return std::nullopt;
   }
-  *result_value = *result;
-  return true;
+  return result;
 }
 
 }  // namespace mozc
