@@ -81,9 +81,9 @@ FCITX_CONFIGURATION(
     OptionWithAnnotation<CompositionMode, CompositionModeI18NAnnotation>
         initialMode{this, "InitialMode", _("Initial Mode"),
                     mozc::commands::HIRAGANA};
-    Option<SharedStatePolicy> sharedStatePolicy{
-        this, "InputState", _("Shared Input State"),
-        SharedStatePolicy::FollowGlobalConfig};
+    OptionWithAnnotation<SharedStatePolicy, SharedStatePolicyI18NAnnotation>
+        sharedStatePolicy{this, "InputState", _("Shared Input State"),
+                          SharedStatePolicy::FollowGlobalConfig};
     Option<bool> verticalList{this, "Vertical", _("Vertical candidate list"),
                               true};
     OptionWithAnnotation<ExpandMode, ExpandModeI18NAnnotation> expandMode{
