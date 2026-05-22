@@ -157,7 +157,6 @@ class PredictorTestPeer : public testing::TestPeer<Predictor> {
  public:
   explicit PredictorTestPeer(Predictor& predictor)
       : testing::TestPeer<Predictor>(predictor) {}
-  PEER_METHOD(PromoteTopDictionaryResult);
   PEER_STATIC_METHOD(DemoteWeakUserHistory);
 };
 
@@ -505,56 +504,6 @@ TEST_F(MixedDecodingPredictorTest, MixCandidates) {
     // swapped.
     EXPECT_EQ(mixed_results[0].value, "dic_value");
     EXPECT_EQ(mixed_results[1].value, "history_value");
-  }
-}
-
-TEST_F(MixedDecodingPredictorTest, PromoteTopDictionaryResultTest) {
-  auto predictor1 = std::make_unique<NullPredictor>(true);
-  auto predictor2 = std::make_unique<NullPredictor>(true);
-  auto predictor = std::make_unique<Predictor>(*modules_, std::move(predictor1),
-                                               std::move(predictor2));
-  const uint16_t general_noun_id = modules_->GetPosMatcher().GetGeneralNounId();
-  const uint16_t proper_noun_id = modules_->GetPosMatcher().GetUniqueNounId();
-
-  PredictorTestPeer peer(*predictor);
-
-  {
-    request_->mutable_decoder_experiment_params()->set_candidate_mixing_mode(1);
-    request_->mutable_decoder_experiment_params()
-        ->set_candidate_mixing_min_post_correction_prob(0.5);
-
-    ConversionRequest convreq =
-        CreateConversionRequest(ConversionRequest::SUGGESTION);
-    std::vector<Result> predictor_results(2), history_results(2);
-
-    history_results[0].key = "こうかい";
-    history_results[0].value = "後悔";
-
-    predictor_results[0].key = "こうかい";
-    predictor_results[0].value = "公開";
-    predictor_results[0].types |= prediction::POST_CORRECTION;
-    predictor_results[0].post_correction_prob = 0.9;
-
-    // dictionary results must contain the top history result to
-    // evaluate the POS id (not a proper noun).
-    predictor_results[1].key = "こうかい";
-    predictor_results[1].value = "後悔";
-    predictor_results[1].lid = general_noun_id;
-    predictor_results[1].rid = general_noun_id;
-
-    EXPECT_TRUE(peer.PromoteTopDictionaryResult(convreq, history_results,
-                                                predictor_results));
-
-    // Low probability
-    predictor_results[0].post_correction_prob = 0.1;
-    EXPECT_FALSE(peer.PromoteTopDictionaryResult(convreq, history_results,
-                                                 predictor_results));
-
-    // history top is proper noun.
-    predictor_results[0].post_correction_prob = 0.9;
-    predictor_results[1].lid = proper_noun_id;
-    EXPECT_FALSE(peer.PromoteTopDictionaryResult(convreq, history_results,
-                                                 predictor_results));
   }
 }
 

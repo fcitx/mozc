@@ -31,6 +31,9 @@ In this repository, *Mozc* means the second definition unless otherwise noted.
 
 Detailed differences between Google Japanese Input and Mozc are described in [About Branding](docs/about_branding.md).
 
+For policies on vocabulary and conversion results, see
+[Vocabulary Policy](VOCABULARY_POLICY.md).
+
 Build Instructions
 ------------------
 

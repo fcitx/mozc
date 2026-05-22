@@ -664,14 +664,6 @@ message DecoderExperimentParams {
   // symbol_rewriter_promotion_size == 5, the first 5 candidates are symbols.
   optional int32 symbol_rewriter_promotion_size = 133 [default = 15];
 
-  // Candidate mixing mode. See predictor.cc for detail.
-  optional int32 candidate_mixing_mode = 140 [default = 0];
-
-  // Minimum post correction probability to promote dictionary suggestion
-  // over the history suggestion.
-  optional float candidate_mixing_min_post_correction_prob = 141
-      [default = 0.0];
-
   // Cost penalty added to the partial candidate. Partial candidate should not
   // be ranked lower than normal full candidates.
   optional int32 partial_candidate_cost_penalty = 143 [default = 5000];

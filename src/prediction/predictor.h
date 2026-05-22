@@ -102,12 +102,6 @@ class Predictor : public PredictorInterface {
   std::vector<Result> PredictForMixedConversion(
       const ConversionRequest& request) const;
 
-  // Returns true if the top dictionary result should be promoted.
-  bool PromoteTopDictionaryResult(
-      const ConversionRequest& request,
-      absl::Span<const Result> user_history_results,
-      absl::Span<const Result> dictionary_results) const;
-
   // Mix user_history_results and dictionary_results.
   std::vector<Result> MixCandidates(
       const ConversionRequest& request,
@@ -123,7 +117,6 @@ class Predictor : public PredictorInterface {
 
   std::unique_ptr<PredictorInterface> dictionary_predictor_;
   std::unique_ptr<PredictorInterface> user_history_predictor_;
-  const dictionary::PosMatcher pos_matcher_;
 };
 
 }  // namespace mozc::prediction
