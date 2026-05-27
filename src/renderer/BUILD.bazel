@@ -235,7 +235,10 @@ mozc_cc_library(
     hdrs = ["renderer_style_handler.h"],
     visibility = ["//renderer:__subpackages__"],
     deps = [
+        "//base/protobuf:text_format",
         "//protocol:renderer_cc_proto",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

@@ -82,6 +82,10 @@ message RendererStyle {
   optional string column_minimum_width_string = 5;
 
   // Candidate view text styles
+  // text_styles[0]: shortcut
+  // text_styles[1]: gap1
+  // text_styles[2]: candidate
+  // text_styles[3]: description
   repeated TextStyle text_styles = 6;
 
   // Footer style

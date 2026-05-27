@@ -209,6 +209,9 @@ class ConversionRequest {
     // Disables to add prefix penalty.
     // Used to calculate the cost of a suffix of a word.
     bool disable_prefix_penalty = false;
+
+    // This conversion request is called by predictor for realtime conversion.
+    bool used_in_predictor_realtime_conversion = false;
   };
 
   static_assert(std::is_trivially_copyable<Options>::value,
