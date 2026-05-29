@@ -38,65 +38,8 @@ namespace mozc {
 namespace renderer {
 
 namespace {
-constexpr absl::string_view kStyleTextProto = R"pb(
-  # proto-file: protocol/renderer_style.proto
-  # proto-message: RendererStyle
-  window_border: 1
-  scrollbar_width: 4
-  row_rect_padding: 0
-  border_color { r: 150 g: 150 b: 150 }
-  # text_style of shortcut
-  text_styles {
-    font_size: 14
-    foreground_color { r: 119 g: 119 b: 119 }
-    background_color { r: 243 g: 244 b: 255 }
-    left_padding: 8
-    right_padding: 8
-  }
-  # text_style of gap1
-  text_styles { font_size: 14 }
-  # text_style of candidate
-  text_styles { font_size: 14 }
-  # text_style of description
-  text_styles {
-    font_size: 12
-    foreground_color { r: 136 g: 136 b: 136 }
-    right_padding: 8
-  }
-  # We want to ensure that the candidate window is at least wide
-  # enough to render "そのほかの文字種  " as a candidate.
-  column_minimum_width_string: "そのほかの文字種  "
-  footer_style { font_size: 14 left_padding: 4 right_padding: 4 }
-  footer_sub_label_style {
-    font_size: 10
-    foreground_color { r: 167 g: 167 b: 167 }
-    left_padding: 4
-    right_padding: 4
-  }
-  footer_border_colors { r: 96 g: 96 b: 96 }
-  footer_top_color { r: 255 g: 255 b: 255 }
-  footer_bottom_color { r: 238 g: 238 b: 238 }
-  logo_file_name: "candidate_window_logo.tiff"
-  focused_background_color { r: 209 g: 234 b: 255 }
-  focused_border_color { r: 127 g: 172 b: 221 }
-  scrollbar_background_color { r: 224 g: 224 b: 224 }
-  scrollbar_indicator_color { r: 117 g: 144 b: 184 }
-  infolist_style {
-    caption_string: "用例"
-    caption_height: 20
-    caption_padding: 1
-    caption_style { font_size: 12 left_padding: 2 }
-    caption_background_color { r: 236 g: 240 b: 250 }
-    window_border: 1
-    row_rect_padding: 2
-    window_width: 300
-    title_style { font_size: 15 left_padding: 5 }
-    description_style { font_size: 12 left_padding: 15 }
-    border_color { r: 150 g: 150 b: 150 }
-    focused_background_color { r: 209 g: 234 b: 255 }
-    focused_border_color { r: 127 g: 172 b: 221 }
-  }
-)pb";
+// absl::string_view kStyleTextProto is defined in renderer_style.inc.
+#include "renderer/renderer_style.inc"
 }  // namespace
 
 void RendererStyleHandler::GetRendererStyle(RendererStyle* style) {

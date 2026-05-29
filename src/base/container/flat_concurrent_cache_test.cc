@@ -41,6 +41,59 @@
 namespace mozc {
 namespace {
 
+struct InstanceCounter {
+  int constructions = 0;
+  int destructions = 0;
+  int active_instances() const { return constructions - destructions; }
+};
+
+class TrackedObject {
+ public:
+  TrackedObject(int id, InstanceCounter* counter) : id_(id), counter_(counter) {
+    if (counter_) counter_->constructions++;
+  }
+
+  ~TrackedObject() {
+    if (counter_) counter_->destructions++;
+  }
+
+  TrackedObject(const TrackedObject& other)
+      : id_(other.id_), counter_(other.counter_) {
+    if (counter_) counter_->constructions++;
+  }
+
+  TrackedObject(TrackedObject&& other) noexcept
+      : id_(other.id_), counter_(other.counter_) {
+    other.counter_ = nullptr;
+    other.id_ = -1;
+  }
+
+  TrackedObject& operator=(const TrackedObject& other) {
+    if (this == &other) return *this;
+    if (counter_) counter_->destructions++;
+    id_ = other.id_;
+    counter_ = other.counter_;
+    if (counter_) counter_->constructions++;
+    return *this;
+  }
+
+  TrackedObject& operator=(TrackedObject&& other) noexcept {
+    if (this == &other) return *this;
+    if (counter_) counter_->destructions++;
+    id_ = other.id_;
+    counter_ = other.counter_;
+    other.counter_ = nullptr;
+    other.id_ = -1;
+    return *this;
+  }
+
+  int id() const { return id_; }
+
+ private:
+  int id_;
+  InstanceCounter* counter_;
+};
+
 using TestCache = FlatConcurrentCache<std::string, int>;
 
 TEST(FlatConcurrentCacheTest, BasicPutAndGet) {
@@ -127,6 +180,61 @@ TEST(FlatConcurrentCacheTest, ConcurrencyStressTest) {
   for (Thread& th : threads) {
     th.Join();
   }
+}
+
+TEST(FlatConcurrentCacheTest, LifetimeTracking) {
+  InstanceCounter counter;
+  {
+    FlatConcurrentCache<int, TrackedObject, absl::Hash<int>, std::equal_to<int>,
+                        4>
+        cache(1);
+
+    EXPECT_EQ(counter.active_instances(), 0);
+
+    // Insert 1st item
+    cache.Insert(1, TrackedObject(100, &counter));
+    EXPECT_EQ(counter.active_instances(), 1);
+
+    // Insert 2nd item
+    cache.Insert(2, TrackedObject(200, &counter));
+    EXPECT_EQ(counter.active_instances(), 2);
+
+    // Insert 3rd item
+    cache.Insert(3, TrackedObject(300, &counter));
+    EXPECT_EQ(counter.active_instances(), 3);
+
+    // Insert 4th item
+    cache.Insert(4, TrackedObject(400, &counter));
+    EXPECT_EQ(counter.active_instances(), 4);
+
+    // Now bucket is full (group size 4).
+    // Next insert will trigger eviction.
+    // Let's access item 1 to make it survive eviction.
+    {
+      TrackedObject val(0, nullptr);
+      EXPECT_TRUE(cache.Lookup(1, &val));
+      EXPECT_EQ(val.id(), 100);
+    }
+
+    // Insert 5th item -> triggers eviction.
+    // It should evict one of 2, 3, 4 (since 1 was accessed).
+    cache.Insert(5, TrackedObject(500, &counter));
+
+    // Active instances should still be 4 (evicted one, inserted one).
+    EXPECT_EQ(counter.active_instances(), 4);
+
+    // Now let's clear the cache. All 4 remaining items should be destructed.
+    cache.Clear();
+    EXPECT_EQ(counter.active_instances(), 0);
+
+    // Insert some more
+    cache.Insert(6, TrackedObject(600, &counter));
+    cache.Insert(7, TrackedObject(700, &counter));
+    EXPECT_EQ(counter.active_instances(), 2);
+  }
+  // Cache is now out of scope and destroyed.
+  // All remaining items (6 and 7) should be destructed.
+  EXPECT_EQ(counter.active_instances(), 0);
 }
 
 }  // namespace
