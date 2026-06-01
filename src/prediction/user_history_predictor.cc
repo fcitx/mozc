@@ -1075,17 +1075,6 @@ bool UserHistoryPredictor::GetKeyValueForPartialMatch(
 bool UserHistoryPredictor::AllowLowFreqFullSentenceEntryMatch(
     const ConversionRequest& request, absl::string_view request_key,
     const UserHistoryPredictor::MatchType mtype, const Entry& entry) {
-  // The flag is named `user_history_allow_exact_match`, but it will also
-  // include prefix matching under specific conditions. This affects how
-  // full-sentence entries with a low frequency are utilized. This is an
-  // experimental flag and is removed in the future.
-  if (!IsMixedConversionEnabled(request) ||
-      !request.request()
-           .decoder_experiment_params()
-           .user_history_allow_exact_match()) {
-    return false;
-  }
-
   // exact match.
   if (mtype == MatchType::EXACT_MATCH) {
     return true;

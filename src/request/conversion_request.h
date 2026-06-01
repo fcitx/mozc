@@ -171,7 +171,9 @@ class ConversionRequest {
   const config::Config& config() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
     return *config_;
   }
-  const Options& options() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // Returns options by value. Cheap to copy and avoids reference lifetime
+  // issues.
+  Options options() const {
     return options_;
   }
   const prediction::Result& history_result() const
@@ -359,7 +361,7 @@ class ConversionRequestBuilder {
   ConversionRequestBuilder& SetEmptyHistoryResult() {
     return SetHistoryResultView(prediction::Result::DefaultResult());
   }
-  ConversionRequestBuilder& SetOptions(ConversionRequest::Options&& options) {
+  ConversionRequestBuilder& SetOptions(ConversionRequest::Options options) {
     DCHECK_LE(stage_, 2);
     stage_ = 2;
     request_.options_ = std::move(options);

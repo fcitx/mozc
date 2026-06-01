@@ -80,13 +80,14 @@ class FlatConcurrentCache {
   }
 
   // `value` accepts both references and movable objects.
-  void Insert(const Key& key, Value&& value) {
+  template <typename V>
+  void Insert(const Key& key, V&& value) {
     auto [hash, bucket] = GetBucket(key);
     SpinLockHolder l(&bucket->mu);
 
     // Update the value when key is found.
     if (int i = bucket->FindIndex(key, hash, equal_); i != -1) {
-      bucket->value[i] = std::forward<Value>(value);
+      bucket->value[i] = std::forward<V>(value);
       bucket->UpdateClock(i);
       return;
     }
@@ -95,7 +96,7 @@ class FlatConcurrentCache {
     const int index = bucket->Evict();
     bucket->subhash[index] = hash;
     bucket->key.Construct(index, key);
-    bucket->value.Construct(index, std::forward<Value>(value));
+    bucket->value.Construct(index, std::forward<V>(value));
     bucket->access_clock[index] = bucket->access_clock_val;
   }
 
@@ -145,20 +146,20 @@ class FlatConcurrentCache {
     T& operator[](size_t i) { return *ptr(i); }
     const T& operator[](size_t i) const { return *ptr(i); }
 
-    // Constructs an element at index 'i' using placement new.
+    // Constructs an element at index 'i' using std::construct_at.
     // Contract:
     // - Construct must not be called twice for the same index without a Destroy
     // in between.
     // - Destroy must be called later to clean up the element.
     template <typename... Args>
     void Construct(size_t i, Args&&... args) {
-      new (ptr(i)) T(std::forward<Args>(args)...);
+      std::construct_at(ptr(i), std::forward<Args>(args)...);
     }
 
-    // Destructs the element at index 'i'.
+    // Destructs the element at index 'i' using std::destroy_at.
     // Contract:
     // - Destroy must not be called before Construct.
-    void Destroy(size_t i) { ptr(i)->~T(); }
+    void Destroy(size_t i) { std::destroy_at(ptr(i)); }
 
    private:
     struct Element {

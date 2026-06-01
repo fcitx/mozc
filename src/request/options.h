@@ -64,6 +64,8 @@ enum ComposerKeySelection {
 };
 
 // Options must be trivially copyable to get hash value directly.
+// Since it is small (~40 bytes), passing and returning by value is preferred
+// to avoid reference lifetime issues.
 struct ConversionOptions {
   RequestType request_type = CONVERSION;
 

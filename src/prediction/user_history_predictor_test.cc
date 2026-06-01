@@ -5874,55 +5874,42 @@ TEST_F(UserHistoryPredictorTest, ExactMatchTest) {
     segments_proxy.Clear();
   }
 
-  for (bool allow_exact_match : {false, true}) {
-    for (int freq : {1, 2}) {
-      request_.mutable_decoder_experiment_params()
-          ->set_user_history_allow_exact_match(allow_exact_match);
+  for (int freq : {1, 2}) {
+    UserHistoryPredictorTestPeer predictor_peer(*predictor);
+    auto entry = predictor_peer.storage_().MutableLookup(kKey, kValue);
+    ASSERT_TRUE(entry);
+    entry->set_suggestion_freq(freq);
+    ASSERT_EQ(entry->inner_segment_boundary_size(), 3);
 
-      UserHistoryPredictorTestPeer predictor_peer(*predictor);
-      auto entry = predictor_peer.storage_().MutableLookup(kKey, kValue);
-      ASSERT_TRUE(entry);
-      entry->set_suggestion_freq(freq);
-      ASSERT_EQ(entry->inner_segment_boundary_size(), 3);
-
-      // Short partial
-      segments_proxy.Clear();
-      const ConversionRequest convreq1 = SetUpInputForPrediction(
-          "わたしのなまえは", &composer_, &segments_proxy);
-      results = predictor->Predict(convreq1);
-      // Partial matche is allowed when the entry is typed twice or more.
-      if (freq >= 2) {
-        EXPECT_FALSE(results.empty());
-      } else {
-        EXPECT_TRUE(results.empty());
-      }
-
-      // Partial that reaches to the last segment.
-      segments_proxy.Clear();
-      const ConversionRequest convreq2 = SetUpInputForPrediction(
-          "わたしのなまえはな", &composer_, &segments_proxy);
-      results = predictor->Predict(convreq2);
-      if (allow_exact_match || freq >= 2) {
-        EXPECT_FALSE(results.empty());
-        EXPECT_EQ(results[0].value, kValue);
-        EXPECT_EQ(results[0].key, kKey);
-      } else {
-        EXPECT_TRUE(results.empty());
-      }
-
-      // Exact
-      segments_proxy.Clear();
-      const ConversionRequest convreq3 =
-          SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
-      results = predictor->Predict(convreq3);
-      if (allow_exact_match || freq >= 2) {
-        EXPECT_FALSE(results.empty());
-        EXPECT_EQ(results[0].value, kValue);
-        EXPECT_EQ(results[0].key, kKey);
-      } else {
-        EXPECT_TRUE(results.empty());
-      }
+    // Short partial
+    segments_proxy.Clear();
+    const ConversionRequest convreq1 = SetUpInputForPrediction(
+        "わたしのなまえは", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq1);
+    // Partial matche is allowed when the entry is typed twice or more.
+    if (freq >= 2) {
+      EXPECT_FALSE(results.empty());
+    } else {
+      EXPECT_TRUE(results.empty());
     }
+
+    // Partial that reaches to the last segment.
+    segments_proxy.Clear();
+    const ConversionRequest convreq2 = SetUpInputForPrediction(
+        "わたしのなまえはな", &composer_, &segments_proxy);
+    results = predictor->Predict(convreq2);
+    EXPECT_FALSE(results.empty());
+    EXPECT_EQ(results[0].value, kValue);
+    EXPECT_EQ(results[0].key, kKey);
+
+    // Exact
+    segments_proxy.Clear();
+    const ConversionRequest convreq3 =
+        SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
+    results = predictor->Predict(convreq3);
+    EXPECT_FALSE(results.empty());
+    EXPECT_EQ(results[0].value, kValue);
+    EXPECT_EQ(results[0].key, kKey);
   }
 }
 

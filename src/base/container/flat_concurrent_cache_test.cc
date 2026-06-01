@@ -31,6 +31,7 @@
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
@@ -100,8 +101,11 @@ TEST(FlatConcurrentCacheTest, BasicPutAndGet) {
   TestCache cache(10);
   int value = 0;
 
-  cache.Insert("key1", 100);
-  cache.Insert("key2", 200);
+  // Accept boths lvalue and rvalue.
+  int val1 = 100;
+  cache.Insert("key1", val1);
+  int val2 = 200;
+  cache.Insert("key2", std::move(val2));
 
   EXPECT_TRUE(cache.Lookup("key1", &value));
   EXPECT_EQ(value, 100);
@@ -195,17 +199,19 @@ TEST(FlatConcurrentCacheTest, LifetimeTracking) {
     cache.Insert(1, TrackedObject(100, &counter));
     EXPECT_EQ(counter.active_instances(), 1);
 
-    // Insert 2nd item
-    cache.Insert(2, TrackedObject(200, &counter));
-    EXPECT_EQ(counter.active_instances(), 2);
+    // Insert 2nd item (lvalue)
+    TrackedObject obj2(200, &counter);
+    cache.Insert(2, obj2);
+    EXPECT_EQ(counter.active_instances(),
+              3);  // 1 (item 1) + 1 (obj2) + 1 (item 2 in cache)
 
     // Insert 3rd item
     cache.Insert(3, TrackedObject(300, &counter));
-    EXPECT_EQ(counter.active_instances(), 3);
+    EXPECT_EQ(counter.active_instances(), 4);
 
     // Insert 4th item
     cache.Insert(4, TrackedObject(400, &counter));
-    EXPECT_EQ(counter.active_instances(), 4);
+    EXPECT_EQ(counter.active_instances(), 5);
 
     // Now bucket is full (group size 4).
     // Next insert will trigger eviction.
@@ -220,17 +226,19 @@ TEST(FlatConcurrentCacheTest, LifetimeTracking) {
     // It should evict one of 2, 3, 4 (since 1 was accessed).
     cache.Insert(5, TrackedObject(500, &counter));
 
-    // Active instances should still be 4 (evicted one, inserted one).
-    EXPECT_EQ(counter.active_instances(), 4);
+    // Active instances should still be 5 (evicted one, inserted one, plus obj2
+    // in scope).
+    EXPECT_EQ(counter.active_instances(), 5);
 
     // Now let's clear the cache. All 4 remaining items should be destructed.
     cache.Clear();
-    EXPECT_EQ(counter.active_instances(), 0);
+    EXPECT_EQ(counter.active_instances(), 1);  // only obj2 in scope
 
     // Insert some more
     cache.Insert(6, TrackedObject(600, &counter));
     cache.Insert(7, TrackedObject(700, &counter));
-    EXPECT_EQ(counter.active_instances(), 2);
+    EXPECT_EQ(counter.active_instances(),
+              3);  // obj2 in scope + 6 and 7 in cache
   }
   // Cache is now out of scope and destroyed.
   // All remaining items (6 and 7) should be destructed.

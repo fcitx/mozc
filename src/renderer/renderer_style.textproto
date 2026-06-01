@@ -33,20 +33,16 @@ window_border: 1
 scrollbar_width: 4
 row_rect_padding: 0
 border_color { r: 150 g: 150 b: 150 }
-# text_style of shortcut
-text_styles {
+shortcut_style {
   font_size: 14
   foreground_color { r: 119 g: 119 b: 119 }
   background_color { r: 243 g: 244 b: 255 }
   left_padding: 8
   right_padding: 8
 }
-# text_style of gap1
-text_styles { font_size: 14 }
-# text_style of candidate
-text_styles { font_size: 14 }
-# text_style of description
-text_styles {
+gap1_style { font_size: 14 }
+candidate_style { font_size: 14 }
+description_style {
   font_size: 12
   foreground_color { r: 136 g: 136 b: 136 }
   right_padding: 8

@@ -673,11 +673,6 @@ message DecoderExperimentParams {
   // predictor.
   optional int32 disable_legacy_rewriter_mode = 147 [default = 0];
 
-  // Allow exact match in user_history decoding even when
-  // the frequency is low.
-  // This flag is used when user_history_cache_inner_segment_boundary is true.
-  optional bool user_history_allow_exact_match = 148 [default = false];
-
   // Use NextTopStates instead of NextStates in Predictor.
   optional bool ngram_use_next_top_states = 149 [default = false];
 }
