@@ -31,19 +31,15 @@
 
 #include <string.h>
 
-#include <algorithm>
-#include <cstdint>
-#include <iterator>
-#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "base/strings/japanese.h"
+#include "base/text_normalizer.h"
 #include "base/strings/unicode.h"
 #include "base/vlog.h"
 #include "protocol/user_dictionary_storage.pb.h"
@@ -155,40 +151,25 @@ absl::Status ValidateEntry(
 
 // static
 bool SanitizeEntry(user_dictionary::UserDictionary::Entry* entry) {
+  auto sanitize_field = [](std::string& field) -> bool {
+    if (std::optional<std::string> sanitized =
+            TextNormalizer::SanitizeText(field, kMaxStringSize)) {
+      field = *std::move(sanitized);
+      return true;
+    }
+    return false;
+  };
+
   bool modified = false;
-  modified |= Sanitize(entry->mutable_key(), kMaxStringSize);
-  modified |= Sanitize(entry->mutable_value(), kMaxStringSize);
+  modified |= sanitize_field(*entry->mutable_key());
+  modified |= sanitize_field(*entry->mutable_value());
+  modified |= sanitize_field(*entry->mutable_comment());
   if (!user_dictionary::UserDictionary::PosType_IsValid(entry->pos())) {
     // Fallback to NOUN.
     entry->set_pos(user_dictionary::UserDictionary::NOUN);
     modified = true;
   }
-  modified |= Sanitize(entry->mutable_comment(), kMaxStringSize);
   return modified;
-}
-
-// static
-bool Sanitize(std::string* str, size_t max_size) {
-  // First part: Remove invalid characters.
-  const int n = absl::StrReplaceAll(
-      {
-          {"\t", ""},
-          {"\n", ""},
-          {"\r", ""},
-      },
-      str);
-
-  // Second part: Truncate long strings.
-  if (str->size() <= max_size) {
-    return n > 0;
-  }
-  const Utf8AsChars chars(*str);
-  size_t pos = 0;
-  for (auto it = chars.begin(); pos + it.size() <= max_size; ++it) {
-    pos += it.size();
-  }
-  str->erase(pos);
-  return true;
 }
 
 absl::Status ValidateDictionaryName(const absl::string_view dictionary_name) {

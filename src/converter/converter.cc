@@ -511,7 +511,7 @@ void Converter::CommitContext(const ConversionRequest& request) const {
 
 void Converter::ApplyConversion(Segments* segments,
                                 const ConversionRequest& request) const {
-  if (!immutable_converter_->Convert(request, segments)) {
+  if (!immutable_converter_->Convert(request.options(), segments)) {
     // Conversion can fail for keys like "12". Even in such cases, rewriters
     // (e.g., number and variant rewriters) can populate some candidates.
     // Therefore, this is not an error.
@@ -559,7 +559,7 @@ void Converter::CompletePosIds(Candidate* candidate) const {
             })
             .Build();
     // In order to complete PosIds, call ImmutableConverter again.
-    if (!immutable_converter_->Convert(request, &segments)) {
+    if (!immutable_converter_->Convert(request.options(), &segments)) {
       LOG(ERROR) << "ImmutableConverter::Convert() failed";
       return;
     }

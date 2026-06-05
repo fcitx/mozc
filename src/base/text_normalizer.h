@@ -33,6 +33,7 @@
 #ifndef MOZC_BASE_TEXT_NORMALIZER_H_
 #define MOZC_BASE_TEXT_NORMALIZER_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -63,6 +64,12 @@ class TextNormalizer {
   // Returns false and keeps output as is, if no character is normalized.
   static bool NormalizeTextToSvs(absl::string_view input, std::string* output);
   static std::string NormalizeTextToSvs(absl::string_view input);
+
+  // Sanitizes the input text by enforcing byte limit, removing ASCII control
+  // characters, and filtering ill-formed UTF-8 sequences.
+  // Returns std::nullopt if no modification is necessary.
+  static std::optional<std::string> SanitizeText(absl::string_view input,
+                                                 size_t max_bytes);
 };
 
 }  // namespace mozc

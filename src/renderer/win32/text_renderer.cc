@@ -67,42 +67,33 @@ CRect ToCRect(const Rect& rect) {
   return CRect(rect.Left(), rect.Top(), rect.Right(), rect.Bottom());
 }
 
-COLORREF GetTextColor(TextRenderer::FONT_TYPE type, uint32_t dpi) {
-  switch (type) {
-    case TextRenderer::FONTSET_SHORTCUT:
-      return RGB(0x61, 0x61, 0x61);
-    case TextRenderer::FONTSET_CANDIDATE:
-      return RGB(0x00, 0x00, 0x00);
-    case TextRenderer::FONTSET_DESCRIPTION:
-      return RGB(0x88, 0x88, 0x88);
-    case TextRenderer::FONTSET_FOOTER_INDEX:
-      return RGB(0x4c, 0x4c, 0x4c);
-    case TextRenderer::FONTSET_FOOTER_LABEL:
-      return RGB(0x4c, 0x4c, 0x4c);
-    case TextRenderer::FONTSET_FOOTER_SUBLABEL:
-      return RGB(0xA7, 0xA7, 0xA7);
-    default:
-      break;
-  }
+COLORREF ToColorRef(const RendererStyle::RGBAColor& color) {
+  return RGB(color.r(), color.g(), color.b());
+}
 
-  // TODO(horo): Not only infolist fonts but also candidate fonts
-  //             should be created from RendererStyle
+COLORREF GetTextColor(TextRenderer::FONT_TYPE type, uint32_t dpi) {
   RendererStyle style;
   GetScaledRendererStyle(&style, dpi);
-  const auto& infostyle = style.infolist_style();
+  const RendererStyle::InfolistStyle& infostyle = style.infolist_style();
+
   switch (type) {
+    case TextRenderer::FONTSET_SHORTCUT:
+      return ToColorRef(style.shortcut_style().foreground_color());
+    case TextRenderer::FONTSET_CANDIDATE:
+      return ToColorRef(style.candidate_style().foreground_color());
+    case TextRenderer::FONTSET_DESCRIPTION:
+      return ToColorRef(style.description_style().foreground_color());
+    case TextRenderer::FONTSET_FOOTER_INDEX:
+    case TextRenderer::FONTSET_FOOTER_LABEL:
+      return ToColorRef(style.footer_style().foreground_color());
+    case TextRenderer::FONTSET_FOOTER_SUBLABEL:
+      return ToColorRef(style.footer_sub_label_style().foreground_color());
     case TextRenderer::FONTSET_INFOLIST_CAPTION:
-      return RGB(infostyle.caption_style().foreground_color().r(),
-                 infostyle.caption_style().foreground_color().g(),
-                 infostyle.caption_style().foreground_color().b());
+      return ToColorRef(infostyle.caption_style().foreground_color());
     case TextRenderer::FONTSET_INFOLIST_TITLE:
-      return RGB(infostyle.title_style().foreground_color().r(),
-                 infostyle.title_style().foreground_color().g(),
-                 infostyle.title_style().foreground_color().b());
+      return ToColorRef(infostyle.title_style().foreground_color());
     case TextRenderer::FONTSET_INFOLIST_DESCRIPTION:
-      return RGB(infostyle.description_style().foreground_color().r(),
-                 infostyle.description_style().foreground_color().g(),
-                 infostyle.description_style().foreground_color().b());
+      return ToColorRef(infostyle.description_style().foreground_color());
     default:
       break;
   }

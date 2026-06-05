@@ -31,26 +31,34 @@
 # proto-message: RendererStyle
 window_border: 1
 scrollbar_width: 4
-row_rect_padding: 0
+row_rect_padding: 1
 border_color { r: 150 g: 150 b: 150 }
 shortcut_style {
   font_size: 14
-  foreground_color { r: 119 g: 119 b: 119 }
+  foreground_color { r: 97 g: 97 b: 97 }
   background_color { r: 243 g: 244 b: 255 }
   left_padding: 8
   right_padding: 8
 }
 gap1_style { font_size: 14 }
-candidate_style { font_size: 14 }
+candidate_style {
+  font_size: 14
+  foreground_color { r: 0 g: 0 b: 0 }
+}
 description_style {
   font_size: 12
   foreground_color { r: 136 g: 136 b: 136 }
   right_padding: 8
 }
 # We want to ensure that the candidate window is at least wide
-# enough to render "そのほかの文字種  " as a candidate.
-column_minimum_width_string: "そのほかの文字種  "
-footer_style { font_size: 14 left_padding: 4 right_padding: 4 }
+# enough to render "そのほかの文字種" as a candidate.
+column_minimum_width_string: "そのほかの文字種"
+footer_style {
+  font_size: 14
+  foreground_color { r: 76 g: 76 b: 76 }
+  left_padding: 4
+  right_padding: 4
+}
 footer_sub_label_style {
   font_size: 10
   foreground_color { r: 167 g: 167 b: 167 }

@@ -44,6 +44,7 @@
 #include "client/client_interface.h"
 #include "protocol/candidate_window.pb.h"
 #include "protocol/commands.pb.h"
+#include "protocol/renderer_style.pb.h"
 #include "renderer/table_layout.h"
 #include "renderer/win32/text_renderer.h"
 
@@ -205,6 +206,7 @@ class CandidateWindow : public ATL::CWindowImpl<CandidateWindow, ATL::CWindow,
   int indicator_width_;
   bool metrics_changed_;
   bool mouse_moving_;
+  RendererStyle style_;
 };
 
 }  // namespace win32

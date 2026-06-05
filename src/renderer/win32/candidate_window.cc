@@ -61,11 +61,6 @@ namespace {
 // layout size constants in pixel unit in the default DPI.
 constexpr int kIndicatorWidthInDefaultDPI = 4;
 
-// DPI-invariant layout size constants in pixel unit.
-constexpr int kWindowBorder = 1;
-constexpr int kFooterSeparatorHeight = 1;
-constexpr int kRowRectPadding = 1;
-
 // usage type for each column.
 enum COLUMN_TYPE {
   COLUMN_SHORTCUT = 0,  // show shortcut key
@@ -76,19 +71,6 @@ enum COLUMN_TYPE {
   NUMBER_OF_COLUMNS,    // number of columns. (this item should be last)
 };
 
-constexpr char kMinimumCandidateAndDescriptionWidthAsString[] =
-    "そのほかの文字種";
-
-// Color scheme
-const COLORREF kFrameColor = RGB(0x96, 0x96, 0x96);
-const COLORREF kShortcutBackgroundColor = RGB(0xf3, 0xf4, 0xff);
-const COLORREF kSelectedRowBackgroundColor = RGB(0xd1, 0xea, 0xff);
-const COLORREF kDefaultBackgroundColor = RGB(0xff, 0xff, 0xff);
-const COLORREF kSelectedRowFrameColor = RGB(0x7f, 0xac, 0xdd);
-const COLORREF kIndicatorBackgroundColor = RGB(0xe0, 0xe0, 0xe0);
-const COLORREF kIndicatorColor = RGB(0x75, 0x90, 0xb8);
-const COLORREF kFooterTopColor = RGB(0xff, 0xff, 0xff);
-const COLORREF kFooterBottomColor = RGB(0xee, 0xee, 0xee);
 
 // ------------------------------------------------------------------------
 // Utility functions
@@ -226,6 +208,10 @@ void FillSolidRect(HDC dc, const RECT* rect, COLORREF color) {
   }
 }
 
+COLORREF ToColorRef(const RendererStyle::RGBAColor& color) {
+  return RGB(color.r(), color.g(), color.b());
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------------
@@ -248,6 +234,7 @@ CandidateWindow::CandidateWindow()
 CandidateWindow::~CandidateWindow() = default;
 
 void CandidateWindow::UpdateDpiDependentResources() {
+  GetScaledRendererStyle(&style_, dpi_);
   const double scale_factor = GetDPIScalingFactor(dpi_);
   double image_scale_factor = 1.0;
   if (scale_factor < 1.125) {
@@ -483,8 +470,7 @@ void CandidateWindow::UpdateLayout(
 
   table_layout_->Initialize(candidate_window_->candidate_size(),
                             NUMBER_OF_COLUMNS);
-
-  table_layout_->SetWindowBorder(kWindowBorder);
+  table_layout_->SetWindowBorder(style_.window_border());
 
   // Add a vertical scroll bar if candidate list consists of more than
   // one page.
@@ -549,7 +535,7 @@ void CandidateWindow::UpdateLayout(
     if (candidate_window_->candidate_size() < candidate_window_->size()) {
       // We use FONTSET_CANDIDATE for calculating the minimum width.
       const std::wstring minimum_width_as_wstring =
-          mozc::win32::Utf8ToWide(kMinimumCandidateAndDescriptionWidthAsString);
+          mozc::win32::Utf8ToWide(style_.column_minimum_width_string());
       const Size minimum_size = text_renderer_->MeasureString(
           TextRenderer::FONTSET_CANDIDATE, minimum_width_as_wstring.c_str());
       table_layout_->EnsureColumnsWidth(COLUMN_CANDIDATE, COLUMN_DESCRIPTION,
@@ -557,12 +543,12 @@ void CandidateWindow::UpdateLayout(
     }
 
     // Add separator height
-    footer_size.height += kFooterSeparatorHeight;
+    footer_size.height += style_.footer_border_colors_size();
 
     table_layout_->EnsureFooterSize(footer_size);
   }
 
-  table_layout_->SetRowRectPadding(kRowRectPadding);
+  table_layout_->SetRowRectPadding(style_.row_rect_padding());
 
   // put a padding in COLUMN_GAP1.
   // the width is determined to be equal to the width of " ".
@@ -700,13 +686,15 @@ void CandidateWindow::DrawVScrollBar(HDC dc) {
         candidate_window_->candidate(candidates_in_page - 1).index();
 
     const CRect background_crect = ToCRect(vscroll_rect);
-    FillSolidRect(dc, &background_crect, kIndicatorBackgroundColor);
+    FillSolidRect(dc, &background_crect,
+                  ToColorRef(style_.scrollbar_background_color()));
 
     const mozc::Rect& indicator_rect = table_layout_->GetVScrollIndicatorRect(
         begin_index, end_index, candidates_total);
 
     const CRect indicator_crect = ToCRect(indicator_rect);
-    FillSolidRect(dc, &indicator_crect, kIndicatorColor);
+    FillSolidRect(dc, &indicator_crect,
+                  ToColorRef(style_.scrollbar_indicator_color()));
   }
 }
 
@@ -724,7 +712,8 @@ void CandidateWindow::DrawShortcutBackground(HDC dc) {
       shortcut_colmun_rect.origin.x = row_rect.Left();
       shortcut_colmun_rect.size.width = width;
       const CRect shortcut_colmun_crect = ToCRect(shortcut_colmun_rect);
-      FillSolidRect(dc, &shortcut_colmun_crect, kShortcutBackgroundColor);
+      FillSolidRect(dc, &shortcut_colmun_crect,
+                    ToColorRef(style_.shortcut_style().background_color()));
     }
   }
 }
@@ -735,35 +724,46 @@ void CandidateWindow::DrawFooter(HDC dc) {
     return;
   }
 
-  const COLORREF kFooterSeparatorColors[kFooterSeparatorHeight] = {kFrameColor};
+  const int footer_separator_height = style_.footer_border_colors_size();
 
   // DC pen is available in Windows 2000 and later.
   {
     wil::unique_select_object prev_pen =
         wil::SelectObject(dc, static_cast<HPEN>(::GetStockObject(DC_PEN)));
-    for (size_t i = 0, y = footer_rect.Top(); i < kFooterSeparatorHeight;
+    for (size_t i = 0, y = footer_rect.Top(); i < footer_separator_height;
          y++, i++) {
-      if (i < std::size(kFooterSeparatorColors)) {
-        ::SetDCPenColor(dc, kFooterSeparatorColors[i]);
-        ::MoveToEx(dc, footer_rect.Left(), y, nullptr);
-        ::LineTo(dc, footer_rect.Right(), y);
-      }
+      ::SetDCPenColor(dc, ToColorRef(style_.footer_border_colors(i)));
+      ::MoveToEx(dc, footer_rect.Left(), y, nullptr);
+      ::LineTo(dc, footer_rect.Right(), y);
     }
   }
 
   const Rect footer_content_rect(
-      footer_rect.Left(), footer_rect.Top() + kFooterSeparatorHeight,
-      footer_rect.Width(), footer_rect.Height() - kFooterSeparatorHeight);
+      footer_rect.Left(), footer_rect.Top() + footer_separator_height,
+      footer_rect.Width(), footer_rect.Height() - footer_separator_height);
 
   // Draw gradient rect in the footer area
   {
+    const RendererStyle::RGBAColor& footer_top_color =
+        style_.footer_top_color();
+    const RendererStyle::RGBAColor& footer_bottom_color =
+        style_.footer_bottom_color();
+    const auto to_color16 = [](double val) -> COLOR16 {
+      return static_cast<COLOR16>(val * 256);
+    };
+    const auto alpha_to_color16 = [to_color16](double val) -> COLOR16 {
+      return to_color16(val * 255);
+    };
     TRIVERTEX vertices[] = {
         {footer_content_rect.Left(), footer_content_rect.Top(),
-         GetRValue(kFooterTopColor) << 8, GetGValue(kFooterTopColor) << 8,
-         GetBValue(kFooterTopColor) << 8, 0xff00},
+         to_color16(footer_top_color.r()), to_color16(footer_top_color.g()),
+         to_color16(footer_top_color.b()),
+         alpha_to_color16(footer_top_color.a())},
         {footer_content_rect.Right(), footer_content_rect.Bottom(),
-         GetRValue(kFooterBottomColor) << 8, GetGValue(kFooterBottomColor) << 8,
-         GetBValue(kFooterBottomColor) << 8, 0xff00}};
+         to_color16(footer_bottom_color.r()),
+         to_color16(footer_bottom_color.g()),
+         to_color16(footer_bottom_color.b()),
+         alpha_to_color16(footer_bottom_color.a())}};
     GRADIENT_RECT indices[] = {{0, 1}};
     ::GradientFill(dc, &vertices[0], std::size(vertices), &indices[0],
                    std::size(indices), GRADIENT_FILL_RECT_V);
@@ -837,9 +837,10 @@ void CandidateWindow::DrawSelectedRect(HDC dc) {
 
     const CRect selected_rect =
         ToCRect(table_layout_->GetRowRect(focused_array_index));
-    FillSolidRect(dc, &selected_rect, kSelectedRowBackgroundColor);
+    FillSolidRect(dc, &selected_rect,
+                  ToColorRef(style_.focused_background_color()));
 
-    ::SetDCBrushColor(dc, kSelectedRowFrameColor);
+    ::SetDCBrushColor(dc, ToColorRef(style_.focused_border_color()));
     ::FrameRect(dc, &selected_rect,
                 static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
   }
@@ -855,8 +856,8 @@ void CandidateWindow::DrawInformationIcon(HDC dc) {
       rect.right = rect.right - (2.0 * scale_factor);
       rect.top += (2.0 * scale_factor);
       rect.bottom -= (2.0 * scale_factor);
-      FillSolidRect(dc, &rect, kIndicatorColor);
-      ::SetDCBrushColor(dc, kIndicatorColor);
+      FillSolidRect(dc, &rect, ToColorRef(style_.scrollbar_indicator_color()));
+      ::SetDCBrushColor(dc, ToColorRef(style_.scrollbar_indicator_color()));
       ::FrameRect(dc, &rect, static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
     }
   }
@@ -865,7 +866,8 @@ void CandidateWindow::DrawInformationIcon(HDC dc) {
 void CandidateWindow::DrawBackground(HDC dc) {
   const Rect client_rect(Point(0, 0), table_layout_->GetTotalSize());
   const CRect client_crect = ToCRect(client_rect);
-  FillSolidRect(dc, &client_crect, kDefaultBackgroundColor);
+  FillSolidRect(dc, &client_crect,
+                ToColorRef(style_.candidate_style().background_color()));
 }
 
 void CandidateWindow::DrawFrame(HDC dc) {
@@ -873,7 +875,7 @@ void CandidateWindow::DrawFrame(HDC dc) {
   const CRect client_crect = ToCRect(client_rect);
 
   // DC brush is available in Windows 2000 and later.
-  ::SetDCBrushColor(dc, kFrameColor);
+  ::SetDCBrushColor(dc, ToColorRef(style_.border_color()));
   ::FrameRect(dc, &client_crect,
               static_cast<HBRUSH>(::GetStockObject(DC_BRUSH)));
 }

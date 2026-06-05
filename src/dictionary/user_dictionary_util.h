@@ -126,10 +126,7 @@ absl::Status ValidateEntry(const user_dictionary::UserDictionary::Entry& entry);
 // methods. Return true if the entry is changed.
 bool SanitizeEntry(user_dictionary::UserDictionary::Entry* entry);
 
-// Helper function for SanitizeEntry
-// "max_size" is the maximum allowed size of str. If str size exceeds
-// "max_size", remaining part is truncated by this function.
-bool Sanitize(std::string* str, size_t max_size);
+
 
 // Returns the error status of the validity for the given dictionary name.
 absl::Status ValidateDictionaryName(absl::string_view dictionary_name);

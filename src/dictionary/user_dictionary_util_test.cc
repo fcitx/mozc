@@ -130,36 +130,6 @@ TEST(UserDictionaryUtilTest, TestSanitizeEntry) {
   }
 }
 
-TEST(UserDictionaryUtilTest, TestSanitize) {
-  std::string str(10, '\t');
-  EXPECT_TRUE(Sanitize(&str, 5));
-  EXPECT_EQ(str, "");
-
-  str = "ab\tc";
-  EXPECT_TRUE(Sanitize(&str, 10));
-  EXPECT_EQ(str, "abc");
-
-  str = "かしゆか";
-  EXPECT_TRUE(Sanitize(&str, 3));
-  EXPECT_EQ(str, "か");
-
-  str = "かしゆか";
-  EXPECT_TRUE(Sanitize(&str, 4));
-  EXPECT_EQ(str, "か");
-
-  str = "かしゆか";
-  EXPECT_TRUE(Sanitize(&str, 5));
-  EXPECT_EQ(str, "か");
-
-  str = "かしゆか";
-  EXPECT_TRUE(Sanitize(&str, 6));
-  EXPECT_EQ(str, "かし");
-
-  str = "かしゆか";
-  EXPECT_FALSE(Sanitize(&str, 100));
-  EXPECT_EQ(str, "かしゆか");
-}
-
 TEST(UserDictionaryUtilTest, ValidateEntry) {
   // Create a valid entry.
   UserDictionary::Entry base_entry;

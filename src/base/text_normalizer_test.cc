@@ -29,8 +29,10 @@
 
 #include "base/text_normalizer.h"
 
+#include <optional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "testing/gunit.h"
 
 namespace mozc {
@@ -119,6 +121,58 @@ TEST(TextNormalizerTest, NormalizeTextToSvs) {
   EXPECT_EQ(TextNormalizer::NormalizeTextToSvs("\uFA6D"), "\u8218\uFE00");
   // Next codeponit of 舘.
   EXPECT_EQ(TextNormalizer::NormalizeTextToSvs("\uFA6E"), "\uFA6E");
+}
+
+TEST(TextNormalizerTest, SanitizeText) {
+  // 1. No modifications
+  EXPECT_EQ(TextNormalizer::SanitizeText("abcあいう", 15), std::nullopt);
+  EXPECT_EQ(TextNormalizer::SanitizeText("", 10), std::nullopt);
+
+  // 2. Truncation by max_bytes (safely preserving UTF-8 boundaries)
+  // "あいうえお" is 15 bytes in UTF-8 (3 bytes per character).
+  // Triggered at limit 6 bytes (should cut exactly to "あい" -> 6 bytes).
+  EXPECT_EQ(*TextNormalizer::SanitizeText("あいうえお", 6), "あい");
+  EXPECT_EQ(*TextNormalizer::SanitizeText("あいうえお", 7), "あい");
+  EXPECT_EQ(*TextNormalizer::SanitizeText("あいうえお", 8), "あい");
+  EXPECT_EQ(*TextNormalizer::SanitizeText("あいうえお", 9), "あいう");
+
+  // 3. Skip control characters
+  EXPECT_EQ(
+      *TextNormalizer::SanitizeText(absl::string_view("abc\n\t\0def", 9), 10),
+      "abcdef");
+
+  // 4. Skip invalid UTF-8 sequences
+  // (including partial characters of "あ" \xE3\x81\x82)
+  EXPECT_EQ(*TextNormalizer::SanitizeText("abc\xFF""def", 10), "abcdef");
+  // \xE3 only (missing 2nd and 3rd bytes)
+  EXPECT_EQ(*TextNormalizer::SanitizeText("abc\xE3""def", 10), "abcdef");
+  // \xE3\x81 only (missing 3rd byte)
+  EXPECT_EQ(*TextNormalizer::SanitizeText("abc\xE3\x81""def", 10), "abcdef");
+  // \x81 only (missing 1st and 2nd bytes)
+  EXPECT_EQ(*TextNormalizer::SanitizeText("abc\x81""def", 10), "abcdef");
+  // \x81\x82 only (missing 1st byte)
+  EXPECT_EQ(*TextNormalizer::SanitizeText("abc\x81\x82""def", 10), "abcdef");
+
+  // 5. Valid emoji or SVS cases (no modifications -> std::nullopt)
+  // Emoji 😊 (4 bytes: \xF0\x9F\x98\x8A)
+  EXPECT_EQ(TextNormalizer::SanitizeText("😊", 10), std::nullopt);
+  // SVS 塚︀ (6 bytes: 塚\u585A [3] + FE00 [3])
+  EXPECT_EQ(TextNormalizer::SanitizeText("\u585A\uFE00", 10), std::nullopt);
+  // Combined Emoji and SVS (4 + 6 = 10 bytes)
+  EXPECT_EQ(TextNormalizer::SanitizeText("😊\u585A\uFE00", 10), std::nullopt);
+
+  // 6. Truncation of Emoji and SVS
+  // 😊 (4 bytes) triggers at 3 bytes -> truncated, broken byte ignored -> ""
+  EXPECT_EQ(*TextNormalizer::SanitizeText("😊", 3), "");
+  EXPECT_EQ(*TextNormalizer::SanitizeText("ab😊", 5), "ab");
+  // 塚︀ (6 bytes) truncated at 5 bytes -> U+FE00 SVS part is cut -> "\u585A"
+  EXPECT_EQ(*TextNormalizer::SanitizeText("\u585A\uFE00", 5), "\u585A");
+  EXPECT_EQ(*TextNormalizer::SanitizeText("\u585A\uFE00", 4), "\u585A");
+  EXPECT_EQ(*TextNormalizer::SanitizeText("\u585A\uFE00", 2), "");
+
+  // 7. Combined control skip and byte truncation
+  // "あ\nい\tうえお" is truncated by 11 bytes after skips -> "あいう".
+  EXPECT_EQ(*TextNormalizer::SanitizeText("あ\nい\tうえお", 11), "あいう");
 }
 
 }  // namespace mozc

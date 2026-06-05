@@ -40,10 +40,23 @@ namespace renderer {
 namespace {
 // absl::string_view kStyleTextProto is defined in renderer_style.inc.
 #include "renderer/renderer_style.inc"
+
+void SetRgbaColor(RendererStyle::RGBAColor* color, double r, double g, double b,
+                  double a = 1.0) {
+  color->set_r(r);
+  color->set_g(g);
+  color->set_b(b);
+  color->set_a(a);
+}
 }  // namespace
 
 void RendererStyleHandler::GetRendererStyle(RendererStyle* style) {
   CHECK(mozc::protobuf::TextFormat::ParseFromString(kStyleTextProto, style));
+
+  if (!style->candidate_style().has_background_color()) {
+    SetRgbaColor(style->mutable_candidate_style()->mutable_background_color(),
+                 255, 255, 255);
+  }
 }
 
 }  // namespace renderer

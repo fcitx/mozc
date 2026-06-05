@@ -119,7 +119,13 @@ using mozc::renderer::mac::MacViewUtil;
     }
   }
 
-  NSString *nsstr = [NSString stringWithUTF8String:style_.column_minimum_width_string().c_str()];
+  // This macOS implementation appends two spaces to calculate the minimum width.
+  // This is a workaround for compatibility with the historical behavior.
+  std::string min_width_string = style_.column_minimum_width_string();
+  if (!min_width_string.empty()) {
+    min_width_string.append("  ");
+  }
+  NSString *nsstr = [NSString stringWithUTF8String:min_width_string.c_str()];
   NSDictionary *attr = [NSDictionary dictionaryWithObject:[NSFont messageFontOfSize:14]
                                                    forKey:NSFontAttributeName];
   const NSAttributedString *defaultMessage = [[NSAttributedString alloc] initWithString:nsstr

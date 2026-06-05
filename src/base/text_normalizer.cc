@@ -30,11 +30,14 @@
 #include "base/text_normalizer.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "base/strings/unicode.h"
 #include "base/util.h"
 
 namespace mozc {
@@ -230,5 +233,36 @@ std::string TextNormalizer::NormalizeTextToSvs(absl::string_view input) {
     return output;
   }
   return std::string(input.data(), input.size());
+}
+
+std::optional<std::string> TextNormalizer::SanitizeText(absl::string_view input,
+                                                        size_t max_bytes) {
+  auto is_valid_text = [](absl::string_view str, size_t max_bytes) {
+    if (str.size() > max_bytes) [[unlikely]] {
+      return false;
+    }
+    for (const UnicodeChar c : Utf8AsUnicodeChar(str)) {
+      if (!c.ok() || c.char32() < 32 || c.char32() == 127) [[unlikely]] {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (is_valid_text(input, max_bytes)) [[likely]] {
+    return std::nullopt;
+  }
+
+  std::string sanitized;
+  sanitized.reserve(max_bytes);
+  if (input.size() > max_bytes) {
+    input.remove_suffix(input.size() - max_bytes);
+  }
+  for (const UnicodeChar c : Utf8AsUnicodeChar(input)) {
+    if (!c.ok() || c.char32() < 32 || c.char32() == 127) {
+      continue;
+    }
+    sanitized.append(c.utf8());
+  }
+  return sanitized;
 }
 }  // namespace mozc
