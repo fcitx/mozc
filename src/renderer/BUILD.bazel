@@ -238,6 +238,7 @@ mozc_embed_file(
     srcs = ["renderer_style.textproto"],
     out = "renderer_style.inc",
     as_string_view = True,
+    skip_until = "# proto-file:",
     var_name = "kStyleTextProto",
 )
 

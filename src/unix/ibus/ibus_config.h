@@ -51,7 +51,7 @@ class IbusConfig {
 
   // Loads textproto and updates instance variables.
   // Returns false if failed to parse config_data.
-  bool LoadConfig(const std::string& config_data);
+  bool LoadConfig(absl::string_view config_data);
 
   const std::string& GetEnginesXml() const;
   const std::string& GetLayout(absl::string_view name) const;

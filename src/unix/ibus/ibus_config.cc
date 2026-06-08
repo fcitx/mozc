@@ -51,6 +51,9 @@ namespace mozc {
 constexpr char kIbusConfigFile[] = "ibus_config.textproto";
 
 namespace {
+// Defines absl::string_view kIbusConfigTextProto.
+#include "unix/ibus/ibus_config_textproto.inc"
+
 std::string UpdateConfigFile() {
   const std::string engines_file = FileUtil::JoinPath(
       SystemUtil::GetUserProfileDirectory(), kIbusConfigFile);
@@ -58,7 +61,7 @@ std::string UpdateConfigFile() {
     absl::StatusOr<std::string> config = FileUtil::GetContents(engines_file);
     if (!config.ok()) {
       LOG(ERROR) << config.status();
-      return kIbusConfigTextProto;
+      return std::string(kIbusConfigTextProto);
     }
     return *std::move(config);
   } else if (absl::IsNotFound(s)) {
@@ -67,15 +70,16 @@ std::string UpdateConfigFile() {
         !s.ok()) {
       LOG(ERROR) << "Failed to write " << engines_file << ": " << s;
     }
-    return kIbusConfigTextProto;
+    return std::string(kIbusConfigTextProto);
   } else {
     LOG(ERROR) << "Cannot check if " << engines_file << "exists: " << s;
-    return kIbusConfigTextProto;
+    return std::string(kIbusConfigTextProto);
   }
 }
 
-std::string NormalizeLayout(const std::string& layout) {
+std::string NormalizeLayout(absl::string_view layout) {
   std::string output;
+  output.reserve(layout.size());
   for (const char c : layout) {
     if (absl::ascii_isalnum(c) || c == '_' || c == '-' || c == '/') {
       output += c;
@@ -86,7 +90,7 @@ std::string NormalizeLayout(const std::string& layout) {
   return output;
 }
 
-bool ParseConfig(const std::string& data, ibus::Config& config) {
+bool ParseConfig(absl::string_view data, ibus::Config& config) {
   const bool success =
       mozc::protobuf::TextFormat::ParseFromString(data, &config);
   if (!success) {
@@ -106,7 +110,7 @@ bool ParseConfig(const std::string& data, ibus::Config& config) {
   return success;
 }
 
-std::string EscapeXmlValue(const std::string& value) {
+std::string EscapeXmlValue(absl::string_view value) {
   return absl::StrReplaceAll(value, {{"&", "&amp;"},
                                      {"<", "&lt;"},
                                      {">", "&gt;"},
@@ -146,14 +150,14 @@ bool IbusConfig::Initialize() {
   return LoadConfig(config_data);
 }
 
-bool IbusConfig::LoadConfig(const std::string& config_data) {
+bool IbusConfig::LoadConfig(absl::string_view config_data) {
   const bool valid_user_config = ParseConfig(config_data, config_);
 
   engine_xml_ = CreateEnginesXml(config_);
   if (!valid_user_config) {
-    engine_xml_ +=
+    absl::StrAppend(&engine_xml_,
         ("<!-- Failed to parse the user config. -->\n"
-         "<!-- Used the default setting instead. -->\n");
+         "<!-- Used the default setting instead. -->\n"));
   }
 
   return valid_user_config;

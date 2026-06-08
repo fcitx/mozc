@@ -772,7 +772,7 @@ bool Converter::PredictForRequestWithSegments(const ConversionRequest& request,
     candidate->rid = result.rid;
     candidate->wcost = result.wcost;
     candidate->cost = result.cost;
-    candidate->attributes = result.candidate_attributes;
+    candidate->attributes = result.attributes;
     candidate->consumed_key_size = result.consumed_key_size;
     candidate->inner_segment_boundary = result.inner_segment_boundary;
 
@@ -812,7 +812,7 @@ std::vector<prediction::Result> Converter::MakeLearningResults(
       result.rid = candidate->rid;
       result.wcost = candidate->wcost;
       result.cost = candidate->cost;
-      result.candidate_attributes = candidate->attributes;
+      result.attributes = candidate->attributes;
       result.consumed_key_size = candidate->consumed_key_size;
       result.inner_segment_boundary = candidate->inner_segment_boundary;
       // Force to set inner_segment_boundary from key/content_key.
@@ -839,7 +839,7 @@ std::vector<prediction::Result> Converter::MakeLearningResults(
       const Candidate& candidate = segment.candidate(0);
       absl::StrAppend(&result.key, candidate.key);
       absl::StrAppend(&result.value, candidate.value);
-      result.candidate_attributes |= candidate.attributes;
+      result.attributes |= candidate.attributes;
       result.wcost += candidate.wcost;
       result.cost += candidate.cost;
       builder.Add(candidate.key.size(), candidate.value.size(),
@@ -871,7 +871,7 @@ prediction::Result Converter::MakeHistoryResult(const Segments& segments) {
     const Candidate& candidate = segment.candidate(0);
     absl::StrAppend(&result.key, candidate.key);
     absl::StrAppend(&result.value, candidate.value);
-    result.candidate_attributes |= candidate.attributes;
+    result.attributes |= candidate.attributes;
     builder.Add(candidate.key.size(), candidate.value.size(),
                 candidate.content_key.size(), candidate.content_value.size());
   }

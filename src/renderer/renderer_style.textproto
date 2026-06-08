@@ -27,7 +27,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# proto-file: third_party/mozc/src/protocol/renderer_style.proto
+# proto-file: protocol/renderer_style.proto
 # proto-message: RendererStyle
 window_border: 1
 scrollbar_width: 4
