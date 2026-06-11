@@ -103,14 +103,7 @@ mozc_cc_library(
             ":config_handler",
             "//protocol:config_cc_proto",
         ],
-        ios = [
-            "//base/mac:mac_util",
-            "//base:system_util",
-            "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/synchronization",
-            "//base:file_util",
-        ],
-        macos = [
+        apple = [
             "//base/mac:mac_util",
             "//base:system_util",
             "@com_google_absl//absl/strings",

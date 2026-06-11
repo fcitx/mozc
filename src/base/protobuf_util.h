@@ -27,45 +27,28 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "renderer/renderer_style_handler.h"
+#ifndef MOZC_BASE_PROTOBUF_UTIL_H_
+#define MOZC_BASE_PROTOBUF_UTIL_H_
 
-#include "absl/log/check.h"
+#include <optional>
+#include <string>
+
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
-#include "base/protobuf/text_format.h"
-#include "base/protobuf_util.h"
-#include "base/text_normalizer.h"
-#include "protocol/renderer_style.pb.h"
+#include "base/protobuf/message.h"
 
 namespace mozc {
-namespace renderer {
+namespace protobuf_util {
 
-namespace {
-// absl::string_view kStyleTextProto is defined in renderer_style.inc.
-#include "renderer/renderer_style.inc"
+// Applies `sanitizer` to all string fields in the given `message` (including
+// nested messages). If `sanitizer` returns a string, the field is replaced.
+// If it returns std::nullopt, the field is left unchanged.
+void SanitizeMessageStrings(
+    protobuf::Message& message,
+    absl::FunctionRef<std::optional<std::string>(absl::string_view)>
+        sanitizer);
 
-void SetRgbaColor(RendererStyle::RGBAColor* color, double r, double g, double b,
-                  double a = 1.0) {
-  color->set_r(r);
-  color->set_g(g);
-  color->set_b(b);
-  color->set_a(a);
-}
-}  // namespace
-
-void RendererStyleHandler::GetRendererStyle(RendererStyle* style) {
-  CHECK(mozc::protobuf::TextFormat::ParseFromString(kStyleTextProto, style));
-
-  if (!style->candidate_style().has_background_color()) {
-    SetRgbaColor(style->mutable_candidate_style()->mutable_background_color(),
-                 255, 255, 255);
-  }
-
-  protobuf_util::SanitizeMessageStrings(*style, [](absl::string_view src) {
-    // Limit the length of the string to 100 bytes and remove ill-formed
-    // UTF-8 sequences and ASCII control characters.
-    return TextNormalizer::SanitizeText(src, 100);
-  });
-}
-
-}  // namespace renderer
+}  // namespace protobuf_util
 }  // namespace mozc
+
+#endif  // MOZC_BASE_PROTOBUF_UTIL_H_

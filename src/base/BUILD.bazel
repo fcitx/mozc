@@ -27,6 +27,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load(
     "//:build_defs.bzl",
     "mozc_cc_library",
@@ -59,14 +61,13 @@ mozc_cc_library(
         "@com_google_absl//absl/strings:string_view",
     ] + mozc_select(
         android = ["//base"],
+        apple = ["//base"],
         client = [
             ":file_util",
             "@com_google_absl//absl/flags:parse",
         ],
         default = ["//base"],
-        ios = ["//base"],
         linux = ["//base"],
-        macos = ["//base"],
         oss = [
             ":file_util",
             "@com_google_absl//absl/flags:parse",
@@ -532,8 +533,7 @@ mozc_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + mozc_select(
-        ios = ["//base/mac:mac_util"],
-        macos = ["//base/mac:mac_util"],
+        apple = ["//base/mac:mac_util"],
         windows = [
             ":vlog",
             "//base/win32:wide_char",
@@ -847,8 +847,7 @@ mozc_cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ] + mozc_select(
-        ios = ["//base/mac:mac_util"],
-        macos = ["//base/mac:mac_util"],
+        apple = ["//base/mac:mac_util"],
         windows = ["//base/win32:wide_char"],
     ),
 )
@@ -1090,5 +1089,54 @@ mozc_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_library(
+    name = "protobuf_util",
+    srcs = ["protobuf_util.cc"],
+    hdrs = ["protobuf_util.h"],
+    tags = ["noandroid"],
+    target_compatible_with = mozc_select(
+        android = ["@platforms//:incompatible"],
+        default = [],
+        ios = ["@platforms//:incompatible"],
+        macos = [],
+    ),
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//base/protobuf:descriptor",
+        "//base/protobuf:message",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+proto_library(
+    name = "protobuf_util_test_proto",
+    testonly = True,
+    srcs = ["protobuf_util_test.proto"],
+)
+
+cc_proto_library(
+    name = "protobuf_util_test_cc_proto",
+    testonly = True,
+    deps = [":protobuf_util_test_proto"],
+)
+
+mozc_cc_test(
+    name = "protobuf_util_test",
+    size = "small",
+    srcs = ["protobuf_util_test.cc"],
+    tags = ["noandroid"],
+    target_compatible_with = mozc_select(
+        android = ["@platforms//:incompatible"],
+        ios = ["@platforms//:incompatible"],
+    ),
+    deps = [
+        ":protobuf_util",
+        ":protobuf_util_test_cc_proto",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

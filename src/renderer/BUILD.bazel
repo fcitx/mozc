@@ -78,8 +78,7 @@ mozc_cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ] + mozc_select(
-        ios = ["//base/mac:mac_util"],
-        macos = ["//base/mac:mac_util"],
+        apple = ["//base/mac:mac_util"],
         windows = [
             "//base/win32:win_sandbox",
         ],
@@ -251,6 +250,8 @@ mozc_cc_library(
     hdrs = ["renderer_style_handler.h"],
     visibility = ["//renderer:__subpackages__"],
     deps = [
+        "//base:protobuf_util",
+        "//base:text_normalizer",
         "//base/protobuf:text_format",
         "//protocol:renderer_cc_proto",
         "@com_google_absl//absl/log:check",
