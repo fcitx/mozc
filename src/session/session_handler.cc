@@ -304,6 +304,9 @@ bool SessionHandler::SetRequest(commands::Command* command) {
 }
 
 bool SessionHandler::EvalCommand(commands::Command* command) {
+  if (engine_) {
+    engine_->ClearOldSupplementalModels();
+  }
   if (!is_available_) {
     LOG(ERROR) << "SessionHandler is not available.";
     return false;

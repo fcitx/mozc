@@ -262,7 +262,9 @@ mozc_cc_library(
     deps = [
         ":ibus_config_cc_proto",
         "//base:file_util",
+        "//base:protobuf_util",
         "//base:system_util",
+        "//base:text_normalizer",
         "//base/protobuf:text_format",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

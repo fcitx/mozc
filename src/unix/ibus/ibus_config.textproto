@@ -31,6 +31,12 @@
 # proto-message: mozc.ibus.Config
 #
 # `ibus write-cache; ibus restart` might be necessary to apply changes.
+#
+# Configuration reference:
+# https://github.com/google/mozc/blob/master/docs/configurations.md#ibus
+#
+# string fields are limited to 100 bytes.
+
 engines {
   name : "mozc-jp"
   longname : "Mozc"

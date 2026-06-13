@@ -183,6 +183,12 @@ bool Engine::SendSupplementalModelReloadRequest(
   return true;
 }
 
+void Engine::ClearOldSupplementalModels() {
+  if (converter_) {
+    converter_->modules().GetSupplementalModel().ClearOldModels();
+  }
+}
+
 void Engine::ImportUserDictionary(std::string name, std::string tsv) {
   if (async_user_dictionary_importer_) {
     async_user_dictionary_importer_->Import(std::move(name), std::move(tsv));

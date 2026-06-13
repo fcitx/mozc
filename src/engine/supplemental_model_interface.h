@@ -58,6 +58,9 @@ class SupplementalModelInterface {
     return EngineReloadResponse();
   }
 
+  // Destroys old models that were replaced during reload.
+  virtual void ClearOldModels() {}
+
   // Returns true if supplemental model is available.
   // Useful to run intensive operations before using supplemental model.
   //

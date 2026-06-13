@@ -100,6 +100,9 @@ class EngineInterface {
   virtual bool MaybeReloadEngine(EngineReloadResponse* response) {
     return false;
   }
+
+  // Clears old supplemental models to avoid memory leaks.
+  virtual void ClearOldSupplementalModels() {}
   virtual bool SendEngineReloadRequest(const EngineReloadRequest& request) {
     return false;
   }

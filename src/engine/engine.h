@@ -127,6 +127,8 @@ class Engine : public EngineInterface {
   bool SendSupplementalModelReloadRequest(
       const EngineReloadRequest& request) override;
 
+  void ClearOldSupplementalModels() override;
+
   void ImportUserDictionary(std::string name, std::string tsv) override;
 
   void SetAlwaysWaitForTesting(bool value) { always_wait_for_testing_ = value; }
