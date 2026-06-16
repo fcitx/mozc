@@ -832,30 +832,26 @@ const wchar_t* SystemUtil::GetSystemDir() {
 // version only when initializing.
 std::string SystemUtil::GetOSVersionString() {
 #ifdef _WIN32
-  std::string ret = "Windows";
   OSVERSIONINFOEX osvi = {0};
   osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
   if (GetVersionEx(reinterpret_cast<OSVERSIONINFO*>(&osvi))) {
-    ret += ".";
-    ret += std::to_string(static_cast<uint32_t>(osvi.dwMajorVersion));
-    ret += ".";
-    ret += std::to_string(static_cast<uint32_t>(osvi.dwMinorVersion));
-    ret += "." + std::to_string(osvi.wServicePackMajor);
-    ret += "." + std::to_string(osvi.wServicePackMinor);
-  } else {
-    LOG(WARNING) << "GetVersionEx failed";
+    return absl::StrCat("Windows.", osvi.dwMajorVersion, ".",
+                        osvi.dwMinorVersion, ".", osvi.wServicePackMajor, ".",
+                        osvi.wServicePackMinor);
   }
-  return ret;
+  LOG(WARNING) << "GetVersionEx failed";
+  return "Windows";
 #elif defined(__APPLE__)
-  const std::string ret = "MacOSX " + MacUtil::GetOSVersionString();
   // TODO(toshiyuki): get more specific info
-  return ret;
+  return absl::StrCat("MacOSX ", MacUtil::GetOSVersionString());
+#elif defined(__ANDROID__)
+  return absl::StrCat("Android ",
+                      AndroidUtil::GetSystemProperty(
+                          AndroidUtil::kSystemPropertyOsVersion, "Unknown"));
 #elif defined(__linux__)
-  const std::string ret = "Linux";
-  return ret;
+  return "Linux";
 #else   // !_WIN32 && !__APPLE__ && !__linux__
-  const std::string ret = "Unknown";
-  return ret;
+  return "Unknown";
 #endif  // _WIN32, __APPLE__, __linux__
 }
 

@@ -29,9 +29,10 @@
 
 #include "base/android_util.h"
 
+#include <cstddef>
 #include <string>
 
-#include "base/util.h"
+#include "base/port.h"
 #include "testing/gunit.h"
 #include "testing/test_peer.h"
 
@@ -43,14 +44,22 @@ class AndroidUtilTestPeer : public testing::TestPeer<AndroidUtil> {
 };
 
 TEST(AndroidUtilTest, GetSystemProperty) {
+  // AndroidUtil::GetSystemProperty works only on Android.
+  if constexpr (!port::IsAndroid()) {
+    return;
+  }
+
   // Valid cases
-  EXPECT_NE("", AndroidUtil::GetSystemProperty(
-                    AndroidUtil::kSystemPropertyOsVersion, ""));
+  EXPECT_NE(
+      AndroidUtil::GetSystemProperty(AndroidUtil::kSystemPropertyOsVersion, ""),
+      "");
   // Check cache
-  EXPECT_NE("", AndroidUtil::GetSystemProperty(
-                    AndroidUtil::kSystemPropertyOsVersion, ""));
-  EXPECT_NE("", AndroidUtil::GetSystemProperty(
-                    AndroidUtil::kSystemPropertyModel, ""));
+  EXPECT_NE(
+      AndroidUtil::GetSystemProperty(AndroidUtil::kSystemPropertyOsVersion, ""),
+      "");
+  EXPECT_NE(
+      AndroidUtil::GetSystemProperty(AndroidUtil::kSystemPropertyModel, ""),
+      "");
 
   // Invalid cases.
   EXPECT_EQ(AndroidUtil::GetSystemProperty("INVALID_KEY", ""), "");

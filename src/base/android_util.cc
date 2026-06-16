@@ -29,7 +29,11 @@
 
 #include "base/android_util.h"
 
+#include <cstddef>
 #include <fstream>
+#include <map>
+#include <set>
+#include <string>
 #include <utility>
 
 #include "absl/base/const_init.h"
@@ -54,7 +58,7 @@ constexpr char AndroidUtil::kSystemPropertySdkVersion[] =
 // static
 std::string AndroidUtil::GetSystemProperty(const std::string& key,
                                            const std::string& default_value) {
-  absl::MutexLock lock(&sys_prop_mutex);
+  absl::MutexLock lock(sys_prop_mutex);
   std::map<std::string, std::string>::iterator it = property_cache.find(key);
   if (it != property_cache.end()) {
     // Cache is found.

@@ -30,8 +30,6 @@
 #ifndef MOZC_BASE_ANDROID_UTIL_H_
 #define MOZC_BASE_ANDROID_UTIL_H_
 
-#include <jni.h>
-
 #include <map>
 #include <set>
 #include <string>

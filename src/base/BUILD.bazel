@@ -499,16 +499,14 @@ mozc_cc_test(
 
 mozc_cc_library(
     name = "system_util",
-    # TODO(b/269889028): android_util and win_util have cyclic dependency
-    # between this library. Solve it and make them independent libraries.
+    # TODO(b/269889028): win_util has cyclic dependency between this library.
+    # Solve it and make them independent libraries.
     srcs = ["system_util.cc"] +
            mozc_select(
-               android = ["android_util.cc"],
                windows = ["//base/win32:win_util_cc"],
            ),
     hdrs = ["system_util.h"] +
            mozc_select(
-               android = ["android_util.h"],
                windows = ["//base/win32:win_util_h"],
            ),
     local_defines = mozc_select(
@@ -535,6 +533,7 @@ mozc_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + mozc_select(
+        android = [":android_util"],
         apple = ["//base/mac:mac_util"],
         windows = [
             ":vlog",
@@ -554,6 +553,34 @@ mozc_cc_test(
         ":file_util_mock",
         ":system_util",
         "//testing:gunit_main",
+    ],
+)
+
+mozc_cc_library(
+    name = "android_util",
+    srcs = ["android_util.cc"],
+    hdrs = ["android_util.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":util",
+        "@com_google_absl//absl/base:config",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+mozc_cc_test(
+    name = "android_util_test",
+    size = "small",
+    srcs = ["android_util_test.cc"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":android_util",
+        ":port",
+        ":util",
+        "//testing:gunit_main",
+        "//testing:test_peer",
     ],
 )
 
