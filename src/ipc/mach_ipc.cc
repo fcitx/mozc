@@ -37,11 +37,11 @@
 #include <cstdint>
 #include <map>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "base/mac/mac_util.h"
-#include "base/singleton.h"
 #include "base/vlog.h"
 #include "ipc/ipc.h"
 #include "ipc/ipc_path_manager.h"
@@ -208,6 +208,16 @@ class DefaultServerMachPortManager : public MachPortManagerInterface {
   std::map<std::string, mach_port_t> mach_ports_;
 };
 
+DefaultClientMachPortManager* GetDefaultClientMachPortManager() {
+  static absl::NoDestructor<DefaultClientMachPortManager> manager;
+  return manager.get();
+}
+
+DefaultServerMachPortManager* GetDefaultServerMachPortManager() {
+  static absl::NoDestructor<DefaultServerMachPortManager> manager;
+  return manager.get();
+}
+
 struct mach_ipc_send_message {
   mach_msg_header_t header;
   mach_msg_body_t body;
@@ -253,7 +263,7 @@ bool IPCClient::Call(absl::string_view request, std::string* response,
   last_ipc_error_ = IPC_NO_ERROR;
   MachPortManagerInterface* manager = mach_port_manager_;
   if (manager == nullptr) {
-    manager = Singleton<DefaultClientMachPortManager>::get();
+    manager = GetDefaultClientMachPortManager();
   }
 
   // Obtain the server port
@@ -374,7 +384,7 @@ bool IPCClient::Connected() const {
 
   MachPortManagerInterface* manager = mach_port_manager_;
   if (manager == nullptr) {
-    manager = Singleton<DefaultClientMachPortManager>::get();
+    manager = GetDefaultClientMachPortManager();
   }
 
   return manager->IsServerRunning(name_);
@@ -409,7 +419,7 @@ IPCServer::~IPCServer() {
 bool IPCServer::Connected() const {
   MachPortManagerInterface* manager = mach_port_manager_;
   if (manager == nullptr) {
-    manager = Singleton<DefaultServerMachPortManager>::get();
+    manager = GetDefaultServerMachPortManager();
   }
 
   return manager->IsServerRunning(name_);
@@ -418,7 +428,7 @@ bool IPCServer::Connected() const {
 void IPCServer::Loop() {
   MachPortManagerInterface* manager = mach_port_manager_;
   if (manager == nullptr) {
-    manager = Singleton<DefaultServerMachPortManager>::get();
+    manager = GetDefaultServerMachPortManager();
   }
 
   // Obtain the server port

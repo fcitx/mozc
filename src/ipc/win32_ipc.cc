@@ -40,12 +40,12 @@
 #include <string>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "base/const.h"
-#include "base/singleton.h"
 #include "base/system_util.h"
 #include "base/util.h"
 #include "base/vlog.h"
@@ -178,13 +178,16 @@ class FallbackClientMutex : public IPCClientMutexBase {
 const wil::unique_mutex_nothrow &GetClientMutex(
     absl::string_view ipc_name) {
   if (ipc_name.starts_with("session")) {
-    return Singleton<ConverterClientMutex>::get()->mutex();
+    static absl::NoDestructor<ConverterClientMutex> converter_client_mutex;
+    return converter_client_mutex->mutex();
   }
   if (ipc_name.starts_with("renderer")) {
-    return Singleton<RendererClientMutex>::get()->mutex();
+    static absl::NoDestructor<RendererClientMutex> renderer_client_mutex;
+    return renderer_client_mutex->mutex();
   }
   LOG(WARNING) << "unexpected IPC name: " << ipc_name;
-  return Singleton<FallbackClientMutex>::get()->mutex();
+  static absl::NoDestructor<FallbackClientMutex> fallback_client_mutex;
+  return fallback_client_mutex->mutex();
 }
 
 uint32_t GetServerProcessIdImpl(HANDLE handle) {

@@ -161,7 +161,6 @@ mozc_cc_library(
         ":keymap",
         ":session",
         "//base:clock",
-        "//base:singleton",
         "//base:stopwatch",
         "//base:util",
         "//base:version",

@@ -27,12 +27,14 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+load("@rules_python//python:defs.bzl", "py_test")
 load(
     "//:build_defs.bzl",
     "mozc_cc_binary",
     "mozc_cc_library",
     "mozc_cc_test",
     "mozc_py_binary",
+    "mozc_py_library",
     "mozc_select",
     "mozc_select_enable_supplemental_model",
 )
@@ -382,7 +384,6 @@ mozc_cc_library(
     deps = [
         ":node",
         ":node_allocator",
-        "//base:singleton",
         "//base/strings:unicode",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -834,12 +835,31 @@ mozc_py_binary(
     visibility = ["//data_manager:__subpackages__"],
 )
 
+mozc_py_library(
+    name = "gen_boundary_data_lib",
+    srcs = ["gen_boundary_data.py"],
+    visibility = ["//visibility:private"],
+)
+
 mozc_py_binary(
     name = "gen_boundary_data",
     srcs = ["gen_boundary_data.py"],
     visibility = [
         "//data_manager:__subpackages__",
         "//tools/periodical_update:__pkg__",
+    ],
+    deps = [
+        ":gen_boundary_data_lib",
+    ],
+)
+
+py_test(
+    name = "gen_boundary_data_test",
+    srcs = ["gen_boundary_data_test.py"],
+    tags = ["manual"],
+    deps = [
+        ":gen_boundary_data_lib",
+        "//third_party/py/absl/testing:absltest",
     ],
 )
 

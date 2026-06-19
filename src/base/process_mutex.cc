@@ -32,6 +32,7 @@
 #include <cstdio>
 #include <string>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -40,7 +41,6 @@
 #include "absl/synchronization/mutex.h"
 #include "base/file_util.h"
 #include "base/port.h"
-#include "base/singleton.h"
 #include "base/strings/pfchar.h"
 #include "base/system_util.h"
 #include "base/vlog.h"
@@ -235,11 +235,15 @@ class FileLockManager {
   absl::flat_hash_map<std::string, int> fdmap_;
 };
 
+FileLockManager* GetFileLockManager() {
+  static absl::NoDestructor<FileLockManager> manager;
+  return manager.get();
+}
+
 }  // namespace
 
 bool ProcessMutex::LockAndWriteInternal(const absl::string_view message) {
-  absl::StatusOr<int> status_or_fd =
-      Singleton<FileLockManager>::get()->Lock(filename_);
+  absl::StatusOr<int> status_or_fd = GetFileLockManager()->Lock(filename_);
   if (!status_or_fd.ok()) {
     LOG(ERROR) << status_or_fd.status();
     return false;
@@ -259,8 +263,7 @@ bool ProcessMutex::LockAndWriteInternal(const absl::string_view message) {
 }
 
 void ProcessMutex::UnLockInternal() {
-  if (absl::Status status =
-          Singleton<FileLockManager>::get()->UnLock(filename_);
+  if (absl::Status status = GetFileLockManager()->UnLock(filename_);
       !status.ok()) {
     LOG(WARNING) << status;
   }

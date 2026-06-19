@@ -40,7 +40,6 @@
 #include "base/init_mozc.h"
 #include "base/process_mutex.h"
 #include "base/run_level.h"
-#include "base/singleton.h"
 #include "base/system_util.h"
 #include "base/vlog.h"
 #include "session/session_server.h"
@@ -130,7 +129,6 @@ int MozcServer::Run() {
 }
 
 int MozcServer::Finalize() {
-  mozc::FinalizeSingletons();
   return 0;
 }
 

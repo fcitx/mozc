@@ -45,7 +45,6 @@ mozc_py_binary(
     srcs = ["replace_macros.py"],
 )
 
-# TODO(noriyukit): Stop using //testing/pybase to support tests on iOS.
 py_test(
     name = "replace_macros_test",
     size = "small",
@@ -53,7 +52,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":replace_macros.testonly_lib",
-        "//testing/pybase",  # NOLINT(mozc/testing): TODO
+        "//third_party/py/absl/testing:absltest",
     ],
 )
 
@@ -62,7 +61,6 @@ mozc_py_library(
     srcs = ["code_generator_util.py"],
 )
 
-# TODO(noriyukit): Stop using //testing/pybase to support tests on iOS.
 py_test(
     name = "code_generator_util_test",
     size = "small",
@@ -70,7 +68,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":code_generator_util",
-        "//testing/pybase",  # NOLINT(mozc/testing): TODO
+        "//third_party/py/absl/testing:absltest",
     ],
 )
 
@@ -84,7 +82,6 @@ mozc_py_binary(
     srcs = ["mozc_version.py"],
 )
 
-# TODO(noriyukit): Stop using //testing/pybase to support tests on iOS.
 py_test(
     name = "mozc_version_test",
     size = "small",
@@ -92,7 +89,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":mozc_version_lib",
-        "//testing/pybase",  # NOLINT(mozc/testing): TODO
+        "//third_party/py/absl/testing:absltest",
     ],
 )
 

@@ -171,6 +171,14 @@ def _mozc_gen_win32_resource_file(
         tool = "//build_tools:gen_win32_resource_header",
     )
 
+# Alias to the rule for Windows resource
+mozc_win32_resource = windows_resource
+
+register_extension_info(
+    extension = mozc_win32_resource,
+    label_regex_for_dep = "{extension_name}",
+)
+
 def mozc_win32_resource_from_template(
         name,
         src,
@@ -200,10 +208,7 @@ def mozc_win32_resource_from_template(
         "GoogleJapaneseInput": ["GOOGLE_JAPANESE_INPUT_BUILD"],
     }.get(BRANDING, [])
 
-    # Create main resource
-    win32_resource_files_main = windows_resource
-
-    win32_resource_files_main(
+    mozc_win32_resource(
         name = name,
         rc_files = [":" + generated_rc_file],
         manifests = manifests,
@@ -466,6 +471,11 @@ def mozc_win32_cc_prod_binary(
         subpath = target_name + ".pdb",
         visibility = visibility,
     )
+
+register_extension_info(
+    extension = mozc_win32_cc_prod_binary,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def mozc_cc_win32_library(
         name,
@@ -752,6 +762,11 @@ def mozc_macos_application(name, bundle_name, infoplists, strings = [], bundle_i
         **kwargs
     )
 
+register_extension_info(
+    extension = mozc_macos_application,
+    label_regex_for_dep = "{extension_name}",
+)
+
 def mozc_macos_bundle(name, bundle_name, infoplists, strings = [], bundle_id = None, tags = [], **kwargs):
     """Rule to create .bundle for macOS.
 
@@ -776,6 +791,11 @@ def mozc_macos_bundle(name, bundle_name, infoplists, strings = [], bundle_id = N
         tags = tags + MOZC_TAGS.MAC_ONLY,
         **kwargs
     )
+
+register_extension_info(
+    extension = mozc_macos_bundle,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def _get_value(args):
     for arg in args:

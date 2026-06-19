@@ -37,6 +37,7 @@
 #include <string>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
@@ -47,7 +48,6 @@
 #include "base/config_file_stream.h"
 #include "base/hash.h"
 #include "base/port.h"
-#include "base/singleton.h"
 #include "base/strings/assign.h"
 #include "base/system_util.h"
 #include "base/thread.h"
@@ -187,7 +187,8 @@ class ConfigHandlerImpl final {
 };
 
 ConfigHandlerImpl* GetConfigHandlerImpl() {
-  return Singleton<ConfigHandlerImpl>::get();
+  static absl::NoDestructor<ConfigHandlerImpl> impl;
+  return impl.get();
 }
 
 std::shared_ptr<const Config> ConfigHandlerImpl::GetSharedConfig() const {

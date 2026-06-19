@@ -42,6 +42,7 @@
 #include <windows.h>
 #endif  // _WIN32
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -51,7 +52,6 @@
 #include "absl/strings/strip.h"
 #include "base/file_stream.h"
 #include "base/file_util.h"
-#include "base/singleton.h"
 #include "base/system_util.h"
 
 #ifdef _WIN32
@@ -94,6 +94,12 @@ class OnMemoryFileMap {
   absl::flat_hash_map<std::string, std::string> map_;
   const std::string empty_string_;
 };
+
+OnMemoryFileMap* GetOnMemoryFileMap() {
+  static absl::NoDestructor<OnMemoryFileMap> map;
+  return map.get();
+}
+
 }  // namespace
 
 std::unique_ptr<std::istream> ConfigFileStream::Open(
@@ -135,7 +141,7 @@ std::unique_ptr<std::istream> ConfigFileStream::Open(
     return nullptr;
   } else if (filename.starts_with(kMemoryPrefix)) {
     auto ifs = std::make_unique<std::istringstream>(
-        Singleton<OnMemoryFileMap>::get()->get(filename), mode);
+        GetOnMemoryFileMap()->get(filename), mode);
     CHECK(ifs);
     if (ifs->good()) {
       return ifs;
@@ -157,7 +163,7 @@ std::unique_ptr<std::istream> ConfigFileStream::Open(
 bool ConfigFileStream::AtomicUpdate(absl::string_view filename,
                                     absl::string_view new_binary_contens) {
   if (filename.starts_with(kMemoryPrefix)) {
-    Singleton<OnMemoryFileMap>::get()->set(filename, new_binary_contens);
+    GetOnMemoryFileMap()->set(filename, new_binary_contens);
     return true;
   } else if (filename.starts_with(kSystemPrefix)) {
     LOG(ERROR) << "Cannot update system:// files.";
@@ -217,9 +223,7 @@ std::string ConfigFileStream::GetFileName(absl::string_view filename) {
   return "";
 }
 
-void ConfigFileStream::ClearOnMemoryFiles() {
-  Singleton<OnMemoryFileMap>::get()->clear();
-}
+void ConfigFileStream::ClearOnMemoryFiles() { GetOnMemoryFileMap()->clear(); }
 
 #ifdef _WIN32
 // Check the file permission of "config1.db" if exists to ensure that

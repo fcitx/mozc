@@ -55,21 +55,29 @@ suffix penalty of POS ID N (2 bytes)
 See converter/segmenter.cc for how it's used.
 """
 
-import codecs
+from collections.abc import Iterable
 import optparse
 import re
 import struct
 import sys
 
 
-def PatternToRegexp(pattern):
-  return '^' + pattern.replace('*', '[^,]+')
+def PatternToRegexp(pattern: str) -> str:
+  regexp = '^' + pattern.replace('*', '[^,]+')
+  if not regexp.endswith(','):
+    regexp += '(?:,|$)'
+  return regexp
 
 
-def LoadPatterns(file):
-  prefix = []
-  suffix = []
-  for line in codecs.open(file, 'r', encoding='utf-8'):
+def LoadPatterns(
+    lines: Iterable[str],
+) -> tuple[
+    list[tuple[re.Pattern[str], int]], list[tuple[re.Pattern[str], int]]
+]:
+  """Loads patterns from lines."""
+  prefix: list[tuple[re.Pattern[str], int]] = []
+  suffix: list[tuple[re.Pattern[str], int]] = []
+  for line in lines:
     if len(line) <= 1 or line[0] == '#':
       continue
     fields = line.split()
@@ -79,35 +87,35 @@ def LoadPatterns(file):
     if cost < 0 or cost > 0xFFFF:
       sys.exit(-1)
     if label == 'PREFIX':
-      prefix.append([re.compile(PatternToRegexp(feature)), cost])
+      prefix.append((re.compile(PatternToRegexp(feature)), cost))
     elif label == 'SUFFIX':
-      suffix.append([re.compile(PatternToRegexp(feature)), cost])
+      suffix.append((re.compile(PatternToRegexp(feature)), cost))
     else:
       print('format error %s' % (line))
       sys.exit(0)
   return (prefix, suffix)
 
 
-def GetCost(patterns, feature):
-  for p in patterns:
-    pat = p[0]
-    cost = p[1]
+def GetCost(
+    patterns: Iterable[tuple[re.Pattern[str], int]], feature: str
+) -> int:
+  for pat, cost in patterns:
     if pat.match(feature):
       return cost
   return 0
 
 
-def LoadFeatures(filename):
+def LoadFeatures(lines: Iterable[str]) -> list[str]:
   features = []
-  for line in codecs.open(filename, 'r', encoding='utf-8'):
+  for line in lines:
     fields = line.split()
     features.append(fields[1])
   return features
 
 
-def CountSpecialPos(filename):
+def CountSpecialPos(lines: Iterable[str]) -> int:
   count = 0
-  for line in codecs.open(filename, 'r', encoding='utf-8'):
+  for line in lines:
     line = line.rstrip()
     if not line or line[0] == '#':
       continue
@@ -128,21 +136,39 @@ def ParseOptions():
   return parser.parse_args()[0]
 
 
-def main():
+def GenerateBoundaryData(
+    boundary_def_lines: Iterable[str],
+    id_def_lines: Iterable[str],
+    special_pos_lines: Iterable[str],
+) -> bytes:
+  """Generates boundary data binary image."""
+  prefix, suffix = LoadPatterns(boundary_def_lines)
+  features = LoadFeatures(id_def_lines)
+  num_special_pos = CountSpecialPos(special_pos_lines)
+
+  output_data = bytearray()
+  for feature in features:
+    output_data.extend(struct.pack('<H', GetCost(prefix, feature)))
+    output_data.extend(struct.pack('<H', GetCost(suffix, feature)))
+
+  for _ in range(num_special_pos):
+    output_data.extend(struct.pack('<H', 0))
+    output_data.extend(struct.pack('<H', 0))
+  return bytes(output_data)
+
+
+def main() -> None:
   opts = ParseOptions()
 
-  prefix, suffix = LoadPatterns(opts.boundary_def)
-  features = LoadFeatures(opts.id_def)
-  num_special_pos = CountSpecialPos(opts.special_pos)
+  with (
+      open(opts.boundary_def, 'r', encoding='utf-8') as f_boundary,
+      open(opts.id_def, 'r', encoding='utf-8') as f_id,
+      open(opts.special_pos, 'r', encoding='utf-8') as f_special,
+  ):
+    data = GenerateBoundaryData(f_boundary, f_id, f_special)
 
-  with open(opts.output, 'wb') as f:
-    for feature in features:
-      f.write(struct.pack('<H', GetCost(prefix, feature)))
-      f.write(struct.pack('<H', GetCost(suffix, feature)))
-
-    for _ in range(num_special_pos):
-      f.write(struct.pack('<H', 0))
-      f.write(struct.pack('<H', 0))
+  with open(opts.output, 'wb') as f_out:
+    f_out.write(data)
 
 
 if __name__ == '__main__':

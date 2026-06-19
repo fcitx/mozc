@@ -33,10 +33,10 @@
 #include <memory>
 #include <string>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "base/singleton.h"
 #include "base/thread.h"
 #include "ipc/ipc_path_manager.h"
 
@@ -80,7 +80,8 @@ std::unique_ptr<IPCClientInterface> IPCClientFactory::NewClient(
 
 // static
 IPCClientFactory *IPCClientFactory::GetIPCClientFactory() {
-  return Singleton<IPCClientFactory>::get();
+  static absl::NoDestructor<IPCClientFactory> factory;
+  return factory.get();
 }
 
 uint32_t IPCClient::GetServerProtocolVersion() const {
