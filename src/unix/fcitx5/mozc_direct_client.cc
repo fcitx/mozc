@@ -11,7 +11,6 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "base/singleton.h"
 #include "config/config_handler.h"
 #include "data_manager/oss/oss_data_manager.h"
 #include "engine/engine.h"
