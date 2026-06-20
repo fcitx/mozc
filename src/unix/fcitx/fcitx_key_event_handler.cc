@@ -51,7 +51,7 @@ class AdditionalModifiersData {
     data_[commands::KeyEvent::LEFT_SHIFT] = commands::KeyEvent::SHIFT;
     data_[commands::KeyEvent::RIGHT_SHIFT] = commands::KeyEvent::SHIFT;
   }
-  const std::map<uint32_t, commands::KeyEvent::ModifierKey> &data() {
+  const std::map<uint32_t, commands::KeyEvent::ModifierKey> &data() const {
     return data_;
   }
 

@@ -64,7 +64,8 @@ class AdditionalModifiersData {
     data_[mozc::commands::KeyEvent::RIGHT_SHIFT] =
         mozc::commands::KeyEvent::SHIFT;
   }
-  const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey>& data() {
+  const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey>& data()
+      const {
     return data_;
   }
 
