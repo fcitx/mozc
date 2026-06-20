@@ -42,7 +42,6 @@
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "base/singleton.h"
 #include "protocol/commands.pb.h"
 #include "protocol/config.pb.h"
 #include "unix/fcitx5/fcitx_key_translator.h"
@@ -79,8 +78,10 @@ void AddAdditionalModifiers(
     std::set<mozc::commands::KeyEvent::ModifierKey>* modifier_keys_set) {
   DCHECK(modifier_keys_set);
 
+  static const AdditionalModifiersData modifiers_data;
+
   const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey>& data =
-      mozc::Singleton<AdditionalModifiersData>::get()->data();
+      modifiers_data.data();
 
   // Adds MODIFIER if there are (LEFT|RIGHT)_MODIFIER like LEFT_SHIFT.
   for (auto it = modifier_keys_set->begin(); it != modifier_keys_set->end();

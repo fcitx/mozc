@@ -56,7 +56,6 @@ mozc_cc_library(
     ],
     deps = [
         ":mozc_client_interface",
-        "//base:singleton",
         "//base:vlog",
         "//config:config_handler",
         "//data_manager/oss:oss_data_manager",
@@ -143,7 +142,6 @@ mozc_cc_library(
     ],
     deps = [
         "//base:port",
-        "//base:singleton",
         "//base:vlog",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",

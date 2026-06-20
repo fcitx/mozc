@@ -34,7 +34,6 @@
 
 #include "absl/log/check.h"
 #include "base/vlog.h"
-#include "base/singleton.h"
 
 namespace mozc {
 namespace fcitx {
@@ -66,8 +65,10 @@ void AddAdditionalModifiers(
     std::set<commands::KeyEvent::ModifierKey> *modifier_keys_set) {
   DCHECK(modifier_keys_set);
 
-  const std::map<uint32_t, commands::KeyEvent::ModifierKey> &data =
-      Singleton<AdditionalModifiersData>::get()->data();
+  static const AdditionalModifiersData modifiers_data;
+
+  const std::map<uint32_t, mozc::commands::KeyEvent::ModifierKey>& data =
+      modifiers_data.data();
 
   // Adds MODIFIER if there are (LEFT|RIGHT)_MODIFIER like LEFT_SHIFT.
   for (std::set<commands::KeyEvent::ModifierKey>::const_iterator it =

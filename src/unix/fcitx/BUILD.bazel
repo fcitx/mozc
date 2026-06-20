@@ -60,7 +60,6 @@ mozc_cc_library(
     ],
     deps = [
         "//base:port",
-        "//base:singleton",
         "//base:vlog",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
