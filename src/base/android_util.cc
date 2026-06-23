@@ -98,7 +98,7 @@ bool AndroidUtil::GetPropertyFromFile(const std::string& key,
   bool found = false;
   std::string lhs;
   std::string rhs;
-  while (getline(ifs, line)) {
+  while (std::getline(ifs, line)) {
     if (!mozc::AndroidUtil::ParseLine(line, &lhs, &rhs)) {
       continue;
     }

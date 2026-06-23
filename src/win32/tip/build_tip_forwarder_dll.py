@@ -307,8 +307,11 @@ def build_on_windows(args: argparse.Namespace) -> None:
         info.get_rc_file_content(), encoding='utf-8', newline='\r\n'
     )
 
+    # Note: '/c65001' specifies UTF-8 codepage for rc.exe.
+    # Previously this was passed as '/8', which is an invalid option for rc.exe
+    # (fatal error RC1106: invalid option: /8) on Windows 11 SDK (10.0.22621.0).
     exec_command(
-        [rc, '/nologo', '/r', '/8', str(rc_file)],
+        [rc, '/nologo', '/r', '/c65001', str(rc_file)],
         cwd=work_dir,
         env=env,
         dryrun=args.dryrun,
