@@ -29,7 +29,7 @@
 
 MAJOR = 3
 
-MINOR = 33
+MINOR = 34
 
 # BUILD number used for the OSS version.
 BUILD_OSS = 6239
@@ -42,7 +42,7 @@ REVISION = 100
 
 # LINT.IfChange
 DEFAULT_BUILD_LABEL_MACOS = "%d.%d.%d.%d" % (MAJOR, MINOR, BUILD, REVISION + 1)
-# LINT.ThenChange(//data/version/BUILD.bazel)
+# LINT.ThenChange(//BUILD.bazel)
 
 # This version represents the version of Mozc IME engine (converter, predictor,
 # etc.).  This version info is included both in the Mozc server and in the Mozc
