@@ -258,7 +258,6 @@ mozc_cc_library(
         ":gen_main_h",
         ":ibus_config_textproto_inc",
     ],
-    copts = ["-Wno-unused-variable"],
     deps = [
         ":ibus_config_cc_proto",
         "//base:file_util",
