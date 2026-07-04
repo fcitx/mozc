@@ -233,6 +233,19 @@ mozc_cc_library(
     ],
 )
 
+mozc_cc_library(
+    name = "caching_connector",
+    hdrs = ["caching_connector.h"],
+    visibility = [
+        "//:__subpackages__",
+    ],
+    deps = [
+        ":connector",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
 mozc_cc_test(
     name = "connector_test",
     size = "small",
@@ -425,6 +438,7 @@ mozc_cc_library(
     ],
     deps = [
         ":attribute",
+        ":caching_connector",
         ":connector",
         ":immutable_converter_interface",
         ":key_corrector",

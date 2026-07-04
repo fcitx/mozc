@@ -483,7 +483,7 @@ TEST_F(ConverterTest, ContextAwareConversionTest) {
   EXPECT_EQ(ContextAwareConvert("きき", "危機", "いっぱつ"), "一髪");
 
   EXPECT_EQ(ContextAwareConvert("きょうと", "京都", "だい"), "大");
-  EXPECT_EQ(ContextAwareConvert("もんだい", "問題", "てん"), "点");
+  EXPECT_EQ(ContextAwareConvert("きき", "危機", "かん"), "感");
 
   EXPECT_EQ(ContextAwareConvert("いのうえ", "井上", "ようすい"), "陽水");
 
