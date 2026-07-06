@@ -123,7 +123,7 @@ def _windows_sdk_impl(repo_ctx):
         "arm64": "arm64",
     }.get(repo_ctx.os.arch.lower())
     if not arch:
-        repo_ctx.file("BUILD", "")
+        repo_ctx.file("BUILD.bazel", "")
         repo_ctx.template(
             "windows_sdk_rules.bzl",
             repo_ctx.path(Label("@//bazel:windows_sdk_rules.noop.template.bzl")),

@@ -83,7 +83,7 @@ OK:	きざな	きざな	Conversion Expected 2	気障な	2.26.4479
 OK:	ぜんくつ	前屈	Conversion Expected	前屈	2.26.4479
 OK:	じゅうりょうせい	従量制	Conversion Expected 2	従量制	2.26.4479
 OK:	いやがおうでも	否が応でも	Conversion Expected 2	否が応でも	2.26.4479
-FAILED:	れっきとした	れっきとした	Conversion Expected 2	歴とした	2.26.4479
+OK:	れっきとした	れっきとした	Conversion Expected 2	歴とした	3.34.6239
 OK:	はばかります	憚ります	Conversion Expected 2	憚ります	3.33.6133
 OK:	こうれい	高齢	Conversion Expected 9	降霊	2.26.4479
 OK:	とわ	永遠	Conversion Expected 9	永遠	2.29.5268
