@@ -42,7 +42,7 @@ def ParseUserPos(user_pos_file):
     stream = code_generator_util.ParseColumnStream(stream, num_column=5)
     return [
         [pos, enum_value, cost]
-        for pos, enum_value, cform, ctype, cost in stream
+        for pos, enum_value, unused_cform, unused_ctype, cost in stream
     ]
 
 
@@ -67,7 +67,7 @@ def OutputPosCostMap(pos_cost_entries, output):
   output.write('};\n\n')
 
   # Write static_assert to check the enum value and index are strictly aligned.
-  for i, (pos, enum_value, cost) in enumerate(pos_cost_entries):
+  for i, (unused_pos, enum_value, unused_cost) in enumerate(pos_cost_entries):
     output.write(
         f'static_assert(static_cast<int>(::mozc::user_dictionary::UserDictionary::{enum_value})'
         f' == {i});\n'
@@ -92,7 +92,7 @@ def main():
 
   pos_cost_entries = ParseUserPos(options.user_pos_file)
 
-  with open(options.output, 'w') as stream:
+  with open(options.output, 'w', encoding='utf-8') as stream:
     OutputPosCostMap(pos_cost_entries, stream)
 
 

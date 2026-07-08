@@ -123,7 +123,7 @@ def main():
       options.third_party_pos_map_file, options.user_pos_file
   )
 
-  with open(options.output, 'w') as stream:
+  with open(options.output, 'w', encoding='utf8') as stream:
     OutputPosMap(pos_map, stream)
 
 

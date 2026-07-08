@@ -31,18 +31,12 @@
 """Utilities to generate source codes."""
 
 
-
 def ToCppStringLiteral(s):
-  """Returns C-style string literal, or NULL if given s is None."""
+  """Returns C-style string literal, or nullptr if given s is None."""
   if s is None:
-    return 'NULL'
+    return 'nullptr'
 
-  if all(0x20 <= ord(c) <= 0x7E for c in s):
-    # All characters are in ascii code.
-    return '"%s"' % s.replace('\\', r'\\').replace('"', r'\"')
-  else:
-    # One or more characters are non-ascii.
-    return '"%s"' % ''.join(r'\x%02X' % c for c in s.encode('utf-8'))
+  return '"%s"' % s.replace('\\', r'\\').replace('"', r'\"')
 
 
 def FormatWithCppEscape(format_text, *args):
