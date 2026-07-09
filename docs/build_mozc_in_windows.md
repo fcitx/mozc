@@ -20,7 +20,9 @@ bazelisk build package --config release_build
 python build_tools/open.py bazel-bin/win32/installer/Mozc64.msi
 ```
 
-> [!TIP] You can also download `Mozc64.msi` from GitHub Actions. Check
+> [!TIP]
+>
+> You can also download `Mozc64.msi` from GitHub Actions. Check
 > [Build with GitHub Actions](#build-with-github-actions) for details.
 
 ## Setup
@@ -44,17 +46,23 @@ Building Mozc on Windows requires the following software.
 *   `.NET 6` or later (for `dotnet` command).
 *   [Bazelisk](https://github.com/bazelbuild/bazelisk)
 
-> [!TIP] The following Visual Studio components can be skipped if you do not
-> build Mozc for ARM64.
+> [!TIP]
+>
+> The following Visual Studio components can be skipped if you do not build Mozc
+> for ARM64.
 >
 >  *   MSVC v143 - VS 2022 C++ ARM64/ARM64EC build tools (Latest)
 >  *   C++ ATL for latest v143 build tools (ARM64/ARM64EC)
 
-> [!TIP] Visual Studio 2026 Community Edition is also supported to build Mozc.
-> When both VS 2022 and 2026 are installed, VS 2022 will be used.
+> [!TIP]
+>
+> Visual Studio 2026 Community Edition is also supported to build Mozc. When
+> both VS 2022 and 2026 are installed, VS 2022 will be used.
 
-> [!NOTE] Bazelisk is a wrapper of [Bazel](https://bazel.build) that allows you
-> to use a specific version of Bazel.
+> [!NOTE]
+>
+> Bazelisk is a wrapper of [Bazel](https://bazel.build) that allows you to use a
+> specific version of Bazel.
 
 ### Download the repository from GitHub
 
@@ -158,7 +166,9 @@ bazelisk build package --config release_build --platforms=//:windows-x86_64 --co
 bazelisk test ... --build_tests_only -c dbg
 ```
 
-> [!NOTE] `...` means all targets under the current and subdirectories.
+> [!NOTE]
+>
+> `...` means all targets under the current and subdirectories.
 
 --------------------------------------------------------------------------------
 

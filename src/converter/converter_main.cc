@@ -274,7 +274,8 @@ class ConverterMain {
       : engine_(std::move(engine)),
         request_(std::move(request)),
         config_(std::move(config)),
-        converter_(engine_->GetConverter()) {}
+        converter_(engine_->GetConverter()),
+        composer_(request_, config_) {}
 
   void LoadSupplementalModel(std::string path);
   void RunLoop();
@@ -287,6 +288,8 @@ class ConverterMain {
   commands::Request request_;
   config::Config config_;
   std::shared_ptr<const ConverterInterface> converter_;
+  Segments segments_;
+  composer::Composer composer_;
 };
 
 constexpr absl::string_view kSupplementalModelDefaultPath =
@@ -324,7 +327,6 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
 
   CHECK_FIELDS_LENGTH(1);
 
-  composer::Composer composer(request_, config_);
   ConversionRequest::Options options = {
       .max_conversion_candidates_size =
           absl::GetFlag(FLAGS_max_conversion_candidates_size),
@@ -337,10 +339,11 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
     options.request_type = ConversionRequest::CONVERSION;
     options.create_partial_candidates = false;
     CHECK_FIELDS_LENGTH(2);
-    composer.SetPreeditTextForTestOnly(fields[1]);
+    composer_.Reset();
+    composer_.SetPreeditTextForTestOnly(fields[1]);
     const ConversionRequest conversion_request =
         ConversionRequestBuilder()
-            .SetComposer(composer)
+            .SetComposer(composer_)
             .SetRequestView(request_)
             .SetConfigView(config_)
             .SetOptions(std::move(options))
@@ -352,11 +355,12 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
   } else if (func == "startprediction" || func == "predict" || func == "p") {
     options.request_type = ConversionRequest::PREDICTION;
     if (fields.size() >= 2) {
-      composer.SetPreeditTextForTestOnly(fields[1]);
+      composer_.Reset();
+      composer_.SetPreeditTextForTestOnly(fields[1]);
     }
     const ConversionRequest conversion_request =
         ConversionRequestBuilder()
-            .SetComposer(composer)
+            .SetComposer(composer_)
             .SetRequestView(request_)
             .SetConfigView(config_)
             .SetOptions(std::move(options))
@@ -365,11 +369,12 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
   } else if (func == "startsuggestion" || func == "suggest") {
     options.request_type = ConversionRequest::SUGGESTION;
     if (fields.size() >= 2) {
-      composer.SetPreeditTextForTestOnly(fields[1]);
+      composer_.Reset();
+      composer_.SetPreeditTextForTestOnly(fields[1]);
     }
     const ConversionRequest conversion_request =
         ConversionRequestBuilder()
-            .SetComposer(composer)
+            .SetComposer(composer_)
             .SetRequestView(request_)
             .SetConfigView(config_)
             .SetOptions(std::move(options))
@@ -379,18 +384,21 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
     options.request_type = ConversionRequest::CONVERSION;
     const ConversionRequest conversion_request =
         ConversionRequestBuilder()
-            .SetComposer(composer)
+            .SetComposer(composer_)
             .SetRequestView(request_)
             .SetConfigView(config_)
             .SetOptions(std::move(options))
             .Build();
     converter_->FinishConversion(conversion_request, segments);
+    composer_.Reset();
     return true;
   } else if (func == "resetconversion" || func == "reset") {
     converter_->ResetConversion(segments);
+    composer_.Reset();
     return true;
   } else if (func == "cancelconversion" || func == "cancel") {
     converter_->CancelConversion(segments);
+    composer_.Reset();
     return true;
   } else if (func == "commitsegmentvalue" || func == "commit" || func == "c") {
     CHECK_FIELDS_LENGTH(3);
@@ -407,12 +415,13 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
     options.request_type = ConversionRequest::CONVERSION;
     const ConversionRequest conversion_request =
         ConversionRequestBuilder()
-            .SetComposer(composer)
+            .SetComposer(composer_)
             .SetRequestView(request_)
             .SetConfigView(config_)
             .SetOptions(std::move(options))
             .Build();
     converter_->FinishConversion(conversion_request, segments);
+    composer_.Reset();
     return true;
   } else if (func == "focussegmentvalue" || func == "focus") {
     CHECK_FIELDS_LENGTH(3);
@@ -428,7 +437,7 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
     options.request_type = ConversionRequest::CONVERSION;
     const ConversionRequest conversion_request =
         ConversionRequestBuilder()
-            .SetComposer(composer)
+            .SetComposer(composer_)
             .SetRequestView(request_)
             .SetConfigView(config_)
             .SetOptions(std::move(options))
@@ -442,7 +451,7 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
     options.request_type = ConversionRequest::CONVERSION;
     const ConversionRequest conversion_request =
         ConversionRequestBuilder()
-            .SetComposer(composer)
+            .SetComposer(composer_)
             .SetRequestView(request_)
             .SetConfigView(config_)
             .SetOptions(std::move(options))
@@ -500,9 +509,8 @@ bool ConverterMain::ExecCommand(absl::string_view line, Segments* segments) {
 
 std::string ConverterMain::ExecCommandToString(absl::string_view line) {
   std::ostringstream oss;
-  Segments segments;
-  if (ExecCommand(line, &segments)) {
-    PrintSegments(segments, &oss);
+  if (ExecCommand(line, &segments_)) {
+    PrintSegments(segments_, &oss);
   } else {
     oss << "ExecCommand() return false";
   }
@@ -574,7 +582,6 @@ bool IsConsistentEngineNameAndType(absl::string_view engine_name,
 void ConverterMain::RunLoop() {
   CHECK(converter_);
 
-  Segments segments;
   std::string line;
   while (!std::getline(std::cin, line).fail()) {
     const std::string result = ExecCommandToString(line);
