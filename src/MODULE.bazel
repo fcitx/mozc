@@ -37,6 +37,13 @@ bazel_dep(
     repo_name = "com_google_absl",
 )
 
+# abseil-py: 2.1.0 2024-01-17
+# https://github.com/abseil/abseil-py
+bazel_dep(
+    name = "abseil-py",
+    version = "2.1.0",
+)
+
 # protobuf: 34.1 2026-03-20
 # https://github.com/protocolbuffers/protobuf
 bazel_dep(
@@ -53,6 +60,20 @@ bazel_dep(
     name = "googletest",
     version = "1.17.0.bcr.2",
     repo_name = "com_google_googletest",
+)
+
+# google_benchmark: 1.9.5 2026-01-21
+# https://github.com/google/benchmark
+bazel_dep(
+    name = "google_benchmark",
+    version = "1.9.5",
+)
+
+# re2: 2025-08-12.bcr.1 2025-08-13
+# https://github.com/google/re2
+bazel_dep(
+    name = "re2",
+    version = "2025-08-12.bcr.1",
 )
 
 # platforms: 1.0.0 2025-05-22
