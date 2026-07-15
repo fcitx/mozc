@@ -5247,16 +5247,15 @@ TEST_F(UserHistoryPredictorTest, PartialRevert) {
 
   // Emulates reading aligner.
   EXPECT_CALL(*mock, GetReadingAlignment(_, _))
-      .WillRepeatedly(
-          Invoke([](absl::string_view surface, absl::string_view reading) {
-            // splits 京都大学 -> 京都|大学
-            const auto pos1 = surface.find("大学");
-            const auto pos2 = reading.find("だいがく");
-            std::vector<std::pair<absl::string_view, absl::string_view>> v;
-            v.emplace_back(surface.substr(0, pos1), reading.substr(0, pos2));
-            v.emplace_back(surface.substr(pos1), reading.substr(pos2));
-            return v;
-          }));
+      .WillRepeatedly([](absl::string_view surface, absl::string_view reading) {
+        // splits 京都大学 -> 京都|大学
+        const auto pos1 = surface.find("大学");
+        const auto pos2 = reading.find("だいがく");
+        std::vector<std::pair<absl::string_view, absl::string_view>> v;
+        v.emplace_back(surface.substr(0, pos1), reading.substr(0, pos2));
+        v.emplace_back(surface.substr(pos1), reading.substr(pos2));
+        return v;
+      });
 
   std::unique_ptr<engine::Modules> modules =
       engine::ModulesPresetBuilder()

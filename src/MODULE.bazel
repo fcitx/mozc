@@ -198,6 +198,7 @@ pkg_config_repository = use_repo_rule(
 # iBus
 pkg_config_repository(
     name = "ibus",
+    exec_os = ["linux"],
     packages = [
         "glib-2.0",
         "gobject-2.0",
@@ -225,6 +226,7 @@ pkg_config_repository(
 # Qt for Linux
 pkg_config_repository(
     name = "qt_linux",
+    exec_os = ["linux"],
     packages = [
         "Qt6Core",
         "Qt6Gui",

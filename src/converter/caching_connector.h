@@ -30,6 +30,7 @@
 #ifndef MOZC_CONVERTER_CACHING_CONNECTOR_H_
 #define MOZC_CONVERTER_CACHING_CONNECTOR_H_
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -37,6 +38,7 @@
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "converter/connector.h"
+#include "dictionary/pos_matcher.h"
 
 namespace mozc {
 
@@ -63,12 +65,27 @@ namespace mozc {
 // for this caching strategy as we only need to reset the cache if `r.lid` is
 // different from the previous value.
 //
-// NOTE: This class is designed only for Viterbi algorithm and won't work for
-// other purposes.
-class CachingConnector final {
+// NOTE: This class is designed for Viterbi or A* search algorithms (which have
+// a similar nested loop access pattern) and won't work for other purposes.
+//
+// This class also centrally manages the application of the experimental
+// transition cost bonus (e.g., for particle omission). While there are other
+// places in the decoder that directly call `Connector::GetTransitionCost` (such
+// as personal name processing or compound splitting), they do not need to apply
+// this bonus because they only handle POS pairs where the bonus is never
+// applicable (e.g., noun-to-noun) or such transitions do not occur in practice.
+// Thus, applying the bonus only within this class is sufficient to maintain
+// cost consistency.
+template <bool kHasBonus>
+class CachingConnector;
+
+template <>
+class CachingConnector<false> final {
  public:
-  explicit CachingConnector(const Connector& connector)
-      : connector_{connector} {}
+  CachingConnector(const Connector& connector,
+                   int particle_omission_transition_cost_bonus,
+                   const dictionary::PosMatcher& pos_matcher)
+      : connector_(connector) {}
 
   CachingConnector(const CachingConnector&) = delete;
   CachingConnector& operator=(const CachingConnector&) = delete;
@@ -90,8 +107,9 @@ class CachingConnector final {
     if (cache_[lnode_rid] != -1) {
       return cache_[lnode_rid];
     }
-    cache_[lnode_rid] = connector_.GetTransitionCost(lnode_rid, rnode_lid);
-    return cache_[lnode_rid];
+    int cost = connector_.GetTransitionCost(lnode_rid, rnode_lid);
+    cache_[lnode_rid] = cost;
+    return cost;
   }
 
  private:
@@ -100,6 +118,68 @@ class CachingConnector final {
   const Connector& connector_;
   std::array<int, kCacheSize> cache_;
   uint16_t cache_lid_ = std::numeric_limits<uint16_t>::max();
+};
+
+template <>
+class CachingConnector<true> final {
+ public:
+  CachingConnector(const Connector& connector,
+                   int particle_omission_transition_cost_bonus,
+                   const dictionary::PosMatcher& pos_matcher)
+      : connector_(connector),
+        particle_omission_transition_cost_bonus_(
+            particle_omission_transition_cost_bonus),
+        pos_matcher_(pos_matcher) {}
+
+  CachingConnector(const CachingConnector&) = delete;
+  CachingConnector& operator=(const CachingConnector&) = delete;
+
+  void ResetCacheIfNecessary(uint16_t rnode_lid) {
+    if (cache_lid_ != rnode_lid) {
+      absl::c_fill(cache_, -1);
+      cache_lid_ = rnode_lid;
+      is_right_node_target_ =
+          (particle_omission_transition_cost_bonus_ > 0) &&
+          pos_matcher_.IsContentWordWithConjugation(rnode_lid);
+    }
+  }
+
+  int GetTransitionCost(uint16_t lnode_rid, uint16_t rnode_lid) {
+    DCHECK_EQ(cache_lid_, rnode_lid);
+    // Values for rid >= kCacheSize cannot be cached. However, frequent PoSs
+    // have smaller IDs, so caching only for rid in [0, kCacheSize) works
+    // well.
+    if (lnode_rid >= kCacheSize) {
+      int cost = connector_.GetTransitionCost(lnode_rid, rnode_lid);
+      return ApplyBonus(cost, lnode_rid);
+    }
+
+    if (cache_[lnode_rid] != -1) {
+      return cache_[lnode_rid];
+    }
+
+    int cost = connector_.GetTransitionCost(lnode_rid, rnode_lid);
+    cost = ApplyBonus(cost, lnode_rid);
+    cache_[lnode_rid] = cost;
+    return cost;
+  }
+
+ private:
+  int ApplyBonus(int cost, uint16_t lnode_rid) const {
+    if (is_right_node_target_ && (pos_matcher_.IsContentNoun(lnode_rid) ||
+                                  pos_matcher_.IsPronoun(lnode_rid))) {
+      return std::max(0, cost - particle_omission_transition_cost_bonus_);
+    }
+    return cost;
+  }
+  constexpr static int kCacheSize = 2048;
+
+  const Connector& connector_;
+  const int particle_omission_transition_cost_bonus_;
+  const dictionary::PosMatcher& pos_matcher_;
+  std::array<int, kCacheSize> cache_;
+  uint16_t cache_lid_ = std::numeric_limits<uint16_t>::max();
+  bool is_right_node_target_ = false;
 };
 
 }  // namespace mozc

@@ -747,19 +747,15 @@ void ImmutableConverter::AddCharacterTypeBasedNodes(
 
 namespace {
 
-
-
 // Reasonably big cost. Cannot use INT_MAX because a new cost will be
 // calculated based on kVeryBigCost.
 constexpr int kVeryBigCost = (INT_MAX >> 2);
 
-// Runs viterbi algorithm at position |pos|. The left_boundary/right_boundary
-// are the next boundary looked from pos. (If pos is on the boundary,
-// left_boundary should be the previous one, and right_boundary should be
-// the next).
-inline void ViterbiInternal(const Connector& connector, size_t pos,
-                            size_t right_boundary, Lattice* lattice) {
-  CachingConnector conn(connector);
+// Runs viterbi algorithm at position |pos|.
+// |right_boundary| is the boundary of the current segment.
+template <typename TConnector>
+inline void ViterbiInternal(TConnector& conn, size_t pos, size_t right_boundary,
+                            Lattice* lattice) {
   for (Node* rnode : lattice->begin_nodes(pos)) {
     if (rnode->end_pos > right_boundary) {
       // Invalid rnode.
@@ -801,9 +797,11 @@ inline void ViterbiInternal(const Connector& connector, size_t pos,
     rnode->cost = best_cost + rnode->wcost;
   }
 }
+
 }  // namespace
 
-bool ImmutableConverter::Viterbi(const Segments& segments,
+bool ImmutableConverter::Viterbi(const ConversionOptions& options,
+                                 const Segments& segments,
                                  Lattice* lattice) const {
   absl::string_view key = lattice->key();
 
@@ -830,26 +828,37 @@ bool ImmutableConverter::Viterbi(const Segments& segments,
 
   size_t left_boundary = 0;
 
-  // Specialization for the first segment.
-  // Don't run on the left boundary (the connection with BOS node),
-  // because it is already run above.
-  {
-    const size_t right_boundary =
-        left_boundary + segments.segment(0).key().size();
-    for (size_t pos = left_boundary + 1; pos < right_boundary; ++pos) {
-      ViterbiInternal(connector_, pos, right_boundary, lattice);
+  auto run_viterbi_loop = [&](auto& conn) {
+    // Specialization for the first segment.
+    // Don't run on the left boundary (the connection with BOS node),
+    // because it is already run above.
+    {
+      const size_t right_boundary =
+          left_boundary + segments.segment(0).key().size();
+      for (size_t pos = left_boundary + 1; pos < right_boundary; ++pos) {
+        ViterbiInternal(conn, pos, right_boundary, lattice);
+      }
+      left_boundary = right_boundary;
     }
-    left_boundary = right_boundary;
-  }
+    // The condition to break is in the loop.
+    for (const Segment& segment : segments.all().drop(1)) {
+      // Run Viterbi for each position the segment.
+      const size_t right_boundary = left_boundary + segment.key().size();
+      for (size_t pos = left_boundary; pos < right_boundary; ++pos) {
+        ViterbiInternal(conn, pos, right_boundary, lattice);
+      }
+      left_boundary = right_boundary;
+    }
+  };
 
-  // The condition to break is in the loop.
-  for (const Segment& segment : segments.all().drop(1)) {
-    // Run Viterbi for each position the segment.
-    const size_t right_boundary = left_boundary + segment.key().size();
-    for (size_t pos = left_boundary; pos < right_boundary; ++pos) {
-      ViterbiInternal(connector_, pos, right_boundary, lattice);
-    }
-    left_boundary = right_boundary;
+  if (options.particle_omission_transition_cost_bonus == 0) {
+    CachingConnector<false> conn(connector_, 0, pos_matcher_);
+    run_viterbi_loop(conn);
+  } else {
+    CachingConnector<true> conn(connector_,
+                                options.particle_omission_transition_cost_bonus,
+                                pos_matcher_);
+    run_viterbi_loop(conn);
   }
 
   // Process EOS.
@@ -922,15 +931,16 @@ bool ImmutableConverter::Viterbi(const Segments& segments,
 // TODO(toshiyuki): We may be able to use faster viterbi for
 // conversion/suggestion if we use richer info as contraction group.
 
-bool ImmutableConverter::PredictionViterbi(const Segments& segments,
+bool ImmutableConverter::PredictionViterbi(const ConversionOptions& options,
+                                           const Segments& segments,
                                            Lattice* lattice) const {
   const size_t key_length = lattice->key().size();
   size_t history_length = 0;
   for (const Segment& segment : segments.history_segments()) {
     history_length += segment.key().size();
   }
-  PredictionViterbiInternal(0, history_length, lattice);
-  PredictionViterbiInternal(history_length, key_length, lattice);
+  PredictionViterbiInternal(options, 0, history_length, lattice);
+  PredictionViterbiInternal(options, history_length, key_length, lattice);
 
   Node* absl_nonnull node = lattice->eos_node();
   Node* prev = nullptr;
@@ -965,79 +975,99 @@ BestMap::iterator LowerBound(BestMap& best_map,
          const std::pair<int, CostAndNode>& r) { return l.first < r.first; });
 }
 
+template <typename TConnector>
+void PredictionViterbiInternalImpl(TConnector& connector, size_t pos,
+                                   int calc_end_pos, Lattice* lattice,
+                                   BestMap* lbest, BestMap* rbest) {
+  lbest->clear();
+  const CostAndNode kInvalidValue(INT_MAX, nullptr);
+
+  for (Node* lnode : lattice->end_nodes(pos)) {
+    const int rid = lnode->rid;
+    const BestMap::value_type key(rid, kInvalidValue);
+    const BestMap::iterator iter = LowerBound(*lbest, key);
+    if (iter == lbest->end() || iter->first != rid) {
+      lbest->insert(
+          iter, BestMap::value_type(rid, std::make_pair(lnode->cost, lnode)));
+    } else if (lnode->cost < iter->second.first) {
+      iter->second.first = lnode->cost;
+      iter->second.second = lnode;
+    }
+  }
+
+  if (lbest->empty()) {
+    return;
+  }
+
+  rbest->clear();
+  for (Node* rnode : lattice->begin_nodes(pos)) {
+    if (rnode->end_pos > calc_end_pos) {
+      continue;
+    }
+    const BestMap::value_type key(rnode->lid, kInvalidValue);
+    const BestMap::const_iterator iter = LowerBound(*rbest, key);
+    if (iter == rbest->end() || iter->first != rnode->lid) {
+      rbest->insert(iter, key);
+    }
+  }
+
+  if (rbest->empty()) {
+    return;
+  }
+
+  for (BestMap::value_type& riter : *rbest) {
+    connector.ResetCacheIfNecessary(riter.first);
+    for (BestMap::value_type& liter : *lbest) {
+      const int cost = liter.second.first +
+                       connector.GetTransitionCost(liter.first, riter.first);
+      if (cost < riter.second.first) {
+        riter.second.first = cost;
+        riter.second.second = liter.second.second;
+      }
+    }
+  }
+
+  for (Node* rnode : lattice->begin_nodes(pos)) {
+    if (rnode->end_pos > calc_end_pos) {
+      continue;
+    }
+    const BestMap::value_type key(rnode->lid, kInvalidValue);
+    const BestMap::const_iterator iter = LowerBound(*rbest, key);
+    if (iter == rbest->end() || iter->first != rnode->lid ||
+        iter->second.second == nullptr) {
+      continue;
+    }
+
+    rnode->cost = iter->second.first + rnode->wcost;
+    rnode->prev = iter->second.second;
+  }
+}
+
 }  // namespace
 
-void ImmutableConverter::PredictionViterbiInternal(int calc_begin_pos,
-                                                   int calc_end_pos,
-                                                   Lattice* lattice) const {
+void ImmutableConverter::PredictionViterbiInternal(
+    const ConversionOptions& options, int calc_begin_pos, int calc_end_pos,
+    Lattice* lattice) const {
   DCHECK_LE(calc_begin_pos, calc_end_pos);
-
   BestMap lbest, rbest;
   lbest.reserve(128);
   rbest.reserve(128);
 
-  const CostAndNode kInvalidValue(INT_MAX, nullptr);
-
-  for (size_t pos = calc_begin_pos; pos <= calc_end_pos; ++pos) {
-    lbest.clear();
-    for (Node* lnode : lattice->end_nodes(pos)) {
-      const int rid = lnode->rid;
-      const BestMap::value_type key(rid, kInvalidValue);
-      const BestMap::iterator iter = LowerBound(lbest, key);
-      if (iter == lbest.end() || iter->first != rid) {
-        lbest.insert(
-            iter, BestMap::value_type(rid, std::make_pair(lnode->cost, lnode)));
-      } else if (lnode->cost < iter->second.first) {
-        iter->second.first = lnode->cost;
-        iter->second.second = lnode;
-      }
+  auto run_viterbi_loop = [&](auto& conn) {
+    for (size_t pos = calc_begin_pos; pos <= calc_end_pos; ++pos) {
+      PredictionViterbiInternalImpl(conn, pos, calc_end_pos, lattice, &lbest,
+                                    &rbest);
     }
+  };
 
-    if (lbest.empty()) {
-      continue;
-    }
-
-    rbest.clear();
-    for (Node* rnode : lattice->begin_nodes(pos)) {
-      if (rnode->end_pos > calc_end_pos) {
-        continue;
-      }
-      const BestMap::value_type key(rnode->lid, kInvalidValue);
-      const BestMap::const_iterator iter = LowerBound(rbest, key);
-      if (iter == rbest.end() || iter->first != rnode->lid) {
-        rbest.insert(iter, key);
-      }
-    }
-
-    if (rbest.empty()) {
-      continue;
-    }
-
-    for (BestMap::value_type& liter : lbest) {
-      for (BestMap::value_type& riter : rbest) {
-        const int cost = liter.second.first +
-                         connector_.GetTransitionCost(liter.first, riter.first);
-        if (cost < riter.second.first) {
-          riter.second.first = cost;
-          riter.second.second = liter.second.second;
-        }
-      }
-    }
-
-    for (Node* rnode : lattice->begin_nodes(pos)) {
-      if (rnode->end_pos > calc_end_pos) {
-        continue;
-      }
-      const BestMap::value_type key(rnode->lid, kInvalidValue);
-      const BestMap::const_iterator iter = LowerBound(rbest, key);
-      if (iter == rbest.end() || iter->first != rnode->lid ||
-          iter->second.second == nullptr) {
-        continue;
-      }
-
-      rnode->cost = iter->second.first + rnode->wcost;
-      rnode->prev = iter->second.second;
-    }
+  if (options.particle_omission_transition_cost_bonus == 0) {
+    CachingConnector<false> conn(connector_, 0, pos_matcher_);
+    run_viterbi_loop(conn);
+  } else {
+    CachingConnector<true> conn(connector_,
+                                options.particle_omission_transition_cost_bonus,
+                                pos_matcher_);
+    run_viterbi_loop(conn);
   }
 }
 
@@ -1536,6 +1566,24 @@ void ImmutableConverter::InsertCandidates(const ConversionOptions& options,
                                           absl::Span<const uint16_t> group,
                                           size_t max_candidates_size,
                                           InsertCandidatesType type) const {
+  if (options.particle_omission_transition_cost_bonus == 0) {
+    CachingConnector<false> conn(connector_, 0, pos_matcher_);
+    InsertCandidatesImpl(conn, options, segments, lattice, group,
+                         max_candidates_size, type);
+  } else {
+    CachingConnector<true> conn(connector_,
+                                options.particle_omission_transition_cost_bonus,
+                                pos_matcher_);
+    InsertCandidatesImpl(conn, options, segments, lattice, group,
+                         max_candidates_size, type);
+  }
+}
+
+template <typename TConnector>
+void ImmutableConverter::InsertCandidatesImpl(
+    TConnector& conn, const ConversionOptions& options, Segments* segments,
+    const Lattice& lattice, absl::Span<const uint16_t> group,
+    size_t max_candidates_size, InsertCandidatesType type) const {
   // skip HIS_NODE(s)
   const Node* absl_nonnull prev = lattice.bos_node();
   for (Node* node = lattice.bos_node()->next;
@@ -1548,8 +1596,10 @@ void ImmutableConverter::InsertCandidates(const ConversionOptions& options,
 
   const bool is_single_segment =
       (type == SINGLE_SEGMENT || type == FIRST_INNER_SEGMENT);
-  NBestGenerator nbest_generator(user_dictionary_, segmenter_, connector_,
-                                 pos_matcher_, lattice, suggestion_filter_);
+
+  NBestGenerator<TConnector> nbest_generator(user_dictionary_, segmenter_, conn,
+                                             pos_matcher_, lattice,
+                                             suggestion_filter_);
 
   std::string original_key;
   for (const Segment& segment : segments->conversion_segments()) {
@@ -1570,23 +1620,25 @@ void ImmutableConverter::InsertCandidates(const ConversionOptions& options,
         GetInsertTargetSegment(lattice, group, type, begin_pos, node, segments);
     DCHECK(segment);
 
-    NBestGenerator::Options nbest_options;
+    typename NBestGenerator<TConnector>::Options nbest_options;
     if (type == SINGLE_SEGMENT || type == FIRST_INNER_SEGMENT) {
       // For real time conversion.
-      nbest_options.boundary_mode = NBestGenerator::ONLY_EDGE;
-      nbest_options.candidate_mode |= NBestGenerator::FILL_INNER_SEGMENT_INFO;
+      nbest_options.boundary_mode = NBestGenerator<TConnector>::ONLY_EDGE;
+      nbest_options.candidate_mode |=
+          NBestGenerator<TConnector>::FILL_INNER_SEGMENT_INFO;
     } else if (segment->segment_type() == Segment::FIXED_BOUNDARY) {
       // Boundary is specified. Skip boundary check in n-best generator.
-      nbest_options.boundary_mode = NBestGenerator::ONLY_MID;
+      nbest_options.boundary_mode = NBestGenerator<TConnector>::ONLY_MID;
     }
     if (type == FIRST_INNER_SEGMENT) {
       // Inserts only first segment from realtime conversion path.
       nbest_options.candidate_mode |=
-          NBestGenerator::BUILD_FROM_ONLY_FIRST_INNER_SEGMENT;
-      nbest_options.candidate_mode |= NBestGenerator::FILL_INNER_SEGMENT_INFO;
+          NBestGenerator<TConnector>::BUILD_FROM_ONLY_FIRST_INNER_SEGMENT;
+      nbest_options.candidate_mode |=
+          NBestGenerator<TConnector>::FILL_INNER_SEGMENT_INFO;
     }
-    nbest_generator.Reset(prev, node->next, nbest_options);
-    nbest_generator.SetCandidates(options, original_key, expand_size, segment);
+    nbest_generator.Reset(*prev, *(node->next), nbest_options);
+    nbest_generator.SetCandidates(options, original_key, expand_size, *segment);
 
     if (type == MULTI_SEGMENTS || type == SINGLE_SEGMENT) {
       InsertDummyCandidates(segment, expand_size);
@@ -1769,12 +1821,12 @@ bool ImmutableConverter::Convert(const ConversionOptions& options,
   }
 
   if (is_prediction) {
-    if (!PredictionViterbi(*segments, lattice)) {
+    if (!PredictionViterbi(options, *segments, lattice)) {
       LOG(WARNING) << "prediction_viterbi failed";
       return false;
     }
   } else {
-    if (!Viterbi(*segments, lattice)) {
+    if (!Viterbi(options, *segments, lattice)) {
       LOG(WARNING) << "viterbi failed";
       return false;
     }

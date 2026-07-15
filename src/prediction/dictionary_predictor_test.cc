@@ -1434,10 +1434,10 @@ TEST_F(DictionaryPredictorTest, AggregateTypingCorrectedResultsTest) {
 TEST_F(DictionaryPredictorTest, Rescoring) {
   auto supplemental_model = std::make_unique<engine::MockSupplementalModel>();
   EXPECT_CALL(*supplemental_model, RescoreResults(_, _))
-      .WillRepeatedly(Invoke(
+      .WillRepeatedly(
           [](const ConversionRequest& request, absl::Span<Result> results) {
             for (Result& r : results) r.cost = 100;
-          }));
+          });
 
   auto data_and_predictor =
       std::make_unique<MockDataAndPredictor>(std::move(supplemental_model));

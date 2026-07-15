@@ -349,6 +349,22 @@ size_t Util::CharsLen(absl::string_view str) {
   return length;
 }
 
+std::vector<size_t> Util::PrefixCharsLen(absl::string_view str) {
+  std::vector<size_t> char_lens(str.size() + 1);
+  size_t byte_offset = 0;
+  size_t char_offset = 0;
+  while (byte_offset < str.size()) {
+    const size_t len = strings::OneCharLen(str.data() + byte_offset);
+    for (size_t i = 0; i < len && byte_offset + i < str.size(); ++i) {
+      char_lens[byte_offset + i] = char_offset;
+    }
+    byte_offset += len;
+    char_offset++;
+  }
+  char_lens[str.size()] = char_offset;
+  return char_lens;
+}
+
 std::u32string Util::Utf8ToUtf32(absl::string_view str) {
   std::u32string codepoints;
   char32_t codepoint;

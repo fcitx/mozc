@@ -241,6 +241,7 @@ mozc_cc_library(
     ],
     deps = [
         ":connector",
+        "//dictionary:pos_matcher",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
     ],
@@ -277,6 +278,7 @@ mozc_cc_library(
     hdrs = ["nbest_generator.h"],
     deps = [
         ":attribute",
+        ":caching_connector",
         ":candidate_filter",
         ":connector",
         ":inner_segment",
@@ -304,6 +306,7 @@ mozc_cc_test(
         "nbest_generator_test.cc",
     ],
     deps = [
+        ":caching_connector",
         ":immutable_converter",
         ":lattice",
         ":nbest_generator",

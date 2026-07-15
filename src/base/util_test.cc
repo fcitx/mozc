@@ -402,6 +402,16 @@ TEST(UtilTest, CharsLenInvalid) {
   EXPECT_EQ(Util::CharsLen(kText.substr(0, 4)), 2);
 }
 
+TEST(UtilTest, PrefixCharsLen) {
+  const std::string src = "東京駅";  // 9 bytes: 3 + 3 + 3
+  EXPECT_THAT(Util::PrefixCharsLen(src),
+              ElementsAre(0, 0, 0, 1, 1, 1, 2, 2, 2, 3));
+
+  EXPECT_THAT(Util::PrefixCharsLen("a亜b"),
+              ElementsAre(0, 1, 1, 1, 2, 3));
+  EXPECT_THAT(Util::PrefixCharsLen(""), ElementsAre(0));
+}
+
 TEST(UtilTest, Utf8SubString) {
   const absl::string_view src = "私の名前は中野です";
   absl::string_view result;

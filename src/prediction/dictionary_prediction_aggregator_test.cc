@@ -503,10 +503,10 @@ class DictionaryPredictionAggregatorTest
   static void AddDefaultImplToMockRealtimeDecoder(MockRealtimeDecoder* mock) {
     EXPECT_CALL(*mock, Decode(_))
         .Times(AnyNumber())
-        .WillRepeatedly(Invoke(MockRealtimeDecoder::DecodeImpl));
+        .WillRepeatedly(MockRealtimeDecoder::DecodeImpl);
     EXPECT_CALL(*mock, ReverseDecode(_))
         .Times(AnyNumber())
-        .WillRepeatedly(Invoke(MockRealtimeDecoder::DecodeImpl));
+        .WillRepeatedly(MockRealtimeDecoder::DecodeImpl);
   }
 
   std::unique_ptr<composer::Composer> composer_;

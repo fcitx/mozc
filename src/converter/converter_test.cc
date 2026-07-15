@@ -1807,8 +1807,8 @@ TEST_F(ConverterTest, DoNotAddOverlappingNodesForPrediction) {
 }
 
 TEST_F(ConverterTest, RevertConversion) {
-  auto mock_predictor = absl::make_unique<MockPredictor>();
-  auto mock_rewriter = absl::make_unique<MockRewriter>();
+  auto mock_predictor = std::make_unique<MockPredictor>();
+  auto mock_rewriter = std::make_unique<MockRewriter>();
 
   EXPECT_CALL(*mock_predictor, Revert(_)).Times(1);
   EXPECT_CALL(*mock_rewriter, Revert(_)).Times(1);
@@ -2488,8 +2488,8 @@ TEST_F(ConverterTest, MakeHistoryResultTest) {
 }
 
 TEST_F(ConverterTest, Bugfix424676259) {
-  auto mock_predictor = absl::make_unique<MockPredictor>();
-  auto mock_rewriter = absl::make_unique<MockRewriter>();
+  auto mock_predictor = std::make_unique<MockPredictor>();
+  auto mock_rewriter = std::make_unique<MockRewriter>();
 
   std::vector<prediction::Result> results;
 
@@ -2551,8 +2551,8 @@ TEST_F(ConverterTest, Bugfix424676259) {
 }
 
 TEST_F(ConverterTest, CommitContext) {
-  auto mock_predictor = absl::make_unique<MockPredictor>();
-  auto mock_rewriter = absl::make_unique<MockRewriter>();
+  auto mock_predictor = std::make_unique<MockPredictor>();
+  auto mock_rewriter = std::make_unique<MockRewriter>();
 
   EXPECT_CALL(*mock_predictor, CommitContext(_)).WillOnce(Return());
 
@@ -2579,8 +2579,8 @@ TEST_F(ConverterTest, CommitContext) {
 }
 
 TEST_F(ConverterTest, AddUserHistory) {
-  auto mock_predictor = absl::make_unique<MockPredictor>();
-  auto mock_rewriter = absl::make_unique<MockRewriter>();
+  auto mock_predictor = std::make_unique<MockPredictor>();
+  auto mock_rewriter = std::make_unique<MockRewriter>();
 
   EXPECT_CALL(*mock_predictor, AddHistoryEntry("key", "value"))
       .WillOnce(Return(true));

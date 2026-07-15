@@ -36,6 +36,7 @@ Generated `BUILD.bazel` is available at `bazel-src/external/<repository_name>`.
 ```:WORKSPACE.bazel
 pkg_config_repository(
   name = "ibus",
+  exec_os = ["linux"],  # or "mac", "windows", "freebsd", etc.
   packages = ["glib-2.0", "gobject-2.0", "ibus-1.0"],
 )
 ```
@@ -76,6 +77,18 @@ cc_library(
 )
 """
 
+BUILD_EMPTY_TEMPLATE = """
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "{name}",
+)
+"""
+
 EXPORTS_FILES_TEMPLATE = """
 exports_files(glob(["libexec/*"], allow_empty=True))
 """
@@ -83,11 +96,12 @@ exports_files(glob(["libexec/*"], allow_empty=True))
 def _exec_pkg_config(repo_ctx, flags):
     binary = repo_ctx.which("pkg-config")
     if not binary:
-        # Using print is not recommended, but this will be a clue to debug build errors in
-        # the case of pkg-config is not found.
-        print("pkg-config is not found")  # buildifier: disable=print
-        return []
+        fail("pkg-config binary is not found in PATH")
+
     result = repo_ctx.execute([binary] + flags + repo_ctx.attr.packages)
+    if result.return_code != 0:
+        fail("pkg-config failed for packages %s:\n%s" % (repo_ctx.attr.packages, result.stderr))
+
     items = result.stdout.strip().split(" ")
     uniq_items = sorted({key: None for key in items}.keys())
     return uniq_items
@@ -137,6 +151,19 @@ def _symlinks(repo_ctx, paths):
         repo_ctx.symlink("/" + path, path)
 
 def _pkg_config_repository_impl(repo_ctx):
+    # In bzlmod, repo_ctx.attr.name has a prefix like "_main~_repo_rules~ibus".
+    # Note also that Bazel 8.0+ uses "+" instead of "~".
+    # https://github.com/bazelbuild/bazel/issues/23127
+    name = repo_ctx.attr.name.replace("~", "+").split("+")[-1]
+
+    current_os = repo_ctx.os.name.lower()
+    is_supported = any([current_os.startswith(os_name.lower()) for os_name in repo_ctx.attr.exec_os])
+
+    # If the current host OS is not supported, generate an empty BUILD file and return early.
+    if not is_supported:
+        repo_ctx.file("BUILD.bazel", BUILD_EMPTY_TEMPLATE.format(name = name))
+        return
+
     # Register all possible .pc files for watching to trigger repository
     # reevaluation.
     # This includes files that don't exist yet but might be created later
@@ -156,10 +183,7 @@ def _pkg_config_repository_impl(repo_ctx):
     includes = [item[len("-I/"):] for item in includes]
     _symlinks(repo_ctx, includes)
     data = {
-        # In bzlmod, repo_ctx.attr.name has a prefix like "_main~_repo_rules~ibus".
-        # Note also that Bazel 8.0+ uses "+" instead of "~".
-        # https://github.com/bazelbuild/bazel/issues/23127
-        "name": repo_ctx.attr.name.replace("~", "+").split("+")[-1],
+        "name": name,
         "hdrs": _make_strlist([item + "/**" for item in includes]),
         "copts": _make_strlist(_exec_pkg_config(repo_ctx, ["--cflags-only-other"])),
         "includes": _make_strlist(includes),
@@ -179,6 +203,7 @@ pkg_config_repository = repository_rule(
     configure = True,
     local = True,
     attrs = {
+        "exec_os": attr.string_list(default = ["linux"]),
         "packages": attr.string_list(),
     },
 )
