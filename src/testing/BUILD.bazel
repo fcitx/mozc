@@ -65,24 +65,18 @@ mozc_cc_library(
 )
 
 mozc_cc_library(
-    name = "gunit_main_internal",
-    testonly = True,
-    srcs = ["gtest_main.cc"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":gunit",
-        "@com_google_absl//absl/flags:flag",
-    ] + mozc_select(
-        client = ["//base:init_mozc"],
-        linux = [],
-        oss = ["//base:init_mozc"],
-    ),
-)
-
-mozc_cc_library(
     name = "gunit_main",
     testonly = True,
+    srcs = mozc_select(
+        default = [],
+        linux = [],
+        macos = ["gtest_main.cc"],
+        oss = ["gtest_main.cc"],
+        wasm = ["gtest_main.cc"],
+        windows = ["gtest_main.cc"],
+    ),
     hdrs = [
+        "benchmark.h",
         "gmock.h",
         "gunit.h",
     ],
@@ -91,17 +85,15 @@ mozc_cc_library(
         "@com_google_absl//absl/flags:flag",
     ] + mozc_select(
         default = ["//testing/base/public:gunit_main"],
-        linux = ["//testing/base/public:gunit_main"],
-        macos = [
-            ":gunit_main_internal",
-            "@com_google_googletest//:gtest",
-        ],
-        oss = [":gunit_main_internal"],
-        wasm = [":gunit_main_internal"],
-        windows = [
-            ":gunit_main_internal",
-            "@com_google_googletest//:gtest",
-        ],
+        oss = ["@google_benchmark//:benchmark"],
+    ) + mozc_select(
+        client = ["//base:init_mozc"],
+        linux = [],
+        oss = ["//base:init_mozc"],
+    ) + mozc_select(
+        macos = ["@com_google_googletest//:gtest"],
+        oss = [],
+        windows = ["@com_google_googletest//:gtest"],
     ),
 )
 

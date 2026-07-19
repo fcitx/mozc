@@ -27,44 +27,9 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#ifndef MOZC_TESTING_BENCHMARK_H_
+#define MOZC_TESTING_BENCHMARK_H_
 
-#ifdef _WIN32
-#include <crtdbg.h>
-#endif  // _WIN32
+#include "benchmark/benchmark.h"            // IWYU pragma: export
 
-#include "absl/flags/flag.h"
-#include "base/init_mozc.h"
-#include "testing/benchmark.h"
-#include "testing/gunit.h"
-
-int main(int argc, char** argv) {
-  // TODO(yukawa, team): Implement b/2805528 so that you can specify any option
-  // given by gunit.
-#ifdef GTEST_HAS_ABSL
-  // Skip passing a usage if GoogleTest is built with Abseil, GoogleTest will
-  // provide its own usage in this configuration.
-  const char* usage = nullptr;
-#else   // !GTEST_HAS_ABSL
-  const char* usage = argv[0];
-#endif  // GTEST_HAS_ABSL
-  mozc::InitMozc(usage, &argc, &argv);
-  testing::InitGoogleTest(&argc, argv);
-  benchmark::Initialize(&argc, argv);
-
-#ifdef _WIN32
-  _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
-  _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
-#endif  // _WIN32
-
-  // Without this flag, ::RaiseException makes the job stuck.
-  // See b/2805521 for details.
-  GTEST_FLAG_SET(catch_exceptions, true);
-
-  const int result = RUN_ALL_TESTS();
-  if (result != 0) {
-    return result;
-  }
-  benchmark::RunSpecifiedBenchmarks();
-  return 0;
-}
-
+#endif  // MOZC_TESTING_BENCHMARK_H_

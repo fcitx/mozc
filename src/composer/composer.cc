@@ -1210,6 +1210,21 @@ bool IsAlphabetOrNumber(const Script script) {
 }  // namespace
 
 // static
+// Transform symbols in the query to the preferred number format.
+// For example, if the query is "ー１、０００。５", it should be transformed to
+// "−１，０００．５" and true is returned.
+//
+// Rules:
+// ー (U+30FC) is transformed to − (U+2212) if either of:
+//   * the previous character is an alphanumeric,
+//   * the previous characters are sequence of "-" started with an alphanumeric
+//     (ex. 0------),
+//   * the previous character is empty and the next character is an
+//     alphanumeric.
+// 、 (U+3001) is transformed to ， (U+FF0C) if:
+//   * the previous character and the next character are both alphanumerics.
+// 。 (U+3002) is transformed to ． (U+FF0E) if:
+//   * the previous character and the next character are both alphanumerics.
 bool Composer::TransformCharactersForNumbers(std::string* query) {
   if (query == nullptr) {
     LOG(ERROR) << "query is nullptr";

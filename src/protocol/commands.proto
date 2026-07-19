@@ -785,6 +785,8 @@ message Request {
   optional SpecialRomanjiTable special_romanji_table = 4
       [default = DEFAULT_TABLE];  //  TWELVE_KEYS_TO_HIRAGANA for android.
 
+  reserved 5;
+
   enum SpaceOnAlphanumeric {
     // The first input is treated as a space, double input is treated
     // as a conversion.  If a character is input after the first
