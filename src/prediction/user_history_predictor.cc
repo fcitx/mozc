@@ -68,7 +68,6 @@
 #include "converter/attribute.h"
 #include "converter/inner_segment.h"
 #include "dictionary/dictionary_interface.h"
-#include "dictionary/dictionary_token.h"
 #include "engine/modules.h"
 #include "prediction/realtime_decoder.h"
 #include "prediction/result.h"
@@ -317,8 +316,7 @@ UserHistoryPredictor::EntryPriorityQueue::NewEntry() {
 
 UserHistoryPredictor::UserHistoryPredictor(const engine::Modules& modules,
                                            const RealtimeDecoder& decoder)
-    : dictionary_(modules.GetDictionary()),
-      user_dictionary_(modules.GetUserDictionary()),
+    : user_dictionary_(modules.GetUserDictionary()),
       modules_(modules),
       storage_(modules_.GetUserHistoryStorage()),
       revert_cache_(kRevertCacheSize),
@@ -791,6 +789,10 @@ UserHistoryPredictor::Entry* absl_nonnull UserHistoryPredictor::AddEntry(
   Entry* new_entry = entry_queue.NewEntry();
   DCHECK(new_entry);
   *new_entry = entry;
+  if (new_entry->inner_segment_boundary_size() == 0) {
+    new_entry->set_attributes(new_entry->attributes() |
+                              Attribute::EMPTY_INNER_SEGMENT_BOUNDARY);
+  }
   return new_entry;
 }
 
@@ -799,11 +801,7 @@ UserHistoryPredictor::AddEntryWithNewKeyValue(
     const ConversionRequest& request, std::string key, std::string value,
     converter::InnerSegmentBoundarySpan inner_segment_boundary, Entry entry,
     EntryPriorityQueue& entry_queue) const {
-  // We add an entry even if it was marked as removed so that it can be used to
-  // generate prediction by entry chaining. The deleted entry itself is never
-  // shown in the final prediction result as it is filtered finally.
-  Entry* new_entry = entry_queue.NewEntry();
-  *new_entry = std::move(entry);
+  Entry* new_entry = AddEntry(entry, entry_queue);
   new_entry->set_key(std::move(key));
   new_entry->set_value(std::move(value));
   MaybePopulateInnerSegmentBoundary(request, inner_segment_boundary,
@@ -980,9 +978,17 @@ bool UserHistoryPredictor::GetKeyValueForPartialMatch(
   // e.g., Adding "氏" rather than "市".
   const uint16_t first_name_id = modules_.GetPosMatcher().GetFirstNameId();
 
-  auto full_result_opt = decoder_.DecodeSuffix(request, 0, request_key);
+  // Uses PREDICTION mode to call decoder_.
+  ConversionRequest::Options options;
+  options.max_conversion_candidates_size = 1;
+  options.use_actual_converter_for_realtime_conversion = false;
+  options.request_type = ConversionRequest::PREDICTION;
+  const ConversionRequest decoder_request =
+      ConversionRequestBuilder().SetOptions(std::move(options)).Build();
+
+  auto full_result_opt = decoder_.DecodeSuffix(decoder_request, 0, request_key);
   auto suffix_result_opt =
-      decoder_.DecodeSuffix(request, first_name_id, suffix);
+      decoder_.DecodeSuffix(decoder_request, first_name_id, suffix);
 
   // Failed to decode suffix.
   if (!full_result_opt || !suffix_result_opt) {
@@ -1779,12 +1785,20 @@ std::vector<Result> UserHistoryPredictor::MakeResults(
     result.value = result_entry->value();
     result.attributes |= converter::Attribute::USER_HISTORY_PREDICTION |
                          converter::Attribute::NO_VARIANTS_EXPANSION;
-    // Do not populate inner segment information from entry to result,
-    // as this information may introduce unexpected side-effect during the
-    // the training. Inner segment information should only be fed from
-    // the realtime decoder.
-    if (result_entry->attributes() &
-        Attribute::POPULATE_INNER_SEGMENT_BOUNDARY) {
+    if ((result_entry->inner_segment_boundary_size() == 0) ||
+        (result_entry->attributes() &
+         Attribute::EMPTY_INNER_SEGMENT_BOUNDARY)) {
+      result.attributes |=
+          converter::Attribute::USER_HISTORY_EMPTY_INNER_SEGMENT_BOUNDARY;
+    }
+    // Do not populate inner segment information from entry to result for
+    // prediction, as this information may introduce unexpected side-effect
+    // during training. Inner segment information should be populated for
+    // conversion requests or when explicitly requested by
+    // POPULATE_INNER_SEGMENT_BOUNDARY (e.g. from realtime decoder).
+    if ((request.request_type() == ConversionRequest::CONVERSION) ||
+        (result_entry->attributes() &
+         Attribute::POPULATE_INNER_SEGMENT_BOUNDARY)) {
       // POPULATE_INNER_SEGMENT_BOUNDARY is set when the `result_entry` is
       // `generated` by the decoder.
       absl::c_copy(result_entry->inner_segment_boundary(),
@@ -2113,7 +2127,8 @@ UserHistoryPredictor::MakeLearningSegments(
       make_history_learning_segments(request.history_result());
   learning_segments.conversion_segments = make_learning_segments(result);
   learning_segments.inner_segment_boundary = result.inner_segment_boundary;
-  learning_segments.allow_partial_match = IsProperNoun(request, result);
+  learning_segments.allow_partial_match =
+      ShouldAllowPartialMatch(request, result, learning_segments);
 
   return learning_segments;
 }
@@ -2222,7 +2237,7 @@ void UserHistoryPredictor::InsertHistoryForConversionSegments(
     Insert(request, 0, 0, learning_segments.conversion_segments_key,
            learning_segments.conversion_segments_value, "",
            learning_segments.inner_segment_boundary, {},
-           false, /* allow_partial_match */
+           learning_segments.allow_partial_match, /* allow_partial_match */
            last_access_time, revert_entries);
   }
 
@@ -2522,6 +2537,42 @@ bool UserHistoryPredictor::IsProperNoun(const ConversionRequest& request,
           pos_matcher.IsUniqueNoun(result.lid) ||  // proper noun POS
           pos_matcher.IsUniqueNoun(result.rid) ||
           (stype == Util::KANJI && is_proper_noun_key_in_dic(result.key)));
+}
+
+bool UserHistoryPredictor::ShouldAllowPartialMatch(
+    const ConversionRequest& request, const Result& result,
+    const SegmentsForLearning& learning_segments) const {
+  if (IsProperNoun(request, result)) {
+    return true;
+  }
+
+  if (!request.request()
+           .decoder_experiment_params()
+           .user_history_enable_compound_noun_partial_match()) {
+    return false;
+  }
+
+  if (learning_segments.conversion_segments.size() <= 1) {
+    return false;
+  }
+
+  // 1. Ensure no functional words (particles) in any conversion segment.
+  for (const auto& seg : learning_segments.conversion_segments) {
+    if ((!seg.content_key.empty() && seg.key != seg.content_key) ||
+        (!seg.content_value.empty() && seg.value != seg.content_value)) {
+      return false;
+    }
+  }
+
+  // 2. Ensure the last segment ends with a noun POS or default.
+  const auto& pos_matcher = modules_.GetPosMatcher();
+  if (result.rid != 0 && !pos_matcher.IsContentNoun(result.rid) &&
+      !pos_matcher.IsGeneralNoun(result.rid) &&
+      !pos_matcher.IsUniqueNoun(result.rid)) {
+    return false;
+  }
+
+  return true;
 }
 
 // Example

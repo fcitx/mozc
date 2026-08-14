@@ -75,8 +75,6 @@
 namespace mozc::prediction {
 namespace {
 
-using ::mozc::converter::Attribute;
-
 using ::mozc::commands::Request;
 using ::mozc::composer::TypeCorrectedQuery;
 using ::mozc::converter::Attribute;
@@ -130,34 +128,6 @@ bool HasHistoryKeyLongerThanOrEqualTo(const ConversionRequest& request,
 bool IsLongKeyForRealtimeCandidates(const ConversionRequest& request) {
   constexpr int kFewResultThreshold = 8;
   return Util::CharsLen(request.key()) >= kFewResultThreshold;
-}
-
-// Returns the normalized number history if `request` contains it.
-// Note:
-//  Now this function supports arabic number candidates only and
-//  we don't support kanji number candidates for now.
-//  This is because We have several kanji number styles, for example,
-//  "一二", "十二", "壱拾弐", etc for 12.
-//  If the history in `request` is empty, it fallback to `preceding_text`.
-// TODO(toshiyuki): Define the spec and support Kanji.
-std::optional<std::string> GetNumberHistory(const ConversionRequest& request) {
-  absl::string_view history_value = request.converter_history_value(1);
-  if (history_value.empty()) {
-    // Note: Full width number is not supported in `preceding_text`.
-    history_value = request.context().preceding_text();
-    const auto it =
-        std::find_if(history_value.rbegin(), history_value.rend(),
-                     [](char c) { return !absl::ascii_isdigit(c); });
-    history_value = history_value.substr(it.base() - history_value.begin());
-  }
-  if (history_value.empty() || !NumberUtil::IsArabicNumber(history_value)) {
-    return std::nullopt;
-  }
-  return japanese_util::FullWidthToHalfWidth(history_value);
-}
-
-bool IsEmailPrefix(absl::string_view str) {
-  return str.ends_with('@') && mozc::Util::IsAscii(str);
 }
 
 class PredictiveLookupCallback : public DictionaryInterface::Callback {
@@ -398,8 +368,9 @@ DictionaryPredictionAggregator::DictionaryPredictionAggregator(
       kanji_number_id_(modules.GetPosMatcher().GetKanjiNumberId()),
       zip_code_id_(modules.GetPosMatcher().GetZipcodeId()),
       unknown_id_(modules.GetPosMatcher().GetUnknownId()),
-      zero_query_dict_(modules.GetZeroQueryDict()),
-      zero_query_number_dict_(modules.GetZeroQueryNumberDict()) {}
+      zero_query_decoder_(modules),
+      handwriting_decoder_(modules, decoder),
+      english_decoder_(modules) {}
 
 std::vector<Result> DictionaryPredictionAggregator::AggregateResultsForTesting(
     const ConversionRequest& request) const {
@@ -659,71 +630,8 @@ void DictionaryPredictionAggregator::AggregateUnigram(
 void DictionaryPredictionAggregator::AggregateZeroQuery(
     const ConversionRequest& request, std::vector<Result>* results) const {
   DCHECK(results);
-
-  // There are 4 sources in zero query suggestion.
-
-  absl::string_view history_value = request.converter_history_value(1);
-  absl::string_view history_key = request.converter_history_key(1);
-
-  if (history_value.empty() && history_key.empty()) {
-    // (b/475682454): Use the preceding text as the history value and key.
-    // We may want to tokenize the preceding text to increase the coverage.
-    history_value = request.context().preceding_text();
-    history_key = history_value;
-  }
-
-  if (history_key.empty() || history_value.empty()) {
-    return;
-  }
-
-  // 1. Supplemental model.
-  modules_.GetSupplementalModel().Predict(request, *results);
-
-  // 2. Zero query number dictionary(data / zero_query / zero_query_number.def)
-  // "30" -> "年"
-  // TOOD(taku): Consider to aggregate other candidates.
-  if (AggregateNumberZeroQuery(request, results)) {
-    return;
-  }
-
-  // 3. Zero query dictionary (data/zero_query/zero_query.def)
-  // "あけまして" -> "おめでとうございます”
-  constexpr uint16_t kId = 0;  // EOS
-  GetZeroQueryCandidatesForKey(request, history_value, zero_query_dict_, kId,
-                               kId, results);
-  // Special treatment for email address.
-  // "user@" -> "google.com"
-  if (IsEmailPrefix(history_key) && (history_key == history_value)) {
-    GetZeroQueryCandidatesForKey(request, "@", zero_query_dict_, kId, kId,
-                                 results);
-  }
-
-  // 4. English decoder.
-  modules_.GetSupplementalModel().DecodeEnglish(request, *results);
-
-  // We do not want zero query results from suffix dictionary for Latin
-  // input mode. For example, we do not need "です", "。" just after "when".
-  if (IsLatinInputMode(request)) {
-    return;
-  }
-
-  // We do not want zero query results from suffix dictionary if the request
-  // does not have the history POS information.
-  // (b/475682454): Context does not have POS information. Suffix dictionary
-  // may generate noisy predictions.
-  if (request.converter_history_rid() == 0) {
-    return;
-  }
-
-  // 5. Zero query suffix dictionary.
-  //    "東京" -> "は"
-  if (results->empty() || !IsZeroQuerySuffixPredictionDisabled(request) ||
-      request_util::IsHandwriting(request)) {
-    // Uses larger cutoff (kPredictionMaxResultsSize) in order to consider
-    // all suffix entries.
-    GetPredictiveResultsForUnigram(suffix_dictionary_, request, SUFFIX,
-                                   kPredictionMaxResultsSize, results);
-  }
+  std::vector<Result> zero_query_results = zero_query_decoder_.Decode(request);
+  absl::c_move(zero_query_results, std::back_inserter(*results));
 }
 
 void DictionaryPredictionAggregator::AggregateRealtime(
@@ -762,74 +670,9 @@ void DictionaryPredictionAggregator::AggregateUnigramForDictionary(
 void DictionaryPredictionAggregator::AggregateUnigramForHandwriting(
     const ConversionRequest& request, std::vector<Result>* results) const {
   DCHECK(results);
-  DCHECK(request.request_type() == ConversionRequest::PREDICTION ||
-         request.request_type() == ConversionRequest::SUGGESTION);
-
-  const ResultsSizeAdjuster adjuster(request, results);
-
-  const commands::DecoderExperimentParams& param =
-      request.request().decoder_experiment_params();
-  const int handwriting_cost_offset =
-      param.handwriting_conversion_candidate_cost_offset();
-
-  int processed_count = 0;
-  const int size_to_process = param.max_composition_event_to_process();
-  absl::Span<const commands::SessionCommand::CompositionEvent>
-      composition_events = request.composer().GetHandwritingCompositions();
-  for (size_t i = 0; i < composition_events.size(); ++i) {
-    const commands::SessionCommand::CompositionEvent& elm =
-        composition_events[i];
-    if (elm.probability() <= 0.0) {
-      continue;
-    }
-    const int recognition_cost = -500.0 * log(elm.probability());
-    constexpr int kAsisCostOffset = 3453;  // 500 * log(1000) = ~3453
-    Result asis_result = {
-        .key = elm.composition_string(),
-        .value = elm.composition_string(),
-        .attributes =
-            (Attribute::UNIGRAM | Attribute::NO_VARIANTS_EXPANSION |
-             Attribute::NO_EXTRA_DESCRIPTION | Attribute::NO_MODIFICATION),
-        // Set small cost for the top recognition result.
-        .wcost = (i == 0) ? 0 : kAsisCostOffset + recognition_cost,
-    };
-
-    const std::optional<DictionaryPredictionAggregator::HandwritingQueryInfo>
-        query_info = processed_count < size_to_process
-                         ? GenerateQueryForHandwriting(request, elm)
-                         : std::nullopt;
-    if (query_info.has_value()) {
-      ++processed_count;
-
-      dictionary::InlineCallback cb;
-      cb.OnToken([&](absl::string_view key, absl::string_view actual_key,
-                     const Token& token) {
-        using enum DictionaryInterface::Callback::ResultType;
-        const int penalty = handwriting_cost_offset + recognition_cost;
-        size_t next_pos = 0;
-        for (absl::string_view constraint : query_info->constraints) {
-          const size_t pos = token.value.find(constraint, next_pos);
-          if (pos == std::string::npos) {
-            return TRAVERSE_CONTINUE;
-          }
-          next_pos = pos + 1;
-        }
-        Result result;
-        result.InitializeByTokenAndTypes(token, UNIGRAM);
-        result.wcost += penalty;
-        results->emplace_back(std::move(result));
-        return (results->size() < adjuster.cutoff_threshold())
-                   ? TRAVERSE_CONTINUE
-                   : TRAVERSE_DONE;
-      });
-
-      dictionary_.LookupExact(query_info->query, request.options(), &cb);
-
-      // Rewrite key with the look-up query.
-      asis_result.key = query_info->query;
-    }
-    results->emplace_back(std::move(asis_result));
-  }
+  std::vector<Result> handwriting_results =
+      handwriting_decoder_.Decode(request);
+  absl::c_move(handwriting_results, std::back_inserter(*results));
 }
 
 void DictionaryPredictionAggregator::AggregateUnigramForMixedConversion(
@@ -891,51 +734,19 @@ void DictionaryPredictionAggregator::AggregateBigram(
   }
 }
 
-// Returns true if we add zero query result.
-bool DictionaryPredictionAggregator::AggregateNumberZeroQuery(
-    const ConversionRequest& request, std::vector<Result>* results) const {
-  DCHECK(results);
-
-  auto number_key_opt = GetNumberHistory(request);
-  if (!number_key_opt) return false;
-
-  const std::string number_key = std::move(number_key_opt.value());
-
-  GetZeroQueryCandidatesForKey(request, number_key, zero_query_number_dict_,
-                               counter_suffix_word_id_, counter_suffix_word_id_,
-                               results);
-
-  GetZeroQueryCandidatesForKey(request, "default", zero_query_number_dict_,
-                               counter_suffix_word_id_, counter_suffix_word_id_,
-                               results);
-
-  return true;
-}
-
 void DictionaryPredictionAggregator::AggregateEnglish(
     const ConversionRequest& request, std::vector<Result>* results) const {
   DCHECK(results);
-
-  const ResultsSizeAdjuster adjuster(request, results);
-
-  GetPredictiveResultsForEnglishKey(dictionary_, request, request.key(),
-                                    ENGLISH, adjuster.cutoff_threshold(),
-                                    results);
-
-  modules_.GetSupplementalModel().DecodeEnglish(request, *results);
+  std::vector<Result> english_results = english_decoder_.Decode(request);
+  absl::c_move(english_results, std::back_inserter(*results));
 }
 
 void DictionaryPredictionAggregator::AggregateEnglishUsingRawInput(
     const ConversionRequest& request, std::vector<Result>* results) const {
   DCHECK(results);
-
-  const ResultsSizeAdjuster adjuster(request, results);
-
-  GetPredictiveResultsForEnglishKey(dictionary_, request,
-                                    request.composer().GetRawString(), ENGLISH,
-                                    adjuster.cutoff_threshold(), results);
-
-  modules_.GetSupplementalModel().DecodeEnglish(request, *results);
+  std::vector<Result> english_results =
+      english_decoder_.DecodeUsingRawInput(request);
+  absl::c_move(english_results, std::back_inserter(*results));
 }
 
 void DictionaryPredictionAggregator::AggregateNumber(
@@ -1089,98 +900,6 @@ void DictionaryPredictionAggregator::GetPredictiveResultsForBigram(
   dictionary.LookupPredictive(request_key, request.options(), &callback);
 }
 
-void DictionaryPredictionAggregator::GetPredictiveResultsForEnglishKey(
-    const DictionaryInterface& dictionary, const ConversionRequest& request,
-    const absl::string_view request_key, PredictionTypes types,
-    size_t lookup_limit, std::vector<Result>* results) const {
-  const size_t prev_results_size = results->size();
-  const absl::btree_set<std::string> empty_expanded;
-  if (Util::IsUpperAscii(request_key)) {
-    // For upper case key, look up its lower case version and then transform
-    // the results to upper case.
-    std::string key(request_key);
-    Util::LowerString(&key);
-    PredictiveLookupCallback callback(types, lookup_limit, key.size(),
-                                      empty_expanded, zip_code_id_, unknown_id_,
-                                      results);
-    dictionary.LookupPredictive(key, request.options(), &callback);
-    for (size_t i = prev_results_size; i < results->size(); ++i) {
-      Util::UpperString(&(*results)[i].value);
-    }
-  } else if (Util::IsCapitalizedAscii(request_key)) {
-    // For capitalized key, look up its lower case version and then transform
-    // the results to capital.
-    std::string key(request_key);
-    Util::LowerString(&key);
-    PredictiveLookupCallback callback(types, lookup_limit, key.size(),
-                                      empty_expanded, zip_code_id_, unknown_id_,
-                                      results);
-    dictionary.LookupPredictive(key, request.options(), &callback);
-    for (size_t i = prev_results_size; i < results->size(); ++i) {
-      Util::CapitalizeString(&(*results)[i].value);
-    }
-  } else {
-    // For other cases (lower and as-is), just look up directly.
-    PredictiveLookupCallback callback(types, lookup_limit, request_key.size(),
-                                      empty_expanded, zip_code_id_, unknown_id_,
-                                      results);
-    dictionary.LookupPredictive(request_key, request.options(), &callback);
-  }
-  // If input mode is FULL_ASCII, then convert the results to full-width.
-  if (request.composer().GetInputMode() == transliteration::FULL_ASCII) {
-    std::string tmp;
-    for (size_t i = prev_results_size; i < results->size(); ++i) {
-      tmp.assign((*results)[i].value);
-      (*results)[i].value = japanese_util::HalfWidthAsciiToFullWidthAscii(tmp);
-    }
-  }
-}
-
-void DictionaryPredictionAggregator::GetZeroQueryCandidatesForKey(
-    const ConversionRequest& request, absl::string_view key,
-    const ZeroQueryDict& dict, uint16_t lid, uint16_t rid,
-    std::vector<Result>* results) const {
-  DCHECK(results);
-
-  absl::Span<const ZeroQueryEntry> entries = dict.equal_range(key);
-  if (entries.empty()) {
-    return;
-  }
-
-  const bool is_key_one_char_and_not_kanji =
-      Util::CharsLen(key) == 1 && !Util::ContainsScriptType(key, Util::KANJI);
-
-  int cost = 0;
-  constexpr int kSuffixPenalty = 10;
-
-  auto add_entry = [&](const ZeroQueryEntry& entry) {
-    Result result;
-    result.SetTypesAndTokenAttributes(SUFFIX, Token::NONE);
-    result.key = dict.value(entry);
-    result.value = dict.value(entry);
-    result.wcost = cost;
-    result.lid = lid;
-    result.rid = rid;
-    results->emplace_back(std::move(result));
-    cost += kSuffixPenalty;
-  };
-
-  for (const ZeroQueryEntry& entry : entries) {
-    if (entry.type != ZERO_QUERY_EMOJI) {
-      add_entry(entry);
-      continue;
-    }
-
-    // Emoji should not be suggested for single Hiragana / Katakana input,
-    // because they tend to be too much aggressive.
-    if (is_key_one_char_and_not_kanji) {
-      continue;
-    }
-
-    add_entry(entry);
-  }
-}
-
 size_t DictionaryPredictionAggregator::GetCandidateCutoffThreshold(
     ConversionRequest::RequestType request_type) {
   DCHECK(request_type == ConversionRequest::PREDICTION ||
@@ -1248,59 +967,6 @@ size_t DictionaryPredictionAggregator::GetRealtimeCandidateMaxSize(
       DLOG(FATAL) << "Unexpected request type: " << request_type;
       return 0;
   }
-}
-
-std::optional<DictionaryPredictionAggregator::HandwritingQueryInfo>
-DictionaryPredictionAggregator::GenerateQueryForHandwriting(
-    const ConversionRequest& request,
-    const commands::SessionCommand::CompositionEvent& composition_event) const {
-  if (composition_event.probability() < 0.0001) {
-    // Skip generating the query info for unconfident composition,
-    // since running reverse conversion is slow.
-    return std::nullopt;
-  }
-  if (absl::StrContains(composition_event.composition_string(), " ")) {
-    // Skip providing converted candidates for queries including white space.
-    return std::nullopt;
-  }
-  if (!Util::ContainsScriptType(composition_event.composition_string(),
-                                Util::HIRAGANA)) {
-    // Skip providing converted candidates for queries not including Hiragana.
-    return std::nullopt;
-  }
-
-  const ConversionRequest request_for_realtime =
-      ConversionRequestBuilder()
-          .SetConversionRequestView(request)
-          .SetRequestType(ConversionRequest::REVERSE_CONVERSION)
-          .SetKey(composition_event.composition_string())
-          .Build();
-
-  HandwritingQueryInfo info;
-  std::vector<Result> results = decoder_.ReverseDecode(request_for_realtime);
-  if (results.empty()) return info;
-
-  Result& result = results.front();
-  info.query = std::move(result.value);
-
-  // b/324976556:
-  // We have to use the segment key instead of the candidate key.
-  // candidate key does not always match segment key for T13N chars.
-  std::string utf8_str;
-  const Utf8AsChars original_chars(result.key);
-  for (const absl::string_view c : original_chars) {
-    if (Util::GetScriptType(c) != Util::HIRAGANA) {
-      absl::StrAppend(&utf8_str, c);
-    } else if (!utf8_str.empty()) {
-      info.constraints.emplace_back(utf8_str);
-      utf8_str.clear();
-    }
-  }
-  if (!utf8_str.empty()) {
-    info.constraints.emplace_back(utf8_str);
-  }
-
-  return info;
 }
 
 // Filter out irrelevant bigrams. For example, we don't want to

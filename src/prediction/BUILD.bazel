@@ -139,7 +139,6 @@ mozc_cc_library(
         "//converter:attribute",
         "//converter:inner_segment",
         "//dictionary:dictionary_interface",
-        "//dictionary:dictionary_token",
         "//engine:modules",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
@@ -186,6 +185,7 @@ mozc_cc_test(
         "//composer:query",
         "//composer:table",
         "//config:config_handler",
+        "//converter:attribute",
         "//converter:inner_segment",
         "//data_manager/testing:mock_data_manager",
         "//dictionary:dictionary_interface",
@@ -295,7 +295,6 @@ mozc_cc_library(
         "//base/strings:japanese",
         "//converter:attribute",
         "//converter:connector",
-        "//dictionary:pos_matcher",
         "//protocol:commands_cc_proto",
         "//request:conversion_request",
         "//request:request_util",
@@ -327,11 +326,14 @@ mozc_cc_library(
     ],
     hdrs = ["dictionary_prediction_aggregator.h"],
     deps = [
+        ":english_decoder",
+        ":handwriting_decoder",
         ":number_decoder",
         ":realtime_decoder",
         ":result",
         ":result_filter",
         ":single_kanji_decoder",
+        ":zero_query_decoder",
         ":zero_query_dict",
         "//base:japanese_util",
         "//base:number_util",
@@ -513,7 +515,6 @@ mozc_cc_library(
         "//converter:attribute",
         "//converter:converter_interface",
         "//converter:immutable_converter_interface",
-        "//dictionary:pos_matcher",
         "//engine:modules",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
@@ -602,6 +603,49 @@ mozc_cc_test(
     ],
 )
 
+mozc_cc_library(
+    name = "zero_query_decoder",
+    srcs = ["zero_query_decoder.cc"],
+    hdrs = ["zero_query_decoder.h"],
+    deps = [
+        ":result",
+        ":zero_query_dict",
+        "//base:japanese_util",
+        "//base:number_util",
+        "//base:util",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_token",
+        "//engine:modules",
+        "//protocol:commands_cc_proto",
+        "//request:conversion_request",
+        "//request:request_util",
+        "//transliteration",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "zero_query_decoder_test",
+    srcs = ["zero_query_decoder_test.cc"],
+    deps = [
+        ":result",
+        ":zero_query_decoder",
+        ":zero_query_dict",
+        "//base/container:serialized_string_array",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:pos_matcher",
+        "//engine:modules",
+        "//protocol:commands_cc_proto",
+        "//request:conversion_request",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 mozc_cc_binary(
     name = "gen_suggestion_filter_main",
     srcs = ["gen_suggestion_filter_main.cc"],
@@ -643,6 +687,50 @@ mozc_py_binary(
     deps = [
         ":gen_zero_query_util",
         "//build_tools:code_generator_util",
+    ],
+)
+
+mozc_cc_library(
+    name = "english_decoder",
+    srcs = ["english_decoder.cc"],
+    hdrs = ["english_decoder.h"],
+    deps = [
+        ":result",
+        "//base:japanese_util",
+        "//base:number_util",
+        "//base:util",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_token",
+        "//engine:modules",
+        "//request:conversion_request",
+        "//transliteration",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "english_decoder_test",
+    srcs = ["english_decoder_test.cc"],
+    deps = [
+        ":english_decoder",
+        ":result",
+        "//base:util",
+        "//composer",
+        "//composer:table",
+        "//config:config_handler",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_mock",
+        "//dictionary:dictionary_token",
+        "//engine:modules",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:conversion_request",
+        "//testing:gunit_main",
+        "//transliteration",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -692,6 +780,9 @@ mozc_cc_library(
     hdrs = [
         "realtime_decoder.h",
     ],
+    visibility = [
+        "//converter:__pkg__",
+    ],
     deps = [
         ":result",
         "//base:util",
@@ -699,6 +790,7 @@ mozc_cc_library(
         "//base/strings:assign",
         "//converter:attribute",
         "//converter:converter_interface",
+        "//converter:converter_util",
         "//converter:immutable_converter_interface",
         "//converter:inner_segment",
         "//converter:segments",
@@ -727,5 +819,53 @@ mozc_cc_test(
         "//request:options",
         "//testing:gunit_main",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_library(
+    name = "handwriting_decoder",
+    srcs = ["handwriting_decoder.cc"],
+    hdrs = ["handwriting_decoder.h"],
+    deps = [
+        ":realtime_decoder",
+        ":result",
+        "//base:util",
+        "//base/strings:unicode",
+        "//converter:attribute",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_token",
+        "//engine:modules",
+        "//protocol:commands_cc_proto",
+        "//request:conversion_request",
+        "//request:request_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+mozc_cc_test(
+    name = "handwriting_decoder_test",
+    srcs = ["handwriting_decoder_test.cc"],
+    deps = [
+        ":handwriting_decoder",
+        ":realtime_decoder",
+        ":result",
+        "//base:util",
+        "//composer",
+        "//composer:table",
+        "//config:config_handler",
+        "//converter:attribute",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:dictionary_interface",
+        "//dictionary:dictionary_mock",
+        "//dictionary:dictionary_token",
+        "//engine:modules",
+        "//protocol:commands_cc_proto",
+        "//protocol:config_cc_proto",
+        "//request:conversion_request",
+        "//request:request_test_util",
+        "//testing:gunit_main",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

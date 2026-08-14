@@ -180,6 +180,12 @@ class UserHistoryPredictor : public PredictorInterface {
     // candidates, they are treated as standard conversions and their boundary
     // information is populated to the Result.
     POPULATE_INNER_SEGMENT_BOUNDARY = 8,
+
+    // Set when an older user history entry lacks inner boundary information.
+    // This attribute conveys that the original user history had no inner
+    // boundary. Special care is needed when a single segment placeholder
+    // is used as the inner boundary for such entries.
+    EMPTY_INNER_SEGMENT_BOUNDARY = 16,
   };
 
   // Returns true if this predictor should return results for the input.
@@ -486,13 +492,16 @@ class UserHistoryPredictor : public PredictorInterface {
   bool IsProperNoun(const ConversionRequest& request,
                     const Result& result) const;
 
+  bool ShouldAllowPartialMatch(
+      const ConversionRequest& request, const Result& result,
+      const SegmentsForLearning& learning_segments) const;
+
   // Returns true if the low frequency full sentence entry can be
   // suggested.
   static bool AllowLowFreqFullSentenceEntryMatch(
       const ConversionRequest& request, absl::string_view request_key,
       const UserHistoryPredictor::MatchType mtype, const Entry& entry);
 
-  const dictionary::DictionaryInterface& dictionary_;
   const dictionary::UserDictionaryInterface& user_dictionary_;
   const engine::Modules& modules_;
 

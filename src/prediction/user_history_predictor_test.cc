@@ -66,6 +66,7 @@
 #include "composer/query.h"
 #include "composer/table.h"
 #include "config/config_handler.h"
+#include "converter/attribute.h"
 #include "converter/inner_segment.h"
 #include "data_manager/testing/mock_data_manager.h"
 #include "dictionary/dictionary_interface.h"
@@ -6049,6 +6050,207 @@ TEST_F(UserHistoryPredictorTest, PartialMatchTest) {
     EXPECT_TRUE(results[0].attributes &
                 prediction::WEAK_USER_HISTORY_PREDICTION);
     EXPECT_EQ("たくの,拓の,たく,拓", GetKeyValueWithBoundary(results[0]));
+  }
+}
+
+TEST_F(UserHistoryPredictorTest, CompoundNounPartialMatchTest) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<engine::Modules> modules,
+      engine::ModulesPresetBuilder()
+          .PresetDictionary(std::make_unique<MockDictionary>())
+          .Build(std::make_unique<testing::MockDataManager>()));
+  auto realtime_decoder = std::make_unique<MockRealtimeDecoder>();
+  auto predictor =
+      std::make_unique<UserHistoryPredictor>(*modules, *realtime_decoder);
+  predictor->Wait();
+
+  request_.set_mixed_conversion(true);
+  request_.mutable_decoder_experiment_params()
+      ->set_user_history_enable_compound_noun_partial_match(true);
+
+  EXPECT_CALL(*realtime_decoder, DecodeSuffix(_, _, _))
+      .WillRepeatedly([&](const ConversionRequest& request, uint16_t prefix_rid,
+                          absl::string_view suffix) -> std::optional<Result> {
+        Result result;
+        if (suffix == "たなかしょうてんは") {
+          result.key = "たなかしょうてんは";
+          result.value = "田中商店は";
+          result.cost = 10000;
+          result.lid = modules->GetPosMatcher().GetFunctionalId();
+          result.inner_segment_boundary =
+              converter::InnerSegmentBoundaryBuilder()
+                  .Add(24, 12, 24, 12)
+                  .Add(3, 3, 0, 0)
+                  .Build(result.key, result.value);
+          return result;
+        }
+        if (suffix == "は") {
+          result.key = "は";
+          result.value = "は";
+          result.cost = 500;
+          result.lid = modules->GetPosMatcher().GetFunctionalId();
+          return result;
+        }
+        return std::nullopt;
+      });
+
+  SegmentsProxy segments_proxy;
+
+  // Learn compound noun ("たなかしょうてん" -> "田中商店")
+  const ConversionRequest convreq =
+      SetUpInputForConversion("たなかしょうてん", &composer_, &segments_proxy);
+  segments_proxy.Clear();
+  segments_proxy.AddSegment("たなか");
+  segments_proxy.AddCandidate(0, "田中");
+  segments_proxy.MutableCandidate(0, 0)->rid =
+      modules->GetPosMatcher().GetGeneralNounId();
+
+  segments_proxy.AddSegment("しょうてん");
+  segments_proxy.AddCandidate(1, "商店");
+  segments_proxy.MutableCandidate(1, 0)->rid =
+      modules->GetPosMatcher().GetGeneralNounId();
+
+  predictor->Finish(convreq, segments_proxy.MakeLearningResults(), kRevertId);
+  predictor->Finish(convreq, segments_proxy.MakeLearningResults(), kRevertId);
+
+  // Predict with suffix "は" -> "たなかしょうてんは"
+  segments_proxy.Clear();
+  const ConversionRequest predict_suffix_req = SetUpInputForPrediction(
+      "たなかしょうてんは", &composer_, &segments_proxy);
+  std::vector<Result> results = predictor->Predict(predict_suffix_req);
+
+  bool found = false;
+  for (const auto& res : results) {
+    if (res.key == "たなかしょうてんは" && res.value == "田中商店は") {
+      found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found);
+
+  // Convert with suffix "は" -> "たなかしょうてんは"
+  segments_proxy.Clear();
+  const ConversionRequest convert_suffix_req = SetUpInputForConversion(
+      "たなかしょうてんは", &composer_, &segments_proxy);
+  std::vector<Result> convert_results = predictor->Convert(convert_suffix_req);
+
+  bool convert_found = false;
+  for (const auto& res : convert_results) {
+    if (res.key == "たなかしょうてんは" && res.value == "田中商店は") {
+      convert_found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(convert_found);
+}
+
+TEST_F(UserHistoryPredictorTest, EmptyInnerSegmentBoundaryAttributeTest) {
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<engine::Modules> modules,
+      engine::ModulesPresetBuilder()
+          .PresetDictionary(std::make_unique<MockDictionary>())
+          .Build(std::make_unique<testing::MockDataManager>()));
+  auto realtime_decoder = std::make_unique<MockRealtimeDecoder>();
+  auto predictor =
+      std::make_unique<UserHistoryPredictor>(*modules, *realtime_decoder);
+  predictor->Wait();
+
+  // Entry 1: "今日" ("きょう" -> "今日") saved via Finish with a single-segment
+  // placeholder inner segment boundary.
+  constexpr absl::string_view kKey1 = "きょう";
+  constexpr absl::string_view kValue1 = "今日";
+  SegmentsProxy segments_proxy;
+  const ConversionRequest convreq1 =
+      SetUpInputForPrediction(kKey1, &composer_, &segments_proxy);
+  segments_proxy.AddCandidate(0, kValue1);
+  segments_proxy.PushBackInnerSegmentBoundary(0, 0, 9, 6, 6, 3);
+  predictor->Finish(convreq1, segments_proxy.MakeLearningResults(), kRevertId);
+
+  // Entry 2: "明日" ("あした" -> "明日") saved via InsertEntry without inner
+  // segment boundary.
+  constexpr absl::string_view kKey2 = "あした";
+  constexpr absl::string_view kValue2 = "明日";
+  InsertEntry(predictor.get(), kKey2, kValue2);
+
+  // Save to disk and reload to verify serialization and deserialization
+  // for entries both with and without inner_segment_boundaries.
+  auto& storage = UserHistoryPredictorTestPeer(*predictor).storage_();
+  storage.Save();
+  storage.Load();
+
+  auto entry_with_boundary =
+      storage.Lookup(UserHistoryStorage::Fingerprint(kKey1, kValue1));
+  ASSERT_TRUE(entry_with_boundary);
+  EXPECT_GT(entry_with_boundary->inner_segment_boundary_size(), 0);
+
+  auto entry_without_boundary =
+      storage.Lookup(UserHistoryStorage::Fingerprint(kKey2, kValue2));
+  ASSERT_TRUE(entry_without_boundary);
+  EXPECT_EQ(entry_without_boundary->inner_segment_boundary_size(), 0);
+
+  // Verify prediction result for Entry 1 ("今日" with inner_segment_boundary).
+  {
+    segments_proxy.Clear();
+    const ConversionRequest convreq =
+        SetUpInputForPrediction(kKey1, &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    ASSERT_FALSE(results.empty());
+
+    bool found = false;
+    for (const auto& res : results) {
+      if (res.key == kKey1 && res.value == kValue1) {
+        EXPECT_FALSE(
+            res.attributes &
+            converter::Attribute::USER_HISTORY_EMPTY_INNER_SEGMENT_BOUNDARY);
+        EXPECT_TRUE(res.inner_segment_boundary.empty());
+        found = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(found);
+
+    // Verify conversion result for Entry 1 (inner_segment_boundary is
+    // populated).
+    const ConversionRequest conv_req =
+        SetUpInputForConversion(kKey1, &composer_, &segments_proxy);
+    const std::vector<Result> convert_results = predictor->Convert(conv_req);
+    ASSERT_FALSE(convert_results.empty());
+
+    bool convert_found = false;
+    for (const auto& res : convert_results) {
+      if (res.key == kKey1 && res.value == kValue1) {
+        EXPECT_FALSE(
+            res.attributes &
+            converter::Attribute::USER_HISTORY_EMPTY_INNER_SEGMENT_BOUNDARY);
+        EXPECT_FALSE(res.inner_segment_boundary.empty());
+        convert_found = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(convert_found);
+  }
+
+  // Verify prediction result for Entry 2 ("明日" without
+  // inner_segment_boundary).
+  {
+    segments_proxy.Clear();
+    const ConversionRequest convreq =
+        SetUpInputForPrediction(kKey2, &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    ASSERT_FALSE(results.empty());
+
+    bool found = false;
+    for (const auto& res : results) {
+      if (res.key == kKey2 && res.value == kValue2) {
+        EXPECT_TRUE(
+            res.attributes &
+            converter::Attribute::USER_HISTORY_EMPTY_INNER_SEGMENT_BOUNDARY);
+        EXPECT_TRUE(res.inner_segment_boundary.empty());
+        found = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(found);
   }
 }
 

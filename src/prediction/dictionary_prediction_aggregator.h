@@ -32,8 +32,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -42,9 +40,11 @@
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/dictionary_token.h"
 #include "engine/modules.h"
+#include "prediction/english_decoder.h"
+#include "prediction/handwriting_decoder.h"
 #include "prediction/realtime_decoder.h"
 #include "prediction/result.h"
-#include "prediction/zero_query_dict.h"
+#include "prediction/zero_query_decoder.h"
 #include "request/conversion_request.h"
 
 namespace mozc {
@@ -100,16 +100,6 @@ class DictionaryPredictionAggregator
       const ConversionRequest& request) const override;
 
  private:
-  struct HandwritingQueryInfo {
-    // Hiragana key for dictionary look up.
-    // ex. "かんじじてん" for "かん字じ典"
-    std::string query;
-    // The list of non-Hiragana strings. They should be appeared in the result
-    // token value in order.
-    // ex. {"字", "典"} for "かん字じ典"
-    std::vector<std::string> constraints;
-  };
-
   //////////////////////////////////////////////////////////////////////////
   // Top level basic aggregators.
   // Do not implement preconditions for calling the actual operation within
@@ -170,9 +160,6 @@ class DictionaryPredictionAggregator
   void AggregateUnigramForHandwriting(const ConversionRequest& request,
                                       std::vector<Result>* results) const;
 
-  bool AggregateNumberZeroQuery(const ConversionRequest& request,
-                                std::vector<Result>* results) const;
-
   //////////////////////////////////////////////////////////////////////////
   // GetPredictiveResultsForXXX functions which are primitive utility
   // functions to get results from dictionary::DictionaryInterface.
@@ -187,31 +174,8 @@ class DictionaryPredictionAggregator
       const ConversionRequest& request, PredictionTypes types,
       size_t lookup_limit, std::vector<Result>* results) const;
 
-  // Performs a custom look up for English words where case-conversion might be
-  // applied to lookup key and/or output results.
-  void GetPredictiveResultsForEnglishKey(
-      const dictionary::DictionaryInterface& dictionary,
-      const ConversionRequest& request, absl::string_view request_key,
-      PredictionTypes types, size_t lookup_limit,
-      std::vector<Result>* results) const;
-
-  // Looks up the given range and appends zero query candidate list for |key|
-  // to |results|.
-  // Returns false if there is no result for |key|.
-  void GetZeroQueryCandidatesForKey(const ConversionRequest& request,
-                                    absl::string_view key,
-                                    const ZeroQueryDict& dict, uint16_t lid,
-                                    uint16_t rid,
-                                    std::vector<Result>* results) const;
-
   //////////////////////////////////////////////////////////////////////////
   // Misc functions
-
-  // Generates `HandwritingQueryInfo` for the given composition event.
-  std::optional<HandwritingQueryInfo> GenerateQueryForHandwriting(
-      const ConversionRequest& request,
-      const commands::SessionCommand::CompositionEvent& composition_event)
-      const;
 
   // Changes the prediction type for irrelevant bigram candidate.
   void CheckBigramResult(const dictionary::Token& history_token,
@@ -261,8 +225,9 @@ class DictionaryPredictionAggregator
   const uint16_t kanji_number_id_;
   const uint16_t zip_code_id_;
   const uint16_t unknown_id_;
-  const ZeroQueryDict& zero_query_dict_;
-  const ZeroQueryDict& zero_query_number_dict_;
+  const ZeroQueryDecoder zero_query_decoder_;
+  const HandwritingDecoder handwriting_decoder_;
+  const EnglishDecoder english_decoder_;
 };
 
 }  // namespace prediction

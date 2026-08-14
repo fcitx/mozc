@@ -181,13 +181,6 @@ class Converter final : public ConverterInterface {
     return *modules_;
   }
 
-  // Utility method to make committed results for Predictor::Finish().
-  static std::vector<prediction::Result> MakeLearningResults(
-      const Segments& segments);
-
-  // Utility method to make history result passed to ConversionRequest.
-  static prediction::Result MakeHistoryResult(const Segments& segments);
-
  private:
   friend class ConverterTestPeer;
 
@@ -216,6 +209,11 @@ class Converter final : public ConverterInterface {
   void RewriteAndSuppressCandidates(const ConversionRequest& request,
                                     Segments* segments) const;
 
+  // Applies prediction::Result returned by predictor_->Convert to Segments if
+  // legacy user history rewriter is disabled.
+  void MaybeApplyUserHistoryPredictorToConversion(
+      const ConversionRequest& request, Segments* segments) const;
+
   // Limits the number of candidates based on a request.
   // This method doesn't drop meta candidates for T13n conversion.
   void TrimCandidates(const ConversionRequest& request,
@@ -237,8 +235,24 @@ class Converter final : public ConverterInterface {
   bool PredictForRequestWithSegments(const ConversionRequest& request,
                                      Segments* segments) const;
 
+  // Resizes conversion segments to match inner segment boundaries of result
+  // and re-runs conversion if needed. Returns false if resizing/conversion
+  // fails.
+  bool ResizeSegmentsByResult(const ConversionRequest& request,
+                              const prediction::Result& result,
+                              Segments* segments) const;
+
+  // Applies each inner segment of `result` to the corresponding conversion
+  // segment at `target_pos`.
+  void ApplyResultToSegments(const prediction::Result& result,
+                             size_t target_pos, uint32_t additional_attributes,
+                             Segments* segments) const;
+
   // Post processing after conversion.
   // Rewriter, SuppressionDictionary, etc.
+  void MaybeApplyPostCorrection(const ConversionRequest& request,
+                                Segments* segments) const;
+
   void ApplyPostProcessing(const ConversionRequest& request,
                            Segments* segments) const;
 
