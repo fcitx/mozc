@@ -77,10 +77,11 @@ class EngineConverter : public EngineConverterInterface {
   const ConversionPreferences& conversion_preferences() const override;
 
   // Sends a conversion request to the converter.
-  bool Convert(const composer::Composer& composer) override;
-  bool ConvertWithPreferences(
-      const composer::Composer& composer,
-      const ConversionPreferences& preferences) override;
+  // Brings base class overloads into scope to avoid name hiding.
+  using EngineConverterInterface::Convert;
+  bool Convert(const composer::Composer& composer,
+               const commands::Context& context,
+               const ConversionPreferences& preferences) override;
 
   // Gets reading text (e.g. from "猫" to "ねこ").
   bool GetReadingText(absl::string_view source_text,
@@ -100,17 +101,18 @@ class EngineConverter : public EngineConverterInterface {
   bool SwitchKanaType(const composer::Composer& composer) override;
 
   // Sends a suggestion request to the converter.
+  // Brings base class overloads into scope to avoid name hiding.
+  using EngineConverterInterface::Suggest;
   bool Suggest(const composer::Composer& composer,
-               const commands::Context& context) override;
-  bool SuggestWithPreferences(
-      const composer::Composer& composer, const commands::Context& context,
-      const ConversionPreferences& preferences) override;
+               const commands::Context& context,
+               const ConversionPreferences& preferences) override;
 
   // Sends a prediction request to the converter.
-  bool Predict(const composer::Composer& composer) override;
-  bool PredictWithPreferences(
-      const composer::Composer& composer,
-      const ConversionPreferences& preferences) override;
+  // Brings base class overloads into scope to avoid name hiding.
+  using EngineConverterInterface::Predict;
+  bool Predict(const composer::Composer& composer,
+               const commands::Context& context,
+               const ConversionPreferences& preferences) override;
 
   // Clears conversion segments, but keep the context.
   void Cancel() override;
@@ -282,6 +284,8 @@ class EngineConverter : public EngineConverterInterface {
   void SegmentFocus();
 
   // Notifies the converter that the current segment is fixed.
+  // Sets the segment type to FIXED_VALUE and moves the selected candidate to
+  // candidate(0).
   void SegmentFix();
 
   // Fixes the conversion of the [0, segments_to_commit -1 ] segments,
@@ -332,6 +336,14 @@ class EngineConverter : public EngineConverterInterface {
 
   // Returns the candidate to be used by the converter.
   const converter::Candidate& GetSelectedCandidate(size_t segment_index) const;
+
+  // Returns the number of segments covered by candidate at segment_index,
+  // clamped to avoid overlapping the focused segment.
+  size_t GetSegmentSpan(size_t segment_index) const;
+
+  // Returns true if the selected candidate on the first segment covers all
+  // conversion segments.
+  bool IsFullSentenceCandidateSelected() const;
 
   // Returns the length of committed candidate's key in characters.
   // True is returned if the selected candidate is successfully committed.

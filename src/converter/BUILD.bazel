@@ -245,7 +245,6 @@ mozc_cc_library(
         ":node_allocator",
         "//dictionary:dictionary_interface",
         "//dictionary:dictionary_token",
-        "//protocol:commands_cc_proto",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -593,6 +592,7 @@ mozc_cc_library(
         "//prediction:result",
         "//protocol:commands_cc_proto",
         "//request:conversion_request",
+        "//request:request_util",
         "//rewriter:rewriter_interface",
         "//transliteration",
         "@com_google_absl//absl/base:core_headers",
@@ -916,7 +916,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":gen_boundary_data_lib",
-        "@io_abseil_py//absl/testing:absltest",
+        "@abseil-py//absl/testing:absltest",
     ],
 )
 

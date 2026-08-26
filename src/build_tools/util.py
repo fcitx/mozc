@@ -194,7 +194,7 @@ class _ZipFileWithPermissions(zipfile.ZipFile):
     # _extract_member is only available in Python3.6 and later.
     # TODO(b/179457623): Support ZipFileWithPermission for Python3.5 and former.
     if hasattr(super(), '_extract_member'):
-      targetpath = super()._extract_member(member, targetpath, pwd)
+      targetpath = super()._extract_member(member, targetpath, pwd)  # pyrefly: ignore[missing-attribute]
 
     attr = member.external_attr >> 16
     if attr != 0:
@@ -202,9 +202,9 @@ class _ZipFileWithPermissions(zipfile.ZipFile):
     return targetpath
 
 
-def ExtractZip(zip_path, out_dir):
+def ExtractZip(zip_path, out_dir, members=None):
   with _ZipFileWithPermissions(zip_path) as zip_file:
-    zip_file.extractall(path=out_dir)
+    zip_file.extractall(path=out_dir, members=members)
 
 
 # ANSI Color sequences
