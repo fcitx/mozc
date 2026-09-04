@@ -3,7 +3,7 @@
 # This file is distributed under the same license as the fcitx5-mozc package.
 #
 # Translators:
-# Huy Võ <hoanghuy309@gmail.com>, 2026
+# Daniel Nylander <po@danielnylander.se>, 2026
 #
 msgid ""
 msgstr ""
@@ -11,129 +11,130 @@ msgstr ""
 "Report-Msgid-Bugs-To: fcitx-dev@googlegroups.com\n"
 "POT-Creation-Date: 2026-09-04 20:24+0000\n"
 "PO-Revision-Date: 2017-11-23 05:28+0000\n"
-"Last-Translator: Huy Võ <hoanghuy309@gmail.com>, 2026\n"
-"Language-Team: Vietnamese (https://app.transifex.com/fcitx/teams/12005/vi/)\n"
-"Language: vi\n"
+"Last-Translator: Daniel Nylander <po@danielnylander.se>, 2026\n"
+"Language-Team: Swedish (https://app.transifex.com/fcitx/teams/12005/sv/)\n"
+"Language: sv\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=1; plural=0;\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #: mozc_engine.h:64
 msgid "Follow Global Configuration"
-msgstr "Theo Cấu Hình Chung"
+msgstr "Följ den globala konfigurationen"
 
 #: mozc_engine.h:64
 msgid "All"
-msgstr "Tất cả"
+msgstr "Alla"
 
 #: mozc_engine.h:65
 msgid "Program"
-msgstr "Chương trình"
+msgstr "Program"
 
 #: mozc_engine.h:65
 msgid "No"
-msgstr ""
+msgstr "Nej"
 
 #: mozc_engine.h:67
 msgid "Always"
-msgstr ""
+msgstr "Alltid"
 
 #: mozc_engine.h:67
 msgid "On Focus"
-msgstr ""
+msgstr "Vid fokusering"
 
 #: mozc_engine.h:68
 msgid "Hotkey"
-msgstr ""
+msgstr "Snabbtangent"
 
 #: mozc_engine.h:70 mozc_engine.cc:65
 msgid "Direct"
-msgstr ""
+msgstr "Direkt"
 
 #. Hiragana letter A in UTF-8.
 #: mozc_engine.h:70 mozc_engine.cc:72
 msgid "Hiragana"
-msgstr ""
+msgstr "Hiragana"
 
 #. Katakana letter A.
 #: mozc_engine.h:71 mozc_engine.cc:79
 msgid "Full Katakana"
-msgstr ""
+msgstr "Katakana med full bredd"
 
 #: mozc_engine.h:71 mozc_engine.cc:87
 msgid "Half ASCII"
-msgstr ""
+msgstr "ASCII med halv bredd"
 
 #. Full width ASCII letter A.
 #: mozc_engine.h:72 mozc_engine.cc:95
 msgid "Full ASCII"
-msgstr ""
+msgstr "ASCII med full bredd"
 
 #. Half width Katakana letter A.
 #: mozc_engine.h:72 mozc_engine.cc:102
 msgid "Half Katakana"
-msgstr ""
+msgstr "Katakana med halv bredd"
 
 #: mozc_engine.h:82
 msgid "Initial Mode"
-msgstr ""
+msgstr "Startläge"
 
 #: mozc_engine.h:85
 msgid "Shared Input State"
-msgstr ""
+msgstr "Delat inmatningstillstånd"
 
 #: mozc_engine.h:87
 msgid "Vertical candidate list"
-msgstr ""
+msgstr "Vertikal kandidatlista"
 
 #: mozc_engine.h:91
 msgid "Expand Usage (Requires vertical candidate list)"
-msgstr ""
+msgstr "Visa användningsinformation (kräver vertikal kandidatlista)"
 
 #: mozc_engine.h:95
 msgid "Fix embedded preedit cursor at the beginning of the preedit"
 msgstr ""
+"Korrigera den inbäddade förredigeringsmarkören till början av förredigeringen"
 
 #: mozc_engine.h:97
 msgid "Hotkey to expand usage"
-msgstr ""
+msgstr "Snabbtangent för att visa användningsinformation"
 
 #: mozc_engine.h:100 mozc_engine.cc:184
 msgid "Configuration Tool"
-msgstr "Công Cụ Cấu Hình"
+msgstr "Konfigurationsverktyg"
 
 #: mozc_engine.h:102 mozc_engine.cc:192
 msgid "Dictionary Tool"
-msgstr ""
+msgstr "Ordboksverktyg"
 
 #: mozc_engine.h:104 mozc_engine.cc:200
 msgid "Add Word"
-msgstr ""
+msgstr "Lägg till ord"
 
 #: mozc_engine.h:106 mozc_engine.cc:207
 msgid "About Mozc"
-msgstr ""
+msgstr "Om Mozc"
 
 #. We don't have a good library option for this, just do the simple
 #. replace. absl's runtime parsed format string is too copmlex.
 #: mozc_response_parser.cc:189
 #, c-format
 msgid "Press %s to show usages."
-msgstr ""
+msgstr "Tryck på %s för att visa användningsinformation."
 
 #: mozc_engine.cc:156 mozc_engine.cc:157
 msgid "Mozc Settings"
-msgstr ""
+msgstr "Mozc-inställningar"
 
 #: mozc_state.cc:460
 msgid "Press Escape to go back"
-msgstr ""
+msgstr "Tryck på Esc för att gå tillbaka"
 
 #: org.fcitx.Fcitx5.Addon.Mozc.metainfo.xml.in:7
 msgid "Mozc for Fcitx 5"
-msgstr ""
+msgstr "Mozc för Fcitx 5"
 
 #: org.fcitx.Fcitx5.Addon.Mozc.metainfo.xml.in:8
 msgid "Japanese input method based on Mozc"
-msgstr "Kiểu gõ Tiếng Nhật dựa trên Mozc"
+msgstr "Japansk inmatningsmetod baserad på Mozc"
