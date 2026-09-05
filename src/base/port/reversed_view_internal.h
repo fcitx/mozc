@@ -27,42 +27,62 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef MOZC_PREDICTION_SINGLE_KANJI_DECODER_H_
-#define MOZC_PREDICTION_SINGLE_KANJI_DECODER_H_
+#ifndef MOZC_BASE_PORT_REVERSED_VIEW_INTERNAL_H_
+#define MOZC_BASE_PORT_REVERSED_VIEW_INTERNAL_H_
 
-#include <cstdint>
-#include <string>
-#include <vector>
+#include <iterator>
 
-#include "absl/base/attributes.h"
-#include "absl/strings/string_view.h"
-#include "dictionary/pos_matcher.h"
-#include "dictionary/single_kanji_dictionary.h"
-#include "prediction/result.h"
-#include "request/conversion_request.h"
+namespace mozc {
+namespace port {
+namespace internal {
 
-namespace mozc::prediction {
-
-class SingleKanjiDecoder {
+// A wrapper class that provides a reversed view of a container.
+//
+// This class is intended to be used as a handy port of
+// std::ranges::reverse_view in C++20.
+template <typename Container>
+class ReversedView {
  public:
-  SingleKanjiDecoder(
-      const dictionary::PosMatcher& pos_matcher ABSL_ATTRIBUTE_LIFETIME_BOUND,
-      const dictionary::SingleKanjiDictionary& single_kanji_dictionary
-          ABSL_ATTRIBUTE_LIFETIME_BOUND);
-  virtual ~SingleKanjiDecoder();
+  constexpr explicit ReversedView(Container& container)
+      : container_(container) {}
 
-  virtual std::vector<Result> Decode(const ConversionRequest& request) const;
+  constexpr auto begin() const {
+    using std::rbegin;
+    return rbegin(container_);
+  }
+
+  constexpr auto end() const {
+    using std::rend;
+    return rend(container_);
+  }
+
+  constexpr auto rbegin() const {
+    using std::begin;
+    return begin(container_);
+  }
+
+  constexpr auto rend() const {
+    using std::end;
+    return end(container_);
+  }
 
  private:
-  void AppendResults(absl::string_view kanji_key,
-                     absl::string_view original_request_key,
-                     std::vector<std::string> kanji_list, int offset,
-                     std::vector<Result>* results) const;
-
-  const dictionary::SingleKanjiDictionary& single_kanji_dictionary_;
-  const uint16_t general_symbol_id_ = 0;
+  Container& container_;
 };
 
-}  // namespace mozc::prediction
+template <typename Container>
+constexpr ReversedView<Container> reversed_view(Container& container) {
+  return ReversedView<Container>(container);
+}
 
-#endif  // MOZC_PREDICTION_SINGLE_KANJI_DECODER_H_
+template <typename Container>
+constexpr ReversedView<const Container> reversed_view(
+    const Container& container) {
+  return ReversedView<const Container>(container);
+}
+
+}  // namespace internal
+}  // namespace port
+}  // namespace mozc
+
+#endif  // MOZC_BASE_PORT_REVERSED_VIEW_INTERNAL_H_

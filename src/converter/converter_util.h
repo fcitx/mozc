@@ -90,9 +90,12 @@ std::vector<prediction::Result> MakeLearningResultsFromSegments(
 prediction::Result CandidateToResult(const Candidate& candidate);
 
 // Populates Candidate fields from a prediction::Result.
+// Takes Result by value to allow callers to std::move() strings (key, value,
+// description, display_value) and inner_segment_boundary directly into
+// Candidate without duplicate heap allocations.
 //
 // Boundary handling:
-// - Copies result.inner_segment_boundary directly to
+// - Moves result.inner_segment_boundary directly to
 //   candidate->inner_segment_boundary.
 // - Automatically updates candidate->content_key and candidate->content_value
 //   from result.inner_segments().GetMergedContentKeyAndValue().
@@ -101,7 +104,7 @@ prediction::Result CandidateToResult(const Candidate& candidate);
 // content_key/value, cost, wcost, lid, rid, attributes, consumed_key_size,
 // inner_segment_boundary, description, display_value). Pre-existing Candidate
 // metadata (such as category, command, usage_id, prefix, suffix) is preserved.
-void PopulateCandidateFromResult(const prediction::Result& result,
+void PopulateCandidateFromResult(prediction::Result result,
                                  Candidate* candidate);
 
 // Prepares Segments containing HISTORY segments and a new conversion segment
@@ -112,6 +115,21 @@ void PopulateCandidateFromResult(const prediction::Result& result,
 // inner segment into an independent HISTORY Segment with its respective key,
 // value, content_key, and content_value.
 Segments PrepareSegmentsFromRequest(const ConversionRequest& request);
+
+// Merges user history prediction results and post-correction (supplemental
+// model) results into a single list with deduplication.
+//
+// Ordering rules:
+// - Default: Prioritizes user history results over post-correction results.
+// - Weak history: If the top user history candidate is weak (has
+//   Attribute::WEAK_USER_HISTORY_PREDICTION), the top post-correction/default
+//   result is prioritized at position 0 to prevent low-confidence history from
+//   overriding Viterbi/PostCorrect, and history candidates are demoted to
+//   subsequent positions (consistent with Predictor::DemoteWeakUserHistory).
+// - Deduplication: Candidates with duplicate values (spellings) are skipped.
+std::vector<prediction::Result> MergePredictionResults(
+    std::vector<prediction::Result> user_history_results,
+    std::vector<prediction::Result> pc_results);
 
 }  // namespace mozc::converter
 
