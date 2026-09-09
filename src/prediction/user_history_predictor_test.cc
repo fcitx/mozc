@@ -43,6 +43,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/random/random.h"
@@ -5145,6 +5146,175 @@ TEST_F(UserHistoryPredictorTest, RemoveRedundantCandidates) {
            {"東京", "東京駅", "大阪駅", "大阪"});
   run_test({"東京は", "東京", "大阪", "大阪駅"}, {"東京", "大阪", "大阪駅"});
   run_test({"東京", "東京は", "大阪駅", "大阪"}, {"東京", "大阪駅", "大阪"});
+}
+
+TEST_F(UserHistoryPredictorTest, NumberCounterSuffixPrecedingHistory) {
+  UserHistoryPredictor* predictor = GetUserHistoryPredictorWithClearedHistory();
+  SegmentsProxy segments_proxy;
+
+  // 1. Commit "3" -> "3", then commit "かい" -> "階" (preceded by number).
+  {
+    const ConversionRequest convreq_num =
+        SetUpInputForPrediction("3", &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, "3");
+    predictor->Finish(convreq_num, segments_proxy.MakeLearningResults(),
+                      kRevertId);
+
+    const ConversionRequest convreq_kai =
+        SetUpInputForPrediction("かい", &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, "階");
+    segments_proxy.PrependHistory("3", "3");
+    predictor->Finish(convreq_kai, segments_proxy.MakeLearningResults(),
+                      kRevertId + 1);
+
+    UserHistoryPredictorTestPeer predictor_peer(*predictor);
+    auto entry = predictor_peer.storage_().Lookup("かい", "階");
+    ASSERT_TRUE(entry);
+    EXPECT_TRUE(entry->entry_flags() &
+                UserHistoryPredictor::ENTRY_FLAG_LEFT_NUMBER);
+  }
+
+  // Sleep 1 second to ensure different last_access_time.
+  absl::SleepFor(absl::Seconds(1));
+
+  // 2. Commit "かい" -> "会" (non-counter homophone) without preceding number,
+  // so "会" is more recent in LRU and does NOT have ENTRY_FLAG_LEFT_NUMBER.
+  {
+    const ConversionRequest convreq =
+        SetUpInputForPrediction("かい", &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, "会");
+    predictor->Finish(convreq, segments_proxy.MakeLearningResults(),
+                      kRevertId + 2);
+
+    UserHistoryPredictorTestPeer predictor_peer(*predictor);
+    auto entry = predictor_peer.storage_().Lookup("かい", "会");
+    ASSERT_TRUE(entry);
+    EXPECT_FALSE(entry->entry_flags() &
+                 UserHistoryPredictor::ENTRY_FLAG_LEFT_NUMBER);
+  }
+
+  // 3. Commit "5" -> "5" (pure number).
+  {
+    constexpr absl::string_view kKey = "5";
+    constexpr absl::string_view kValue = "5";
+    const ConversionRequest convreq =
+        SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, kValue);
+    predictor->Finish(convreq, segments_proxy.MakeLearningResults(),
+                      kRevertId + 3);
+  }
+
+  // 4. Query "かい" with history "5" -> "5".
+  // "階" should be boosted with BIGRAM attribute and ranked above "会",
+  // even though "会" was used more recently.
+  {
+    const ConversionRequest convreq = SetUpInputForPredictionWithHistory(
+        "かい", "5", "5", &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    ASSERT_FALSE(results.empty());
+    EXPECT_EQ(results[0].value, "階");
+    EXPECT_TRUE(results[0].attributes & converter::Attribute::BIGRAM);
+
+    // "会" should not have BIGRAM attribute.
+    auto it_kai = absl::c_find_if(
+        results, [](const Result& r) { return r.value == "会"; });
+    if (it_kai != results.end()) {
+      EXPECT_FALSE(it_kai->attributes & converter::Attribute::BIGRAM);
+    }
+  }
+
+  // 5. Zero-query suggestion after "5".
+  // "階" should be suggested as zero query because it is a counter suffix,
+  // whereas "会" should not be suggested.
+  {
+    request_.set_zero_query_suggestion(true);
+    request_.set_mixed_conversion(true);
+    const ConversionRequest convreq = SetUpInputForSuggestionWithHistory(
+        "", "5", "5", &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    auto it_floor = absl::c_find_if(
+        results, [](const Result& r) { return r.value == "階"; });
+    ASSERT_NE(it_floor, results.end());
+    EXPECT_EQ(it_floor->value, "階");
+    EXPECT_TRUE(it_floor->attributes & converter::Attribute::BIGRAM);
+
+    auto it_meet = absl::c_find_if(
+        results, [](const Result& r) { return r.value == "会"; });
+    EXPECT_EQ(it_meet, results.end());
+  }
+
+  // 6. When preceding history is NOT a number (e.g. "東京"),
+  // "会" should be ranked #1 (due to recency) and "階" should NOT have BIGRAM
+  // attribute.
+  {
+    const ConversionRequest convreq_tokyo =
+        SetUpInputForPrediction("とうきょう", &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, "東京");
+    predictor->Finish(convreq_tokyo, segments_proxy.MakeLearningResults(),
+                      kRevertId + 4);
+
+    const ConversionRequest convreq = SetUpInputForPredictionWithHistory(
+        "かい", "とうきょう", "東京", &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    ASSERT_FALSE(results.empty());
+    EXPECT_EQ(results[0].value, "会");
+
+    auto it_floor = absl::c_find_if(
+        results, [](const Result& r) { return r.value == "階"; });
+    if (it_floor != results.end()) {
+      EXPECT_FALSE(it_floor->attributes & converter::Attribute::BIGRAM);
+    }
+  }
+
+  // 7. When there is NO preceding history at all (isolated query),
+  // it also falls back to simple LRU: "会" (#1) > "階" (#2).
+  {
+    const ConversionRequest convreq =
+        SetUpInputForPrediction("かい", &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    ASSERT_GE(results.size(), 2);
+    EXPECT_EQ(results[0].value, "会");
+    EXPECT_EQ(results[1].value, "階");
+    EXPECT_FALSE(results[0].attributes & converter::Attribute::BIGRAM);
+    EXPECT_FALSE(results[1].attributes & converter::Attribute::BIGRAM);
+  }
+}
+
+TEST_F(UserHistoryPredictorTest, BracketPairLearning) {
+  UserHistoryPredictor* predictor = GetUserHistoryPredictorWithClearedHistory();
+  SegmentsProxy segments_proxy;
+
+  // 1. Commit open bracket "「" -> "『".
+  {
+    constexpr absl::string_view kKey = "「";
+    constexpr absl::string_view kValue = "『";
+    const ConversionRequest convreq =
+        SetUpInputForPrediction(kKey, &composer_, &segments_proxy);
+    segments_proxy.AddCandidate(0, kValue);
+    predictor->Finish(convreq, segments_proxy.MakeLearningResults(), kRevertId);
+  }
+
+  // 2. Predict for close bracket "」" -> "』" should be suggested.
+  {
+    const ConversionRequest convreq =
+        SetUpInputForPrediction("」", &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    ASSERT_FALSE(results.empty());
+    EXPECT_EQ(results.front().key, "」");
+    EXPECT_EQ(results.front().value, "』");
+  }
+
+  // 3. Revert open bracket -> close bracket should also be removed.
+  {
+    predictor->Revert(kRevertId);
+    const ConversionRequest convreq =
+        SetUpInputForPrediction("」", &composer_, &segments_proxy);
+    const std::vector<Result> results = predictor->Predict(convreq);
+    auto it = absl::c_find_if(results, [](const Result& r) {
+      return r.key == "」" && r.value == "』";
+    });
+    EXPECT_EQ(it, results.end());
+  }
 }
 
 TEST_F(UserHistoryPredictorTest, ContentValueZeroQuery) {

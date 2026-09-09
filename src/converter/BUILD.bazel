@@ -280,8 +280,20 @@ mozc_cc_library(
     deps = [
         ":connector",
         "//dictionary:pos_matcher",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
+    ],
+)
+
+mozc_cc_test(
+    name = "caching_connector_test",
+    srcs = ["caching_connector_test.cc"],
+    deps = [
+        ":caching_connector",
+        ":connector",
+        "//data_manager/testing:mock_data_manager",
+        "//dictionary:pos_matcher",
+        "//engine:modules",
+        "//testing:gunit_main",
     ],
 )
 

@@ -598,6 +598,32 @@ mozc_cc_library(
     ],
 )
 
+mozc_cc_library(
+    name = "pos_id_map",
+    srcs = ["pos_id_map.cc"],
+    hdrs = ["pos_id_map.h"],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+mozc_cc_test(
+    name = "pos_id_map_test",
+    size = "small",
+    srcs = ["pos_id_map_test.cc"],
+    data = [
+        "//data_manager/testing:mozc_dataset_for_testing@pos_id_map",
+    ],
+    deps = [
+        ":pos_id_map",
+        "//testing:gunit",
+        "//testing:gunit_main",
+        "//testing:mozctest",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 mozc_py_binary(
     name = "gen_pos_id_map",
     srcs = ["gen_pos_id_map.py"],

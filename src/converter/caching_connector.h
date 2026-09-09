@@ -35,7 +35,6 @@
 #include <cstdint>
 #include <limits>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "converter/connector.h"
 #include "dictionary/pos_matcher.h"
@@ -58,12 +57,11 @@ namespace mozc {
 //     transition cost = connector.GetTransitionCost(l.rid, r.lid)
 //     ...
 //
-// Therefore, in the inner loop, `r.lid` is fixed. So we can simply use an array
-// to cache the transition cost for (l.rid, r.lid) in `cache[l.rid]`, and cache
-// is reset before the inner loop. Moreover, right nodes are likely to be
-// ordered by `r.lid` although it's not guaranteed in general. This fact is plus
-// for this caching strategy as we only need to reset the cache if `r.lid` is
-// different from the previous value.
+// Therefore, in the inner loop, `r.lid` is fixed. We cache the transition cost
+// for (l.rid, r.lid) in `cache[l.rid]`, tagged with `r.lid`. This tag-based
+// cache avoids clearing the entire cache array when `r.lid` changes, completely
+// eliminating memset overhead during Viterbi DP, while allowing cached entries
+// to be reused when the same `r.lid` appears again.
 //
 // NOTE: This class is designed for Viterbi or A* search algorithms (which have
 // a similar nested loop access pattern) and won't work for other purposes.
@@ -76,52 +74,12 @@ namespace mozc {
 // applicable (e.g., noun-to-noun) or such transitions do not occur in practice.
 // Thus, applying the bonus only within this class is sufficient to maintain
 // cost consistency.
+//
+// The template parameter `kHasBonus` controls whether the transition cost bonus
+// is applied. `if constexpr` is used internally to eliminate runtime overhead
+// when the bonus is disabled.
 template <bool kHasBonus>
-class CachingConnector;
-
-template <>
-class CachingConnector<false> final {
- public:
-  CachingConnector(const Connector& connector,
-                   int particle_omission_transition_cost_bonus,
-                   const dictionary::PosMatcher& pos_matcher)
-      : connector_(connector) {}
-
-  CachingConnector(const CachingConnector&) = delete;
-  CachingConnector& operator=(const CachingConnector&) = delete;
-
-  void ResetCacheIfNecessary(uint16_t rnode_lid) {
-    if (cache_lid_ != rnode_lid) {
-      absl::c_fill(cache_, -1);
-      cache_lid_ = rnode_lid;
-    }
-  }
-
-  int GetTransitionCost(uint16_t lnode_rid, uint16_t rnode_lid) {
-    DCHECK_EQ(cache_lid_, rnode_lid);
-    // Values for rid >= kCacheSize cannot be cached. However, frequent PoSs
-    // have smaller IDs, so caching only for rid in [0, kCacheSize) works well.
-    if (lnode_rid >= kCacheSize) {
-      return connector_.GetTransitionCost(lnode_rid, rnode_lid);
-    }
-    if (cache_[lnode_rid] != -1) {
-      return cache_[lnode_rid];
-    }
-    int cost = connector_.GetTransitionCost(lnode_rid, rnode_lid);
-    cache_[lnode_rid] = cost;
-    return cost;
-  }
-
- private:
-  constexpr static int kCacheSize = 2048;
-
-  const Connector& connector_;
-  std::array<int, kCacheSize> cache_;
-  uint16_t cache_lid_ = std::numeric_limits<uint16_t>::max();
-};
-
-template <>
-class CachingConnector<true> final {
+class CachingConnector final {
  public:
   CachingConnector(const Connector& connector,
                    int particle_omission_transition_cost_bonus,
@@ -134,51 +92,70 @@ class CachingConnector<true> final {
   CachingConnector(const CachingConnector&) = delete;
   CachingConnector& operator=(const CachingConnector&) = delete;
 
+  // Prepares the cache for the inner loop where `rnode_lid` is fixed.
+  // When bonus is enabled, precomputes whether the right node is a bonus
+  // target.
   void ResetCacheIfNecessary(uint16_t rnode_lid) {
     if (cache_lid_ != rnode_lid) {
-      absl::c_fill(cache_, -1);
       cache_lid_ = rnode_lid;
-      is_right_node_target_ =
-          (particle_omission_transition_cost_bonus_ > 0) &&
-          pos_matcher_.IsContentWordWithConjugation(rnode_lid);
+      if constexpr (kHasBonus) {
+        is_right_node_target_ =
+            (particle_omission_transition_cost_bonus_ > 0) &&
+            pos_matcher_.IsContentWordWithConjugation(rnode_lid);
+      }
     }
   }
 
   int GetTransitionCost(uint16_t lnode_rid, uint16_t rnode_lid) {
     DCHECK_EQ(cache_lid_, rnode_lid);
     // Values for rid >= kCacheSize cannot be cached. However, frequent PoSs
-    // have smaller IDs, so caching only for rid in [0, kCacheSize) works
-    // well.
+    // have smaller IDs, so caching only for rid in [0, kCacheSize) works well.
     if (lnode_rid >= kCacheSize) {
-      int cost = connector_.GetTransitionCost(lnode_rid, rnode_lid);
-      return ApplyBonus(cost, lnode_rid);
+      const int cost = connector_.GetTransitionCost(lnode_rid, rnode_lid);
+      if constexpr (kHasBonus) {
+        return ApplyBonus(cost, lnode_rid);
+      } else {
+        return cost;
+      }
     }
 
-    if (cache_[lnode_rid] != -1) {
-      return cache_[lnode_rid];
+    const CacheEntry& entry = cache_[lnode_rid];
+    if (entry.lid == rnode_lid) {
+      return entry.cost;
     }
 
     int cost = connector_.GetTransitionCost(lnode_rid, rnode_lid);
-    cost = ApplyBonus(cost, lnode_rid);
-    cache_[lnode_rid] = cost;
+    if constexpr (kHasBonus) {
+      cost = ApplyBonus(cost, lnode_rid);
+    }
+    cache_[lnode_rid] = {rnode_lid, cost};
     return cost;
   }
 
  private:
   int ApplyBonus(int cost, uint16_t lnode_rid) const {
-    if (is_right_node_target_ && (pos_matcher_.IsContentNoun(lnode_rid) ||
-                                  pos_matcher_.IsPronoun(lnode_rid))) {
-      return std::max(0, cost - particle_omission_transition_cost_bonus_);
+    if constexpr (kHasBonus) {
+      if (is_right_node_target_ && (pos_matcher_.IsContentNoun(lnode_rid) ||
+                                    pos_matcher_.IsPronoun(lnode_rid))) {
+        return std::max(0, cost - particle_omission_transition_cost_bonus_);
+      }
     }
     return cost;
   }
-  constexpr static int kCacheSize = 2048;
+
+  static constexpr uint16_t kInvalidLid = std::numeric_limits<uint16_t>::max();
+  static constexpr int kCacheSize = 2048;
+
+  struct CacheEntry {
+    uint16_t lid = kInvalidLid;
+    int cost = 0;
+  };
 
   const Connector& connector_;
   const int particle_omission_transition_cost_bonus_;
   const dictionary::PosMatcher& pos_matcher_;
-  std::array<int, kCacheSize> cache_;
-  uint16_t cache_lid_ = std::numeric_limits<uint16_t>::max();
+  std::array<CacheEntry, kCacheSize> cache_{};
+  uint16_t cache_lid_ = kInvalidLid;
   bool is_right_node_target_ = false;
 };
 

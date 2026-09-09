@@ -28,10 +28,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-"""A tool to generate POS ID map binary data from id.def."""
-
-import struct
-
 from absl import app
 from absl import flags
 
@@ -58,34 +54,21 @@ def ParseIdDef(id_def_path: str) -> dict[int, str]:
 
 
 def GeneratePosIdMapBinary(id_map: dict[int, str], output_path: str) -> None:
-  """Generates pos_id_map binary data."""
+  """Generates pos_id_map binary data as null-separated strings."""
   pos_ids = sorted(id_map.keys())
   if not pos_ids:
     raise ValueError('id.def must contain at least one valid POS ID.')
+  if pos_ids != list(range(len(pos_ids))):
+    raise ValueError('POS IDs in id.def must be contiguous and start from 0.')
 
-  max_pos_id = pos_ids[-1]
-  # Provide +1 to accommodate pos_ids from 0 to max_pos_id
-  pos_id_count = max_pos_id + 1
-  offsets = [0] * pos_id_count
-  string_data: list[bytes] = []
-
-  # The offset is the absolute byte offset from the beginning of this
-  # pos_id_map.data file (which becomes a section in mozc.data), NOT from
-  # the beginning of the string buffer.
-  current_offset = 4 + 4 * pos_id_count
-  for pos_id in range(pos_id_count):
-    offsets[pos_id] = current_offset
-    utf8_str = id_map[pos_id].encode('utf-8') + b'\0'
-    string_data.append(utf8_str)
-    current_offset += len(utf8_str)
-
-  string_buffer = b''.join(string_data)
+  pos_id_count = len(pos_ids)
+  string_data = [
+      id_map[pos_id].encode('utf-8') for pos_id in range(pos_id_count)
+  ]
+  data = b'\0'.join(string_data)
 
   with open(output_path, 'wb') as output:
-    output.write(struct.pack('<I', pos_id_count))
-    for pos_id in range(pos_id_count):
-      output.write(struct.pack('<I', offsets[pos_id]))
-    output.write(string_buffer)
+    output.write(data)
 
 
 def main(argv: list[str]) -> None:

@@ -113,6 +113,15 @@ class UserHistoryPredictor : public PredictorInterface {
   using EntrySnapshot = UserHistoryStorage::EntrySnapshot;
   using ConstEntrySnapshot = UserHistoryStorage::ConstEntrySnapshot;
 
+  // This field is going to be serialized to storage.
+  enum EntryFlag : uint32_t {
+    ENTRY_FLAG_NONE = 0,
+    // Set when this entry was committed following a number (e.g. 階, 回, 人).
+    // Corresponds to legacy UserSegmentHistoryRewriter's "LN" (Left Number)
+    // feature.
+    ENTRY_FLAG_LEFT_NUMBER = 1 << 0,
+  };
+
  private:
   struct SegmentForLearning {
     // The string byte offset of key and value on result.(key|value).
@@ -208,8 +217,11 @@ class UserHistoryPredictor : public PredictorInterface {
   static std::optional<int> GetBigramEntryLruOrder(const Entry& entry,
                                                    const Entry& prev_entry);
 
-  // Returns true if prev_entry has a next_fp link to entry
-  static bool HasBigramEntry(const Entry& entry, const Entry& prev_entry);
+  // Returns true if prev_entry has a next_fp link to entry,
+  // or entry is a counter suffix following a number in request.
+  static bool HasBigramEntry(const ConversionRequest& request,
+                             const Entry& entry,
+                             const Entry* absl_nullable prev_entry);
 
   // Rewrite the prefix white spaces in result.(value|key) to
   // full or half width form depending on the config.
@@ -440,7 +452,8 @@ class UserHistoryPredictor : public PredictorInterface {
               absl::string_view value, absl::string_view description,
               converter::InnerSegmentBoundarySpan inner_segment_boundary,
               absl::Span<const uint64_t> next_fps, bool allow_partial_match,
-              uint64_t last_access_time, RevertEntries& revert_entries);
+              uint64_t last_access_time, RevertEntries& revert_entries,
+              uint32_t entry_flags = 0);
 
   // Inserts a new |fp| into |entry|.
   // it makes a bigram connection from entry to next_entry.
