@@ -310,8 +310,7 @@ bool MozcState::Paging(bool prev) {
            : mozc::commands::SessionCommand::CONVERT_NEXT_PAGE;
   mozc::commands::Output raw_response;
   if (TrySendCommand(command, &raw_response, &error)) {
-    engine_->parser()->ParseResponse(raw_response, ic_);
-    return true;
+    return ParseResponse(raw_response);
   }
   return false;
 }
