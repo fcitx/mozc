@@ -39,6 +39,7 @@
 #include "data_manager/data_manager.h"
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/pos_group.h"
+#include "dictionary/pos_id_map.h"
 #include "dictionary/pos_matcher.h"
 #include "dictionary/single_kanji_dictionary.h"
 #include "engine/supplemental_model_interface.h"
@@ -68,6 +69,11 @@ class Modules {
   const dictionary::PosMatcher& GetPosMatcher() const {
     DCHECK(pos_matcher_);
     return *pos_matcher_;
+  }
+
+  const dictionary::PosIdMap& GetPosIdMap() const {
+    DCHECK(pos_id_map_);
+    return *pos_id_map_;
   }
 
   const Connector& GetConnector() const { return connector_; }
@@ -132,6 +138,7 @@ class Modules {
 
   std::unique_ptr<const DataManager> data_manager_;
   std::unique_ptr<const dictionary::PosMatcher> pos_matcher_;
+  std::unique_ptr<const dictionary::PosIdMap> pos_id_map_;
   Connector connector_;
   std::unique_ptr<const Segmenter> segmenter_;
   std::unique_ptr<dictionary::UserDictionaryInterface> user_dictionary_;
@@ -159,6 +166,8 @@ class ModulesPresetBuilder {
   // Preset functions must be called before Build().
   ModulesPresetBuilder& PresetPosMatcher(
       std::unique_ptr<const dictionary::PosMatcher> pos_matcher);
+  ModulesPresetBuilder& PresetPosIdMap(
+      std::unique_ptr<const dictionary::PosIdMap> pos_id_map);
   ModulesPresetBuilder& PresetUserDictionary(
       std::unique_ptr<dictionary::UserDictionaryInterface> user_dictionary);
   ModulesPresetBuilder& PresetSuffixDictionary(

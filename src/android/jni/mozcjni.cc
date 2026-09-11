@@ -182,7 +182,7 @@ jstring JNICALL getDataVersion(JNIEnv* env) {
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
-Java_com_google_android_apps_inputmethod_libs_mozc_session_MozcJNI_initialize(
+Java_com_google_android_apps_inputmethod_libs_mozc_session_MozcJni_initialize(
     JNIEnv* env, jclass clazz) {
   if (!env) {
     // Fatal error. No way to recover.

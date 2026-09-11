@@ -154,6 +154,7 @@ mozc_cc_library(
         "//dictionary:dictionary_impl",
         "//dictionary:dictionary_interface",
         "//dictionary:pos_group",
+        "//dictionary:pos_id_map",
         "//dictionary:pos_matcher",
         "//dictionary:single_kanji_dictionary",
         "//dictionary:suffix_dictionary",
@@ -184,6 +185,7 @@ mozc_cc_test(
         "//data_manager/testing:mock_data_manager",
         "//dictionary:dictionary_interface",
         "//dictionary:dictionary_mock",
+        "//dictionary:pos_id_map",
         "//dictionary:pos_matcher",
         "//testing:gunit_main",
     ] + mozc_select_enable_supplemental_model([

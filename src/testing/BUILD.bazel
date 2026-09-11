@@ -84,7 +84,10 @@ mozc_cc_library(
         ":gunit",
         "@com_google_absl//absl/flags:flag",
     ] + mozc_select(
-        default = ["//testing/base/public:gunit_main"],
+        default = [
+            "//testing/base/public:gunit_main",
+            "@com_google_absl//absl/base:core_headers",
+        ],
         oss = ["@google_benchmark//:benchmark"],
     ) + mozc_select(
         client = ["//base:init_mozc"],

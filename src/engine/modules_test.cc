@@ -35,16 +35,20 @@
 #include "data_manager/testing/mock_data_manager.h"
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/dictionary_mock.h"
+#include "dictionary/pos_id_map.h"
 #include "dictionary/pos_matcher.h"
 #include "engine/supplemental_model_interface.h"
+#include "testing/gmock.h"
 #include "testing/gunit.h"
 
 namespace mozc {
 namespace engine {
 
 TEST(ModulesTest, CreateTest) {
-  std::unique_ptr<const engine::Modules> modules =
-      Modules::Create(std::make_unique<testing::MockDataManager>()).value();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const engine::Modules> modules,
+      Modules::Create(std::make_unique<testing::MockDataManager>()));
+  EXPECT_GT(modules->GetPosIdMap().GetPosIdCount(), 0);
 }
 
 TEST(ModulesTest, BuildTwiceTest) {
@@ -63,6 +67,11 @@ TEST(ModulesTest, PresetTest) {
       mock_data_manager.GetPosMatcherData());
   const dictionary::PosMatcher* pos_matcher_ptr = pos_matcher.get();
 
+  // PosIdMap
+  auto pos_id_map = std::make_unique<dictionary::PosIdMap>(
+      mock_data_manager.GetPosIdMapData());
+  const dictionary::PosIdMap* pos_id_map_ptr = pos_id_map.get();
+
   // UserDictionary
   auto user_dictionary = std::make_unique<dictionary::MockUserDictionary>();
   const dictionary::MockUserDictionary* user_dictionary_ptr =
@@ -77,26 +86,30 @@ TEST(ModulesTest, PresetTest) {
   auto dictionary = std::make_unique<dictionary::MockDictionary>();
   const dictionary::DictionaryInterface* dictionary_ptr = dictionary.get();
 
-  std::unique_ptr<const engine::Modules> modules =
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<const engine::Modules> modules,
       ModulesPresetBuilder()
           .PresetPosMatcher(std::move(pos_matcher))
+          .PresetPosIdMap(std::move(pos_id_map))
           .PresetUserDictionary(std::move(user_dictionary))
           .PresetSuffixDictionary(std::move(suffix_dictionary))
           .PresetDictionary(std::move(dictionary))
-          .Build(std::make_unique<testing::MockDataManager>())
-          .value();
+          .Build(std::make_unique<testing::MockDataManager>()));
 
   EXPECT_EQ(&modules->GetPosMatcher(), pos_matcher_ptr);
+  EXPECT_EQ(&modules->GetPosIdMap(), pos_id_map_ptr);
   EXPECT_EQ(&modules->GetUserDictionary(), user_dictionary_ptr);
   EXPECT_EQ(&modules->GetSuffixDictionary(), suffix_dictionary_ptr);
   EXPECT_EQ(&modules->GetDictionary(), dictionary_ptr);
 }
 
 TEST(ModulesTest, SupplementalModelTest) {
-  std::unique_ptr<Modules> modules1 =
-      Modules::Create(std::make_unique<testing::MockDataManager>()).value();
-  std::unique_ptr<Modules> modules2 =
-      Modules::Create(std::make_unique<testing::MockDataManager>()).value();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Modules> modules1,
+      Modules::Create(std::make_unique<testing::MockDataManager>()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Modules> modules2,
+      Modules::Create(std::make_unique<testing::MockDataManager>()));
 
   // Returns the same non-null static instance by default.
   EXPECT_TRUE(&modules1->GetSupplementalModel());
@@ -107,19 +120,20 @@ TEST(ModulesTest, SupplementalModelTest) {
   // TODO(taku): Avoid sharing the pointer of std::unique_ptr.
   const SupplementalModelInterface* supplemental_model_ptr =
       supplemental_model.get();
-  std::unique_ptr<Modules> modules3 =
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Modules> modules3,
       ModulesPresetBuilder()
           .PresetSupplementalModel(std::move(supplemental_model))
-          .Build(std::make_unique<testing::MockDataManager>())
-          .value();
+          .Build(std::make_unique<testing::MockDataManager>()));
 
   EXPECT_NE(&modules1->GetSupplementalModel(),
             &modules3->GetSupplementalModel());
   EXPECT_EQ(supplemental_model_ptr, &modules3->GetSupplementalModel());
 
   // The default static instance is used again.
-  std::unique_ptr<Modules> modules4 =
-      Modules::Create(std::make_unique<testing::MockDataManager>()).value();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Modules> modules4,
+      Modules::Create(std::make_unique<testing::MockDataManager>()));
   EXPECT_EQ(&modules1->GetSupplementalModel(),
             &modules4->GetSupplementalModel());
 }
