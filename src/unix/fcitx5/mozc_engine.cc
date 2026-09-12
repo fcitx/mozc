@@ -182,7 +182,7 @@ MozcEngine::MozcEngine(Instance* instance)
   instance_->userInterfaceManager().registerAction("mozc-tool-config",
                                                    &configToolAction_);
   configToolAction_.setShortText(_("Configuration Tool"));
-  configToolAction_.setIcon("fcitx_mozc_tool");
+  configToolAction_.setIcon("fcitx_mozc_properties");
   configToolAction_.connect<SimpleAction::Activated>([](InputContext*) {
     mozc::Process::SpawnMozcProcess("mozc_tool", "--mode=config_dialog");
   });
