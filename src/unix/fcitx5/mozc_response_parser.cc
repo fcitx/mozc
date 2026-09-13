@@ -75,8 +75,12 @@ uint32_t GetCursorPosition(const mozc::commands::Output& response) {
   return response.preedit().cursor();
 }
 
-std::string CreateDescriptionString(const std::string& description) {
-  return "[" + description + "]";
+void AppendDescriptionString(std::string& comment,
+                             const std::string& description) {
+  if (!comment.empty()) {
+    comment += " ";
+  }
+  comment.append("[").append(description).append("]");
 }
 
 class MozcCandidateWord final : public CandidateWord {
@@ -167,7 +171,7 @@ class MozcCandidateList final : public CandidateList,
           candidate.annotation().has_description()) {
         // Display descriptions ([HALF][KATAKANA], [GREEK], [Black square],
         // etc.) as candidate comments.
-        comment = CreateDescriptionString(candidate.annotation().description());
+        AppendDescriptionString(comment, candidate.annotation().description());
       }
 
       const bool is_current =
@@ -193,7 +197,7 @@ class MozcCandidateList final : public CandidateList,
             std::string msg = _("Press %s to show usages.");
             msg = stringutils::replaceAll(msg, "%s",
                                           engine_->config().expand->toString());
-            comment += CreateDescriptionString(msg);
+            AppendDescriptionString(comment, msg);
           }
         }
       }
