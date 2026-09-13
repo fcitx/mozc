@@ -212,8 +212,13 @@ bool MozcState::ProcessKeyEvent(KeySym sym, uint32_t keycode, KeyStates state,
 
     if (normalized_key.check(Key(FcitxKey_Escape))) {
       displayUsage_ = false;
-      ProcessKeyEvent(FcitxKey_VoidSymbol, 0, KeyState::NoState, layout_is_jp,
-                      false);
+      std::string error;
+      mozc::commands::Output raw_response;
+      if (TrySendCommand(mozc::commands::SessionCommand::NONE, &raw_response,
+                         &error)) {
+        return ParseResponse(raw_response);
+      }
+      displayUsage_ = true;
     }
     return true;
   }
