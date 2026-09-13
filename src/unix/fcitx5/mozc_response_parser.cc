@@ -76,13 +76,16 @@ uint32_t GetCursorPosition(const mozc::commands::Output& response) {
 }
 
 std::string CreateDescriptionString(const std::string& description) {
-  return " [" + description + "]";
+  return "[" + description + "]";
 }
 
 class MozcCandidateWord final : public CandidateWord {
  public:
-  MozcCandidateWord(int id, std::string text, MozcEngine* engine)
-      : CandidateWord(Text(std::move(text))), id_(id), engine_(engine) {}
+  MozcCandidateWord(int id, std::string text, std::string comment,
+                    MozcEngine* engine)
+      : CandidateWord(Text(std::move(text))), id_(id), engine_(engine) {
+    setComment(Text(std::move(comment)));
+  }
 
   void select(InputContext* inputContext) const override {
     MozcState* mozc_state = engine_->mozcState(inputContext);
@@ -150,6 +153,7 @@ class MozcCandidateList final : public CandidateList,
       const uint32_t index = candidate.index();
 
       std::string value;
+      std::string comment;
       if (use_annotation && candidate.has_annotation() &&
           candidate.annotation().has_prefix()) {
         value = candidate.annotation().prefix();
@@ -162,8 +166,8 @@ class MozcCandidateList final : public CandidateList,
       if (use_annotation && candidate.has_annotation() &&
           candidate.annotation().has_description()) {
         // Display descriptions ([HALF][KATAKANA], [GREEK], [Black square],
-        // etc).
-        value += CreateDescriptionString(candidate.annotation().description());
+        // etc.) as candidate comments.
+        comment = CreateDescriptionString(candidate.annotation().description());
       }
 
       const bool is_current =
@@ -189,7 +193,7 @@ class MozcCandidateList final : public CandidateList,
             std::string msg = _("Press %s to show usages.");
             msg = stringutils::replaceAll(msg, "%s",
                                           engine_->config().expand->toString());
-            value += CreateDescriptionString(msg);
+            comment += CreateDescriptionString(msg);
           }
         }
       }
@@ -207,8 +211,8 @@ class MozcCandidateList final : public CandidateList,
         id = candidate.id();
         DCHECK_NE(kBadCandidateId, id) << "Unexpected id is passed.";
       }
-      candidateWords_.emplace_back(
-          std::make_unique<MozcCandidateWord>(id, value, engine));
+      candidateWords_.emplace_back(std::make_unique<MozcCandidateWord>(
+          id, std::move(value), std::move(comment), engine));
     }
   }
 
