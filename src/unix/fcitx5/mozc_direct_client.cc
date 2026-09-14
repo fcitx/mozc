@@ -224,6 +224,7 @@ bool MozcDirectClient::Call(const mozc::commands::Input& input,
 
 void MozcDirectClient::InitInput(mozc::commands::Input* input) const {
   input->set_id(id_);
+  input->mutable_config()->set_use_cascading_window(false);
 }
 
 bool MozcDirectClient::TranslateProtoBufToMozcToolArg(
