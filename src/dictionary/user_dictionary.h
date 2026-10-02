@@ -31,15 +31,15 @@
 #define MOZC_DICTIONARY_USER_DICTIONARY_H_
 
 #include <atomic>
+#include <cstdint>
+#include <istream>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "base/thread.h"
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/dictionary_token.h"
@@ -91,6 +91,9 @@ class UserDictionary : public UserDictionaryInterface {
   // mainly for unit testing
   bool Load(const user_dictionary::UserDictionaryStorage& storage) override;
 
+  // Streams dictionary entries directly from `ifs`.
+  bool Load(std::istream& ifs);
+
   // Reloads dictionary asynchronously
   bool Reload() override;
 
@@ -109,11 +112,16 @@ class UserDictionary : public UserDictionaryInterface {
       const UserPos::Token& user_pos_token, RequestType request_type,
       Token* token) const;
 
-  std::string GetFileName() const override;
-
  private:
   class TokensIndex;
-  class UserDictionaryReloader;
+
+  enum class ReloadState {
+    kIdle,
+    kRunning,
+    kRunningWithPending,
+  };
+
+  void ReloadThreadMain();
 
   std::shared_ptr<const TokensIndex> GetTokens() const {
     return tokens_.load();
@@ -124,7 +132,6 @@ class UserDictionary : public UserDictionaryInterface {
     tokens_.store(std::move(tokens));
   }
 
-  std::unique_ptr<UserDictionaryReloader> reloader_;
   std::unique_ptr<const UserPos> user_pos_;
   const PosMatcher pos_matcher_;
 
@@ -138,57 +145,17 @@ class UserDictionary : public UserDictionaryInterface {
   // UserDictionary. This variable is shared by the main thread and loader
   // thread.
   std::atomic<bool> canceled_signal_ = false;
+  std::atomic<uint64_t> modified_at_ = 0;
+  std::atomic<ReloadState> reload_state_ = ReloadState::kIdle;
 
   // user dictionary filename.
   const std::string filename_;
+  TaskManager reload_task_;
 
   friend class UserDictionaryTest;
 };
 
 }  // namespace dictionary
-
-namespace user_dictionary {
-
-// Utility class to asynchronously import user dictionary in TSV format.
-class AsyncUserDictionaryImporter {
- public:
-  explicit AsyncUserDictionaryImporter(
-      dictionary::UserDictionaryInterface& dic);
-  ~AsyncUserDictionaryImporter();
-
-  // Imports the TSV formatted dictionary `tsv` as `name`.
-  // This method returns immediately. `tsv` is parsed
-  // and imported in a different thread asynchronously.
-  void Import(std::string name, std::string tsv);
-
-  // Waits until the importer thread finishes. Mainly for unittesting.
-  void Wait() { task_.Wait(); }
-
- private:
-  struct ImportData {
-    std::string name;
-    std::string data;  // TSV data;
-  };
-
-  // Pop one ImportData from queue.
-  std::optional<ImportData> PopPendingImportData();
-
-  // Returns true if queue has pending data.
-  bool HasPendingImportData() const;
-
-  // Returns true if the import thread is canceled.
-  bool IsCanceled() const { return canceled_signal_.load(); }
-
-  void StartImportLoop();
-
-  std::deque<ImportData> queue_ ABSL_LOCKS_EXCLUDED(mutex_);
-  TaskManager task_;
-  std::atomic<bool> canceled_signal_ = false;
-  mutable absl::Mutex mutex_;
-  dictionary::UserDictionaryInterface& dic_;
-};
-
-}  // namespace user_dictionary
 }  // namespace mozc
 
 #endif  // MOZC_DICTIONARY_USER_DICTIONARY_H_

@@ -30,7 +30,6 @@
 #include "engine/engine.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
@@ -43,7 +42,6 @@
 #include "converter/immutable_converter.h"
 #include "converter/immutable_converter_interface.h"
 #include "data_manager/data_manager.h"
-#include "dictionary/user_dictionary.h"
 #include "engine/data_loader.h"
 #include "engine/minimal_converter.h"
 #include "engine/modules.h"
@@ -102,10 +100,6 @@ absl::Status Engine::Init(std::unique_ptr<engine::Modules> modules) {
     return std::make_unique<Rewriter>(modules);
   };
 
-  async_user_dictionary_importer_ =
-      std::make_unique<user_dictionary::AsyncUserDictionaryImporter>(
-          modules->GetUserDictionary());
-
   auto converter = std::make_shared<converter::Converter>(
       std::move(modules), immutable_converter_factory, predictor_factory,
       rewriter_factory);
@@ -128,15 +122,17 @@ bool Engine::Wait() { return converter_ && converter_->Wait(); }
 bool Engine::ReloadAndWait() { return Reload() && Wait(); }
 
 bool Engine::ClearUserHistory() {
-  if (converter_) {
-    converter_->rewriter().Clear();
+  if (!converter_) {
+    return false;
   }
-  return true;
+  converter_->rewriter().Clear();
+  return converter_->predictor().ClearAllHistory();
 }
 
-bool Engine::ClearUserPrediction() {
-  return converter_ && converter_->predictor().ClearAllHistory();
-}
+// TODO(b/567921560): Remove ClearUserPrediction and ClearUnusedUserPrediction
+// (and the corresponding CLEAR_USER_PREDICTION / CLEAR_UNUSED_USER_PREDICTION
+// commands) once all callers are migrated to ClearUserHistory.
+bool Engine::ClearUserPrediction() { return ClearUserHistory(); }
 
 bool Engine::ClearUnusedUserPrediction() {
   return converter_ && converter_->predictor().ClearUnusedHistory();
@@ -186,12 +182,6 @@ bool Engine::SendSupplementalModelReloadRequest(
 void Engine::ClearOldSupplementalModels() {
   if (converter_) {
     converter_->modules().GetSupplementalModel().ClearOldModels();
-  }
-}
-
-void Engine::ImportUserDictionary(std::string name, std::string tsv) {
-  if (async_user_dictionary_importer_) {
-    async_user_dictionary_importer_->Import(std::move(name), std::move(tsv));
   }
 }
 

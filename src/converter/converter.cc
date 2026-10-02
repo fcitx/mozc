@@ -85,6 +85,31 @@ size_t GetSegmentIndex(const Segments* segments, size_t segment_index) {
   return result;
 }
 
+// Consolidates a multi-segment candidate (span > 1) at `raw_segment_index` into
+// a single segment by updating the segment key to the candidate's full reading,
+// erasing covered trailing segments, and decrementing `converted_segment_count`
+// accordingly.
+void MergeMultiSegmentCandidate(Segments* segments, size_t raw_segment_index,
+                                bool force_update_key = false) {
+  Segment* seg = segments->mutable_segment(raw_segment_index);
+  if (seg->candidates_size() == 0) {
+    return;
+  }
+  Candidate* top_cand = seg->mutable_candidate(0);
+  const size_t span = top_cand->effective_converted_segment_count();
+  if ((force_update_key || span > 1) && !top_cand->key.empty()) {
+    seg->set_key(top_cand->key);
+  }
+  if (span > 1 && raw_segment_index + 1 < segments->segments_size()) {
+    const size_t remaining_segments =
+        segments->segments_size() - 1 - raw_segment_index;
+    DCHECK_LE(span - 1, remaining_segments);
+    const size_t erase_count = std::min(span - 1, remaining_segments);
+    segments->erase_segments(raw_segment_index + 1, erase_count);
+    top_cand->converted_segment_count -= erase_count;
+  }
+}
+
 bool ShouldInitSegmentsForPrediction(absl::string_view key,
                                      const Segments& segments) {
   // (1) If the segment size is 0, invoke SetKey because the segments is not
@@ -292,29 +317,10 @@ void Converter::FinishConversion(const ConversionRequest& request,
   // segments are preserved for navigation and reversion, but upon commit,
   // covered trailing segments are merged and erased.
   const size_t hist_size = segments->history_segments_size();
+  const bool force_update_key =
+      request.request_type() != ConversionRequest::CONVERSION;
   for (size_t i = 0; i < segments->conversion_segments_size(); ++i) {
-    Segment* seg = segments->mutable_conversion_segment(i);
-    if (seg->candidates_size() == 0) {
-      continue;
-    }
-    const Candidate& top_cand = seg->candidate(0);
-    const size_t span = top_cand.effective_converted_segment_count();
-    // For multi-segment candidates (span > 1) or non-conversion requests
-    // (e.g. PREDICTION), update the segment key with the candidate's full
-    // composite reading before trailing segments are erased, ensuring that
-    // history recording and learning receive the complete segment key.
-    if ((request.request_type() != ConversionRequest::CONVERSION || span > 1) &&
-        !top_cand.key.empty()) {
-      seg->set_key(top_cand.key);
-    }
-    // When a candidate spans multiple conversion segments, absorb them into
-    // the current segment and erase the trailing (span - 1) segments.
-    if (span > 1 && i + 1 < segments->conversion_segments_size()) {
-      DCHECK_LE(span - 1, segments->conversion_segments_size() - 1 - i);
-      const size_t erase_count =
-          std::min(span - 1, segments->conversion_segments_size() - 1 - i);
-      segments->erase_segments(hist_size + i + 1, erase_count);
-    }
+    MergeMultiSegmentCandidate(segments, hist_size + i, force_update_key);
   }
 
   for (Segment& segment : *segments) {
@@ -470,10 +476,12 @@ bool Converter::CommitSegments(Segments* segments,
     // 2nd argument must always be 0 because on each iteration
     // 1st segment is submitted.
     // Using 0 means submitting 1st segment iteratively.
+    const size_t raw_segment_index = GetSegmentIndex(segments, 0);
     if (!CommitSegmentValueInternal(segments, 0, candidate_index[i],
                                     Segment::SUBMITTED)) {
       return false;
     }
+    MergeMultiSegmentCandidate(segments, raw_segment_index);
   }
   return true;
 }
@@ -589,7 +597,8 @@ void Converter::ApplyResultToSegments(const prediction::Result& result,
   size_t seg_idx = 0;
   for (const auto& inner_seg : result.inner_segments()) {
     if (seg_idx >= segments->conversion_segments_size()) break;
-    Segment* segment = segments->mutable_conversion_segment(seg_idx++);
+    const size_t current_seg_idx = seg_idx++;
+    Segment* segment = segments->mutable_conversion_segment(current_seg_idx);
 
     // Find existing candidate with matching value.
     int existing_index = -1;
@@ -608,8 +617,9 @@ void Converter::ApplyResultToSegments(const prediction::Result& result,
       cand->cost = std::min(cand->cost, result.cost);
       cand->wcost = std::min(cand->wcost, result.wcost);
       cand->attributes |= (result.attributes | additional_attributes);
-      if (!result.inner_segment_boundary.empty()) {
-        cand->inner_segment_boundary = result.inner_segment_boundary;
+      if (current_seg_idx < result.inner_segment_boundary.size()) {
+        cand->inner_segment_boundary = {
+            result.inner_segment_boundary[current_seg_idx]};
       }
     } else {
       Candidate* cand = (pos == 0) ? segment->push_front_candidate()
@@ -624,7 +634,10 @@ void Converter::ApplyResultToSegments(const prediction::Result& result,
       cand->cost = result.cost;
       cand->attributes = (result.attributes | additional_attributes);
       cand->consumed_key_size = result.consumed_key_size;
-      cand->inner_segment_boundary = result.inner_segment_boundary;
+      if (current_seg_idx < result.inner_segment_boundary.size()) {
+        cand->inner_segment_boundary = {
+            result.inner_segment_boundary[current_seg_idx]};
+      }
     }
   }
 }
