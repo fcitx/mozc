@@ -705,7 +705,7 @@ void ConfigDialog::ClearUserHistory() {
 
   client_->CheckVersionOrRestartServer();
 
-  if (!client_->ClearUserHistory()) {
+  if (!client_->ClearUserHistory() || !client_->ClearUserPrediction()) {
     QMessageBox::critical(this, windowTitle(),
                           tr("%1 Converter is not running. "
                              "Settings were not saved.")
