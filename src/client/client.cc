@@ -51,6 +51,7 @@
 #include "base/system_util.h"
 #include "base/version.h"
 #include "base/vlog.h"
+#include "client/character_renderability.h"
 #include "client/client_interface.h"
 #include "config/config_handler.h"
 #include "ipc/ipc.h"
@@ -63,8 +64,6 @@
 
 #include "base/win32/wide_char.h"
 #include "base/win32/win_util.h"
-#else  // _WIN32
-#include <unistd.h>
 #endif  // _WIN32
 
 #ifdef __APPLE__
@@ -110,6 +109,8 @@ Client::Client()
   direct_mode_keys_ = KeyInfoUtil::ExtractSortedDirectModeKeys(
       *config::ConfigHandler::GetSharedConfig());
 
+  InitDefaultRequest();
+
 #ifdef MOZC_USE_SVS_JAPANESE
   InitRequestForSvsJapanese(true);
 #endif  // MOZC_USE_SVS_JAPANESE
@@ -120,11 +121,24 @@ Client::~Client() {
   DeleteSession();
 }
 
-void Client::InitRequestForSvsJapanese(bool use_svs) {
-  request_ = std::make_unique<commands::Request>();
+void Client::InitDefaultRequest() {
+  if (!request_) {
+    request_ = std::make_unique<commands::Request>();
+  }
+  request_->clear_additional_renderable_character_groups();
+  for (const commands::Request::AdditionalRenderableCharacterGroup group :
+       CharacterRenderability::GetSupportedGroups()) {
+    request_->add_additional_renderable_character_groups(group);
+  }
+}
 
-  commands::DecoderExperimentParams params;
-  uint32_t variation_types = params.variation_character_types();
+void Client::InitRequestForSvsJapanese(bool use_svs) {
+  if (!request_) {
+    InitDefaultRequest();
+  }
+
+  uint32_t variation_types =
+      request_->decoder_experiment_params().variation_character_types();
   if (use_svs) {
     variation_types |= commands::DecoderExperimentParams::SVS_JAPANESE;
   } else {
@@ -449,13 +463,8 @@ bool Client::CreateSession() {
   commands::ApplicationInfo* info = input.mutable_application_info();
   DCHECK(info);
 
-#ifdef _WIN32
-  info->set_process_id(static_cast<uint32_t>(::GetCurrentProcessId()));
-  info->set_thread_id(static_cast<uint32_t>(::GetCurrentThreadId()));
-#else   // _WIN32
-  info->set_process_id(static_cast<uint32_t>(getpid()));
-  info->set_thread_id(0);
-#endif  // _WIN32
+  info->set_process_id(SystemUtil::GetProcessId());
+  info->set_thread_id(SystemUtil::GetThreadIdForWindows());
 
   commands::Output output;
   if (!CheckVersionOrRestartServerInternal(input, &output)) {
