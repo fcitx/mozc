@@ -46,6 +46,7 @@
 #include "base/clock_mock.h"
 #include "base/file/temp_dir.h"
 #include "base/file_util.h"
+#include "base/port.h"
 #include "base/system_util.h"
 #include "base/thread.h"
 #include "protocol/config.pb.h"
@@ -111,23 +112,25 @@ TEST_F(ConfigHandlerTest, SetConfig) {
   EXPECT_EQ(absl::StrCat(output), absl::StrCat(input));
   EXPECT_EQ(absl::StrCat(output2), absl::StrCat(input));
 
-#if defined(__ANDROID__) && defined(CHANNEL_DEV)
-  input.Clear();
-  EXPECT_FALSE(input.general_config().has_upload_usage_stats());
-  EXPECT_TRUE(ConfigHandler::SetConfig(input));
-  output = ConfigHandler::GetCopiedConfig();
-  EXPECT_TRUE(output.general_config().has_upload_usage_stats());
-  EXPECT_TRUE(output.general_config().upload_usage_stats());
+#ifdef CHANNEL_DEV
+  if constexpr (port::IsAndroid()) {
+    input.Clear();
+    EXPECT_FALSE(input.general_config().has_upload_usage_stats());
+    EXPECT_TRUE(ConfigHandler::SetConfig(input));
+    output = ConfigHandler::GetCopiedConfig();
+    EXPECT_TRUE(output.general_config().has_upload_usage_stats());
+    EXPECT_TRUE(output.general_config().upload_usage_stats());
 
-  input.Clear();
-  input.mutable_general_config()->set_upload_usage_stats(false);
-  EXPECT_TRUE(input.general_config().has_upload_usage_stats());
-  EXPECT_FALSE(input.general_config().upload_usage_stats());
-  EXPECT_TRUE(ConfigHandler::SetConfig(input));
-  output = ConfigHandler::GetCopiedConfig();
-  EXPECT_TRUE(output.general_config().has_upload_usage_stats());
-  EXPECT_TRUE(output.general_config().upload_usage_stats());
-#endif  // __ANDROID__ && CHANNEL_DEV
+    input.Clear();
+    input.mutable_general_config()->set_upload_usage_stats(false);
+    EXPECT_TRUE(input.general_config().has_upload_usage_stats());
+    EXPECT_FALSE(input.general_config().upload_usage_stats());
+    EXPECT_TRUE(ConfigHandler::SetConfig(input));
+    output = ConfigHandler::GetCopiedConfig();
+    EXPECT_TRUE(output.general_config().has_upload_usage_stats());
+    EXPECT_TRUE(output.general_config().upload_usage_stats());
+  }
+#endif  // CHANNEL_DEV
 }
 
 TEST_F(ConfigHandlerTest, SetMetadata) {
@@ -221,10 +224,12 @@ TEST_F(ConfigHandlerTest, SetConfigFileName) {
             default_incognito_mode);
 }
 
-#if !defined(__ANDROID__)
-// Temporarily disable this test because FileUtil::CopyFile fails on
-// Android for some reason.
 TEST_F(ConfigHandlerTest, LoadTestConfig) {
+  if constexpr (port::IsAndroid()) {
+    // Temporarily disable this test because FileUtil::CopyFile fails on
+    // Android for some reason.
+    GTEST_SKIP();
+  }
   // TODO(yukawa): Generate test data automatically so that we can keep
   //     the compatibility among variety of config files.
   // TODO(yukawa): Enumerate test data in the directory automatically.
@@ -247,20 +252,19 @@ TEST_F(ConfigHandlerTest, LoadTestConfig) {
     ConfigHandler::Reload();
   }
 }
-#endif  // !__ANDROID__
 
 TEST_F(ConfigHandlerTest, GetDefaultConfig) {
   Config output;
 
   output.Clear();
   ConfigHandler::GetDefaultConfig(&output);
-#ifdef __APPLE__
-  EXPECT_EQ(output.session_keymap(), Config::KOTOERI);
-#elif defined(OS_CHROMEOS)  // __APPLE__
-  EXPECT_EQ(output.session_keymap(), Config::CHROMEOS);
-#else   // __APPLE__ || OS_CHROMEOS
-  EXPECT_EQ(output.session_keymap(), Config::MSIME);
-#endif  // __APPLE__ || OS_CHROMEOS
+  if constexpr (port::IsMacos()) {
+    EXPECT_EQ(output.session_keymap(), Config::KOTOERI);
+  } else if constexpr (port::IsChromeos()) {
+    EXPECT_EQ(output.session_keymap(), Config::CHROMEOS);
+  } else {
+    EXPECT_EQ(output.session_keymap(), Config::MSIME);
+  }
   EXPECT_EQ(output.character_form_rules_size(), 13);
 
   struct TestCase {
@@ -296,10 +300,12 @@ TEST_F(ConfigHandlerTest, GetDefaultConfig) {
               kTestCases[i].conversion_character_form);
   }
 
-#if defined(__ANDROID__) && defined(CHANNEL_DEV)
-  EXPECT_TRUE(output.general_config().has_upload_usage_stats());
-  EXPECT_TRUE(output.general_config().upload_usage_stats());
-#endif  // __ANDROID__ && CHANNEL_DEV
+#ifdef CHANNEL_DEV
+  if constexpr (port::IsAndroid()) {
+    EXPECT_TRUE(output.general_config().has_upload_usage_stats());
+    EXPECT_TRUE(output.general_config().upload_usage_stats());
+  }
+#endif  // CHANNEL_DEV
 }
 
 TEST_F(ConfigHandlerTest, DefaultConfig) {

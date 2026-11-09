@@ -34,7 +34,6 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -51,6 +50,7 @@
 #include "absl/types/span.h"
 #include "base/container/trie.h"
 #include "base/japanese_util.h"
+#include "base/port.h"
 #include "base/strings/unicode.h"
 #include "base/util.h"
 #include "base/vlog.h"
@@ -71,8 +71,6 @@
 #include "dictionary/pos_group.h"
 #include "dictionary/pos_matcher.h"
 #include "engine/modules.h"
-#include "protocol/commands.pb.h"
-#include "protocol/config.pb.h"
 #include "request/options.h"
 
 namespace mozc {
@@ -1780,19 +1778,18 @@ bool ImmutableConverter::Convert(const ConversionOptions& options,
 
 bool ImmutableConverter::Convert(const ConversionOptions& options,
                                  Segments* segments) const {
-#if defined(__ANDROID__) || defined(_WIN32) || defined(__APPLE__)
-  // These platforms run the converter persistently on the same thread. Using
-  // thread_local allows the Lattice to be reused, which improves the
-  // performance. It's better not to use thread_local in general case as
-  // creating thread_local per thread has more performance penalty.
-  // TODO(all): Re-evaluate this implementation if we run converter on
-  // multi-threaded environment.
-  thread_local Lattice lattice;
-#else   // defined(__ANDROID__) || defined(_WIN32) || defined(__APPLE__)
-  Lattice lattice;
-#endif  // defined(__ANDROID__) || defined(_WIN32) || defined(__APPLE__)
-
-  return Convert(options, segments, &lattice);
+  if constexpr (port::IsAndroid() || port::IsWindows() || port::IsAppleBase()) {
+    // These platforms run the converter persistently on the same thread. Using
+    // thread_local allows the Lattice to be reused, which improves the
+    // performance. It's better not to use thread_local in general case as
+    // creating thread_local per thread has more performance penalty.
+    // TODO(all): Re-evaluate this implementation if we run converter on
+    // multi-threaded environment.
+    return Convert(options, segments, &Lattice::GetThreadLocal());
+  } else {
+    Lattice lattice;
+    return Convert(options, segments, &lattice);
+  }
 }
 
 }  // namespace mozc

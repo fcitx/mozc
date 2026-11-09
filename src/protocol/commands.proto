@@ -591,8 +591,6 @@ message DecoderExperimentParams {
   // When zero, typing_correction is not used.
   optional int32 typing_correction_apply_user_history_size = 85 [default = 0];
 
-  optional bool disable_zero_query_suffix_prediction = 36 [default = false];
-
   // Changes the size of history with character coverage.
   optional int32 user_history_prediction_max_char_coverage = 82 [default = 0];
 
@@ -666,9 +664,6 @@ message DecoderExperimentParams {
   // Transition cost bonus for particle omission (e.g. "さかなくう" ->
   // "魚食う"). This is used for experiments to improve core LM conversion.
   optional int32 particle_omission_transition_cost_bonus = 150 [default = 0];
-
-  // Use precomputed top transitions in NgramFst::NextTopStates.
-  optional bool ngram_use_precomputed_top_states = 151 [default = false];
 
   // If true, suppresses calling the converter (ConverterInterface) in
   // RealtimeDecoder.
