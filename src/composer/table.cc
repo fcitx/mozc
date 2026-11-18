@@ -41,11 +41,13 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -388,32 +390,10 @@ const Entry* absl_nullable Table::AddRuleWithAttributes(
   // Check if the input has a large capital character.
   // Invisible character is exception.
   if (!case_sensitive_) {
-    const std::string trimed_input = DeleteSpecialKeys(input);
-    for (ConstChar32Iterator iter(trimed_input); !iter.Done(); iter.Next()) {
-      const char32_t codepoint = iter.Get();
-      if ('A' <= codepoint && codepoint <= 'Z') {
-        case_sensitive_ = true;
-        break;
-      }
-    }
+    const std::string trimmed_input = DeleteSpecialKeys(input);
+    case_sensitive_ = absl::c_any_of(trimmed_input, absl::ascii_isupper);
   }
   return entry_ptr;
-}
-
-void Table::DeleteRule(const absl::string_view input) {
-  // NOTE : If this method is called and an entry is deleted,
-  //     case_sensitive_ turns to be invalid
-  //     because it is not updated.
-  //     Currently updating logic is omitted because;
-  //     - Updating needs some complex implementation.
-  //     - This method is not used.
-  //     - This method has no tests.
-  //     - This method is private scope.
-  const Entry* old_entry;
-  if (entries_.LookUp(input, &old_entry)) {
-    DeleteEntry(old_entry);
-  }
-  entries_.DeleteEntry(input);
 }
 
 bool Table::LoadFromString(absl::string_view str) {

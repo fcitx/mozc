@@ -29,7 +29,6 @@
 
 #include "dictionary/dictionary_impl.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,6 +37,7 @@
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "base/port/reversed_view.h"
 #include "base/util.h"
 #include "dictionary/dictionary_interface.h"
 #include "dictionary/dictionary_token.h"
@@ -124,8 +124,18 @@ class CallbackWithFilter : public DictionaryInterface::Callback {
     return callback_->OnToken(key, actual_key, std::move(token));
   }
 
+  // Called by SystemDictionary::LookupPredictive() and LookupPrefix() to
+  // decide whether to expand the keys for the kana modifier insensitive
+  // lookup, e.g., "かつこう" also looks up "がっこう". The tokens found by the
+  // expansion get the spatial cost penalty and KEY_EXPANDED_IN_DICTIONARY (or
+  // Node::KEY_EXPANDED in the lattice). The expansion is disabled when the
+  // kana modifier insensitive conversion is disabled, or when only the
+  // dictionary lookup is disabled by
+  // `disable_kana_modifier_insensitive_dictionary_lookup`. The latter does not
+  // affect the kana modifier insensitive corrections of the typing corrector.
   bool IsKanaModifierInsensitiveConversion() const override {
-    return options_.kana_modifier_insensitive_conversion;
+    return options_.kana_modifier_insensitive_conversion &&
+           !options_.disable_kana_modifier_insensitive_dictionary_lookup;
   }
 
  private:
@@ -191,10 +201,10 @@ bool DictionaryImpl::LookupComment(absl::string_view key,
                                    std::string* comment) const {
   auto dics = GetDictionaries(options.incognito_mode);
   // Access dics in reverse order to prefer UserDictionary (if not in incognito)
-  return std::any_of(dics.rbegin(), dics.rend(),
-                     [&](const DictionaryInterface* dic) {
-                       return dic->LookupComment(key, value, comment);
-                     });
+  return absl::c_any_of(port::reversed_view(dics),
+                        [&](const DictionaryInterface* dic) {
+                          return dic->LookupComment(key, value, comment);
+                        });
 }
 
 void DictionaryImpl::LookupPredictive(absl::string_view key,
@@ -229,10 +239,10 @@ bool DictionaryImpl::LookupComment(absl::string_view key,
                                    absl::string_view value,
                                    std::string* comment) const {
   // Access dics_ in reverse order to prefer UserDictionary
-  return std::any_of(dics_.rbegin(), dics_.rend(),
-                     [&](const DictionaryInterface* dic) {
-                       return dic->LookupComment(key, value, comment);
-                     });
+  return absl::c_any_of(port::reversed_view(dics_),
+                        [&](const DictionaryInterface* dic) {
+                          return dic->LookupComment(key, value, comment);
+                        });
 }
 
 void DictionaryImpl::PopulateReverseLookupCache(absl::string_view str) const {

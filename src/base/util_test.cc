@@ -239,6 +239,10 @@ TEST(UtilTest, LowerString) {
   std::string s2 = "ＴｅＳＴ＠ＡＢＣＸＹＺ［｀ａｂｃｘｙｚ｛";
   Util::LowerString(&s2);
   EXPECT_EQ(s2, "ｔｅｓｔ＠ａｂｃｘｙｚ［｀ａｂｃｘｙｚ｛");
+
+  std::string s3 = "TeSTＴｅＳＴあ";
+  Util::LowerString(&s3);
+  EXPECT_EQ(s3, "testｔｅｓｔあ");
 }
 
 TEST(UtilTest, UpperString) {
@@ -249,6 +253,10 @@ TEST(UtilTest, UpperString) {
   std::string s2 = "ＴｅＳＴ＠ＡＢＣＸＹＺ［｀ａｂｃｘｙｚ｛";
   Util::UpperString(&s2);
   EXPECT_EQ(s2, "ＴＥＳＴ＠ＡＢＣＸＹＺ［｀ＡＢＣＸＹＺ｛");
+
+  std::string s3 = "TeSTＴｅＳＴあ";
+  Util::UpperString(&s3);
+  EXPECT_EQ(s3, "TESTＴＥＳＴあ");
 }
 
 TEST(UtilTest, CapitalizeString) {
@@ -502,8 +510,6 @@ TEST(UtilTest, Utf8SubString3) {
 }
 
 TEST(UtilTest, StripUtf8Bom) {
-  std::string line;
-
   // Should be stripped.
   EXPECT_EQ(Util::StripUtf8Bom("\xef\xbb\xbf"
                                "abc"),

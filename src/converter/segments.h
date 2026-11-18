@@ -30,6 +30,7 @@
 #ifndef MOZC_CONVERTER_SEGMENTS_H_
 #define MOZC_CONVERTER_SEGMENTS_H_
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -45,7 +46,6 @@
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "base/container/arena.h"
-#include "base/strings/assign.h"
 #include "base/util.h"
 #include "converter/candidate.h"
 
@@ -84,7 +84,7 @@ class Segment final {
 
   template <typename T>
   void set_key(T&& key) {
-    strings::Assign(key_, std::forward<T>(key));
+    key_ = std::forward<T>(key);
     key_len_ = Util::CharsLen(key_);
   }
 
@@ -144,6 +144,11 @@ class Segment final {
   void clear() { Clear(); }
 
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Segment& segment) {
+    sink.Append(segment.DebugString());
+  }
 
   friend std::ostream& operator<<(std::ostream& os, const Segment& segment) {
     return os << segment.DebugString();
@@ -222,9 +227,9 @@ class Segments final {
     explicit Iterator(const InnerIterator& iterator) : iterator_(iterator) {}
 
     // Make `iterator` type convertible to `const_iterator`.
-    template <bool enable = is_const>
-    Iterator(typename std::enable_if_t<enable, const Iterator<inner_iterator>>
-                 iterator)
+    template <typename OtherIterator>
+      requires(is_const && std::same_as<OtherIterator, inner_iterator>)
+    Iterator(const Iterator<OtherIterator>& iterator)
         : iterator_(iterator.iterator_) {}
 
     reference operator*() const { return **iterator_; }
@@ -253,12 +258,7 @@ class Segments final {
       return iterator_ - other.iterator_;
     }
 
-    bool operator==(const Iterator& other) const {
-      return iterator_ == other.iterator_;
-    }
-    bool operator!=(const Iterator& other) const {
-      return iterator_ != other.iterator_;
-    }
+    bool operator==(const Iterator& other) const = default;
 
    private:
     friend class Iterator<inner_const_iterator, /*is_const=*/true>;
@@ -436,6 +436,11 @@ class Segments final {
   // Resize the segments starting from `start_index` with the given `new_sizes`.
   // Returns true if the segments are resized.
   bool Resize(size_t start_index, absl::Span<const uint8_t> new_sizes);
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Segments& segments) {
+    sink.Append(segments.DebugString());
+  }
 
   friend std::ostream& operator<<(std::ostream& os, const Segments& segments) {
     return os << segments.DebugString();

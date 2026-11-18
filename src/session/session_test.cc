@@ -44,7 +44,6 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "base/port.h"
-#include "base/strings/assign.h"
 #include "base/strings/unicode.h"
 #include "base/vlog.h"
 #include "composer/composer.h"
@@ -210,9 +209,9 @@ converter::Candidate* AddCandidate(const absl::string_view key,
                                    const absl::string_view value,
                                    Segment* segment) {
   converter::Candidate* candidate = segment->add_candidate();
-  strings::Assign(candidate->key, key);
-  strings::Assign(candidate->content_key, key);
-  strings::Assign(candidate->value, value);
+  candidate->key = key;
+  candidate->content_key = key;
+  candidate->value = value;
   return candidate;
 }
 
@@ -220,9 +219,9 @@ converter::Candidate* AddMetaCandidate(const absl::string_view key,
                                        const absl::string_view value,
                                        Segment* segment) {
   converter::Candidate* candidate = segment->add_meta_candidate();
-  strings::Assign(candidate->key, key);
-  strings::Assign(candidate->content_key, key);
-  strings::Assign(candidate->value, value);
+  candidate->key = key;
+  candidate->content_key = key;
+  candidate->value = value;
   return candidate;
 }
 
@@ -7946,14 +7945,20 @@ TEST_F(SessionTest, ConvertReverseFails) {
 
   Session session(engine);
   InitSessionToPrecomposition(&session);
-  constexpr absl::string_view kKanjiContainsNewline = "改行\n禁止";
-  commands::Command command;
-  SetupCommandForReverseConversion(kKanjiContainsNewline,
-                                   command.mutable_input());
+  for (const absl::string_view invalid_input : {
+           absl::string_view("改行\n禁止"),
+           // Out-of-range 4-byte sequence (U+110000).
+           absl::string_view("\xF4\x90\x80\x80"),
+           // CESU-8 unpaired surrogate (U+D800).
+           absl::string_view("\xED\xA0\x80"),
+       }) {
+    commands::Command command;
+    SetupCommandForReverseConversion(invalid_input, command.mutable_input());
 
-  EXPECT_TRUE(session.SendCommand(&command));
-  EXPECT_TRUE(command.output().consumed());
-  EXPECT_FALSE(command.output().has_candidate_window());
+    EXPECT_TRUE(session.SendCommand(&command));
+    EXPECT_TRUE(command.output().consumed());
+    EXPECT_FALSE(command.output().has_candidate_window());
+  }
 }
 
 TEST_F(SessionTest, ConvertReverse) {
@@ -10407,8 +10412,8 @@ TEST_F(SessionTest, MultiSegmentSelectionFocusRightAndLeft) {
   command.Clear();
   session.Commit(&command);
   ASSERT_TRUE(command.output().has_result());
-  EXPECT_TRUE(
-      absl::StartsWith(command.output().result().value(), "私の名前は"));
+  EXPECT_THAT(command.output().result().value(),
+              ::testing::StartsWith("私の名前は"));
 }
 
 TEST_F(SessionTest, MultiSegmentSelectionCommitDirect) {
@@ -10449,8 +10454,8 @@ TEST_F(SessionTest, MultiSegmentSelectionCommitDirect) {
   command.Clear();
   session.Commit(&command);
   ASSERT_TRUE(command.output().has_result());
-  EXPECT_TRUE(
-      absl::StartsWith(command.output().result().value(), "私の名前は"));
+  EXPECT_THAT(command.output().result().value(),
+              ::testing::StartsWith("私の名前は"));
 }
 
 TEST_F(SessionTest, MultiSegmentSelectionCancel) {

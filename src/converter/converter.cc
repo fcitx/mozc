@@ -48,7 +48,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "base/strings/assign.h"
 #include "base/util.h"
 #include "base/vlog.h"
 #include "composer/composer.h"
@@ -156,11 +155,10 @@ bool IsValidSegments(const ConversionRequest& request,
 
 }  // namespace
 
-Converter::Converter(
-    std::unique_ptr<engine::Modules> modules,
-    const ImmutableConverterFactory& immutable_converter_factory,
-    const PredictorFactory& predictor_factory,
-    const RewriterFactory& rewriter_factory)
+Converter::Converter(std::unique_ptr<engine::Modules> modules,
+                     ImmutableConverterFactory immutable_converter_factory,
+                     PredictorFactory predictor_factory,
+                     RewriterFactory rewriter_factory)
     : modules_(std::move(modules)),
       immutable_converter_(immutable_converter_factory(*modules_)),
       pos_matcher_(modules_->GetPosMatcher()),
@@ -624,10 +622,10 @@ void Converter::ApplyResultToSegments(const prediction::Result& result,
     } else {
       Candidate* cand = (pos == 0) ? segment->push_front_candidate()
                                    : segment->insert_candidate(pos);
-      strings::Assign(cand->key, inner_seg.GetKey());
-      strings::Assign(cand->value, inner_seg.GetValue());
-      strings::Assign(cand->content_key, inner_seg.GetContentKey());
-      strings::Assign(cand->content_value, inner_seg.GetContentValue());
+      cand->key = inner_seg.GetKey();
+      cand->value = inner_seg.GetValue();
+      cand->content_key = inner_seg.GetContentKey();
+      cand->content_value = inner_seg.GetContentValue();
       cand->lid = result.lid;
       cand->rid = result.rid;
       cand->wcost = result.wcost;

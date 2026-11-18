@@ -49,7 +49,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "base/strings/assign.h"
 #include "base/util.h"
 #include "composer/composer.h"
 #include "composer/query.h"
@@ -270,8 +269,8 @@ Result CreateResult4(absl::string_view key, absl::string_view value,
                      PredictionTypes types,
                      Token::AttributesBitfield token_attrs) {
   Result result;
-  strings::Assign(result.key, key);
-  strings::Assign(result.value, value);
+  result.key = key;
+  result.value = value;
   result.SetTypesAndTokenAttributes(types, token_attrs);
   return result;
 }
@@ -280,8 +279,8 @@ Result CreateResult5(absl::string_view key, absl::string_view value, int wcost,
                      PredictionTypes types,
                      Token::AttributesBitfield token_attrs) {
   Result result;
-  strings::Assign(result.key, key);
-  strings::Assign(result.value, value);
+  result.key = key;
+  result.value = value;
   result.wcost = wcost;
   result.SetTypesAndTokenAttributes(types, token_attrs);
   return result;
@@ -291,8 +290,8 @@ Result CreateResult6(absl::string_view key, absl::string_view value, int wcost,
                      int cost, PredictionTypes types,
                      Token::AttributesBitfield token_attrs) {
   Result result;
-  strings::Assign(result.key, key);
-  strings::Assign(result.value, value);
+  result.key = key;
+  result.value = value;
   result.wcost = wcost;
   result.cost = cost;
   result.SetTypesAndTokenAttributes(types, token_attrs);
@@ -1736,6 +1735,54 @@ TEST_F(DictionaryPredictorTest, AggregateTypingCorrectedResultsTest) {
   }
 }
 
+TEST_F(DictionaryPredictorTest, AggregateTypingCorrectedResultsMinKeyLength) {
+  auto supplemental_model = std::make_unique<engine::MockSupplementalModel>();
+  // CorrectComposition is called only when the key is long enough.
+  EXPECT_CALL(*supplemental_model, CorrectComposition(_))
+      .WillOnce(Return(std::vector<TypeCorrectedQuery>{
+          {"とうきょう", TypeCorrectedQuery::COMPLETION}}))
+      .WillOnce(Return(std::vector<TypeCorrectedQuery>{
+          {"とう", TypeCorrectedQuery::CORRECTION}}))
+      .WillOnce(Return(std::vector<TypeCorrectedQuery>{
+          {"とうきょう", TypeCorrectedQuery::COMPLETION}}));
+  auto data_and_predictor =
+      std::make_unique<MockDataAndPredictor>(std::move(supplemental_model));
+  EXPECT_CALL(*data_and_predictor->mutable_realtime_decoder(), Decode(_))
+      .WillRepeatedly(MockRealtimeDecoder::DecodeImpl);
+
+  config_->set_use_typing_correction(true);
+
+  DictionaryPredictorTestPeer predictor_peer =
+      data_and_predictor->predictor_peer();
+  auto aggregate = [&](absl::string_view key) {
+    return predictor_peer.AggregateTypingCorrectedResultsForMixedConversion(
+        CreateConversionRequest(ConversionRequest::PREDICTION, key));
+  };
+  auto set_min_key_length = [&](int length) {
+    request_->mutable_decoder_experiment_params()
+        ->set_typing_correction_min_key_length(length);
+  };
+
+  // Keys shorter than 3 characters are not corrected by default.
+  EXPECT_TRUE(aggregate("とあ").empty());
+
+  // Zero or negative values fall back to the default.
+  set_min_key_length(-1);
+  EXPECT_TRUE(aggregate("とあ").empty());
+
+  // Keys shorter than the minimum length are not corrected.
+  set_min_key_length(4);
+  EXPECT_TRUE(aggregate("とあき").empty());
+
+  set_min_key_length(2);
+  // Completions are not used for the keys shorter than 3 characters.
+  EXPECT_TRUE(aggregate("とあ").empty());
+  // Corrections are used for the keys shorter than 3 characters.
+  EXPECT_FALSE(aggregate("とあ").empty());
+  // Completions are used for the keys of 3 characters or longer.
+  EXPECT_FALSE(aggregate("とあき").empty());
+}
+
 TEST_F(DictionaryPredictorTest, Rescoring) {
   auto supplemental_model = std::make_unique<engine::MockSupplementalModel>();
   EXPECT_CALL(*supplemental_model, RescoreResults(_, _))
@@ -2055,8 +2102,8 @@ TEST_F(DictionaryPredictorTest, FilterNwpSuffixCandidates) {
     std::vector<Result> results;
     {
       Result result;
-      strings::Assign(result.key, "てすと");
-      strings::Assign(result.value, "テスト");
+      result.key = "てすと";
+      result.value = "テスト";
       result.attributes = prediction::SUFFIX;
       result.cost = 1000;
       result.lid = data_and_predictor->pos_matcher().GetGeneralNounId();
@@ -2704,16 +2751,15 @@ TEST_F(DictionaryPredictorTest, LookupUnigramCandidateForMixedConversion) {
     predictor_peer.AggregateUnigram(convreq, &results, &min_unigram_key_len);
 
     // Check if "aaa" is not filtered.
-    auto iter =
-        std::find_if(results.begin(), results.end(), [&](const Result& res) {
-          return res.key == kHiraganaA && res.value == "aaa" &&
-                 is_user_dictionary_result(res);
-        });
+    auto iter = absl::c_find_if(results, [&](const Result& res) {
+      return res.key == kHiraganaA && res.value == "aaa" &&
+             is_user_dictionary_result(res);
+    });
     EXPECT_NE(results.end(), iter);
 
     // "bbb" is looked up from input "あ" but it will be filtered because it is
     // from user dictionary with unknown POS ID.
-    iter = std::find_if(results.begin(), results.end(), [&](const Result& res) {
+    iter = absl::c_find_if(results, [&](const Result& res) {
       return res.key == kHiraganaAA && res.value == "bbb" &&
              is_user_dictionary_result(res);
     });
@@ -2732,16 +2778,15 @@ TEST_F(DictionaryPredictorTest, LookupUnigramCandidateForMixedConversion) {
     predictor_peer.AggregateUnigram(convreq, &results, &min_unigram_key_len);
 
     // Check if "aaa" is not found as its key is あ.
-    auto iter =
-        std::find_if(results.begin(), results.end(), [&](const Result& res) {
-          return res.key == kHiraganaA && res.value == "aaa" &&
-                 is_user_dictionary_result(res);
-        });
+    auto iter = absl::c_find_if(results, [&](const Result& res) {
+      return res.key == kHiraganaA && res.value == "aaa" &&
+             is_user_dictionary_result(res);
+    });
     EXPECT_EQ(iter, results.end());
 
     // Unlike the above case for "あ", "bbb" is now found because input key is
     // exactly "ああ".
-    iter = std::find_if(results.begin(), results.end(), [&](const Result& res) {
+    iter = absl::c_find_if(results, [&](const Result& res) {
       return res.key == kHiraganaAA && res.value == "bbb" &&
              is_user_dictionary_result(res);
     });
@@ -3205,7 +3250,7 @@ TEST_P(AggregateEnglishPredictionTest, AggregateEnglishPrediction) {
     values.insert(result.value);
   }
   for (const auto& expected_value : entry.expected_values) {
-    EXPECT_TRUE(values.find(expected_value) != values.end())
+    EXPECT_TRUE(values.contains(expected_value))
         << expected_value << " isn't in the results";
   }
 }
@@ -3897,18 +3942,16 @@ TEST_F(DictionaryPredictorTest, NumberDecoderCandidates) {
       CreatePredictionConversionRequest("よんじゅうごかい");
   const std::vector<Result> results =
       predictor_peer.AggregateResultsForTesting(convreq);
-  const auto& result =
-      std::find_if(results.begin(), results.end(),
-                   [](Result r) { return r.value == "45" && !r.removed; });
+  const auto result = absl::c_find_if(
+      results, [](const Result& r) { return r.value == "45" && !r.removed; });
   ASSERT_NE(result, results.end());
   EXPECT_TRUE(result->attributes & Attribute::PARTIALLY_KEY_CONSUMED);
   EXPECT_TRUE(result->attributes & Attribute::NO_SUGGEST_LEARNING);
 
   // The counter suffix candidate "45回" consumes the whole key and survives
   // aggregation with the counter suffix POS.
-  const auto& counter_result =
-      std::find_if(results.begin(), results.end(),
-                   [](Result r) { return r.value == "45回" && !r.removed; });
+  const auto counter_result = absl::c_find_if(
+      results, [](const Result& r) { return r.value == "45回" && !r.removed; });
   ASSERT_NE(counter_result, results.end());
   EXPECT_EQ(counter_result->key, "よんじゅうごかい");
   EXPECT_FALSE(counter_result->attributes & Attribute::PARTIALLY_KEY_CONSUMED);

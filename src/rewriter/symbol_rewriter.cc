@@ -45,8 +45,8 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "base/japanese_util.h"
-#include "base/strings/assign.h"
 #include "base/strings/japanese.h"
+#include "base/strings/unicode.h"
 #include "base/util.h"
 #include "base/vlog.h"
 #include "converter/attribute.h"
@@ -105,8 +105,7 @@ std::string GetDescription(const absl::string_view value,
 
 // return true key has no-hiragana
 bool IsSymbol(const absl::string_view key) {
-  for (ConstChar32Iterator iter(key); !iter.Done(); iter.Next()) {
-    const char32_t codepoint = iter.Get();
+  for (const char32_t codepoint : Utf8AsChars32(key)) {
     if (codepoint >= 0x3041 && codepoint <= 0x309F) {  // hiragana
       return false;
     }
@@ -118,8 +117,8 @@ bool IsSymbol(const absl::string_view key) {
 void ExpandSpace(Segment* segment) {
   auto insert_candidate = [segment](int base, absl::string_view value) {
     auto c = std::make_unique<converter::Candidate>(segment->candidate(base));
-    strings::Assign(c->value, value);
-    strings::Assign(c->content_value, value);
+    c->value = value;
+    c->content_value = value;
     // Boundary is invalidated and unnecessary for space.
     c->inner_segment_boundary.clear();
     segment->insert_candidate(base + 1, std::move(c));

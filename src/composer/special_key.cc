@@ -29,13 +29,12 @@
 
 #include "composer/special_key.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -80,7 +79,7 @@ std::optional<Block> FindBlock(const absl::string_view input,
   return Block{open_pos, close_pos};
 }
 
-using OnKeyFound = absl::AnyInvocable<std::string(const absl::string_view)>;
+using OnKeyFound = absl::FunctionRef<std::string(absl::string_view)>;
 
 std::string ParseBlock(absl::string_view input, OnKeyFound callback) {
   std::string output;
@@ -110,7 +109,7 @@ std::string ParseBlock(absl::string_view input, OnKeyFound callback) {
 }  // namespace
 
 std::string SpecialKeyMap::Register(const absl::string_view input) {
-  OnKeyFound callback = [this](const absl::string_view key) {
+  return ParseBlock(input, [this](const absl::string_view key) {
     if (auto it = map_.find(key); it != map_.end()) {
       return it->second;  // existing entry
     }
@@ -124,20 +123,18 @@ std::string SpecialKeyMap::Register(const absl::string_view input) {
     const std::string special_key = Util::CodepointToUtf8(keycode);
     map_.emplace(key, special_key);
     return special_key;
-  };
-  return ParseBlock(input, std::move(callback));
+  });
 }
 
 std::string SpecialKeyMap::Parse(const absl::string_view input) const {
-  OnKeyFound callback = [this](const absl::string_view key) {
+  return ParseBlock(input, [this](const absl::string_view key) {
     if (auto it = map_.find(key); it != map_.end()) {
       return it->second;  // existing entry
     }
     // Unregistered key is replaced with the fallback format.
     LOG(WARNING) << "Unregistered special key: " << key;
     return absl::StrCat(kSpecialKeyOpen, key, kSpecialKeyClose);
-  };
-  return ParseBlock(input, std::move(callback));
+  });
 }
 
 absl::string_view TrimLeadingSpecialKey(absl::string_view input) {
@@ -177,12 +174,9 @@ std::string DeleteSpecialKeys(absl::string_view input) {
 
   // Delete Unicode PUA characters converted from special keys.
   std::u32string codepoints = Util::Utf8ToUtf32(output);
-  auto last =
-      std::remove_if(codepoints.begin(), codepoints.end(), IsSpecialKey);
-  if (last == codepoints.end()) {
+  if (std::erase_if(codepoints, IsSpecialKey) == 0) {
     return output;
   }
-  codepoints.erase(last, codepoints.end());
   return Util::Utf32ToUtf8(codepoints);
 }
 

@@ -284,6 +284,7 @@ mozc_cc_test(
     deps = [
         ":hresult",
         "//testing:gunit_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -295,7 +296,6 @@ mozc_cc_library(
     deps = [
         ":hresult",
         ":hresultor_internal",
-        "//base:port",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
     ],

@@ -38,6 +38,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -48,7 +49,6 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "base/number_util.h"
-#include "base/strings/assign.h"
 #include "base/strings/japanese.h"
 #include "base/strings/unicode.h"
 #include "base/util.h"
@@ -683,7 +683,7 @@ bool CharacterFormManagerImpl::ConvertStringWithAlternative(
   output->clear();
   const bool is_consistent = TryConvertStringWithPreference(str, output);
   if (!is_consistent && require_consistent_conversion_) {
-    strings::Assign(*output, str);
+    *output = str;
   }
 
   if (alternative_output != nullptr) {
@@ -733,7 +733,7 @@ void CharacterFormManagerImpl::AddRule(const absl::string_view key,
   // use vector because set is slower.
   // group table is used in SaveCharacterFormToStorage and this will be called
   // every time user submits conversion.
-  std::sort(group.begin(), group.end());
+  absl::c_sort(group);
   group.erase(std::unique(group.begin(), group.end()), group.end());
 
   for (const char16_t ucs2 : group) {
