@@ -138,14 +138,17 @@ genrule(
     srcs = [
         "//base:mozc_version_txt",
     ],
-    outs = ["mozc_tip64x.dll" if BRANDING == "Mozc" else "GoogleIMEJaTIP64X.msi"],
+    outs = ["mozc_tip64x.dll" if BRANDING == "Mozc" else "GoogleIMEJaTIP64X.dll"],
     cmd = " ".join([
         "$(location :build_tip_forwarder_dll)",
         "--output=$@",
         "--version_file=$(location //base:mozc_version_txt)",
         "--branding=" + BRANDING,
+        "--clang_cl=\"$(CC)\"",
+        "--lld_link=\"$(LD)\"",
     ]),
     target_compatible_with = ["@platforms//os:windows"],
+    toolchains = ["@rules_cc//cc:current_cc_toolchain"],
     tools = [
         ":build_tip_forwarder_dll",
     ],
@@ -391,8 +394,6 @@ mozc_cc_library(
         "//base/win32:com_implements",
         "//bazel/win32:user32",
         "//win32/base:tsf_profile",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
         "@com_microsoft_wil//:wil",
     ],
 )
