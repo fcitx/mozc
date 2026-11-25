@@ -44,11 +44,11 @@ mozc_cc_library(
         "//mac:__pkg__",
         "//renderer:__subpackages__",
         "//session:__pkg__",
+        "//unix:__subpackages__",
         "//visibility:public",
         "//win32:__subpackages__",
     ],
     deps = [
-        "//ipc",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
         "@com_google_absl//absl/strings",
@@ -78,18 +78,39 @@ mozc_cc_library(
 )
 
 mozc_cc_library(
-    name = "client",
-    srcs = [
-        "client.cc",
-        "server_launcher.cc",
+    name = "server_launcher",
+    srcs = ["server_launcher.cc"],
+    hdrs = ["server_launcher.h"],
+    visibility = [
+        "//win32/base:__pkg__",
     ],
-    hdrs = [
-        "client.h",
-    ],
-    local_defines = mozc_select(
-        linux = ["MOZC_USE_SVS_JAPANESE"],
-        oss = ["MOZC_USE_SVS_JAPANESE"],
+    deps = [
+        ":client_interface",
+        "//base:const",
+        "//base:file_stream",
+        "//base:file_util",
+        "//base:process",
+        "//base:system_util",
+        "//base:vlog",
+        "//ipc",
+        "//ipc:named_event",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ] + mozc_select(
+        apple = [
+            "//base/mac:mac_util",
+        ],
+        windows = [
+            "//base/win32:win_sandbox",
+        ],
     ),
+)
+
+mozc_cc_library(
+    name = "client",
+    srcs = ["client.cc"],
+    hdrs = ["client.h"],
     visibility = [
         "//gui:__subpackages__",
         "//mac:__pkg__",
@@ -99,8 +120,30 @@ mozc_cc_library(
         "//win32:__subpackages__",
     ],
     deps = [
+        ":client_impl",
+        ":client_interface",
+    ],
+)
+
+mozc_cc_library(
+    name = "client_impl",
+    srcs = [
+        "client_impl.cc",
+    ],
+    hdrs = [
+        "client_impl.h",
+    ],
+    local_defines = mozc_select(
+        linux = ["MOZC_USE_SVS_JAPANESE"],
+        oss = ["MOZC_USE_SVS_JAPANESE"],
+    ),
+    visibility = [
+        "//win32/base:__pkg__",
+    ],
+    deps = [
         ":character_renderability",
         ":client_interface",
+        ":server_launcher",
         "//base:const",
         "//base:file_stream",
         "//base:file_util",
@@ -113,7 +156,6 @@ mozc_cc_library(
         "//composer:key_event_util",
         "//config:config_handler",
         "//ipc",
-        "//ipc:named_event",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
         "//session:key_info_util",
@@ -124,23 +166,23 @@ mozc_cc_library(
     ] + mozc_select(
         apple = [
             "//base/mac:mac_process",
-            "//base/mac:mac_util",
         ],
         windows = [
             "//base/win32:wide_char",
-            "//base/win32:win_sandbox",
+            "//base/win32:win_util",
         ],
     ),
 )
 
 mozc_cc_test(
-    name = "client_test",
+    name = "client_impl_test",
     size = "small",
-    srcs = ["client_test.cc"],
+    srcs = ["client_impl_test.cc"],
     deps = [
         ":character_renderability",
-        ":client",
+        ":client_impl",
         ":client_interface",
+        ":server_launcher",
         "//base:number_util",
         "//base:port",
         "//base:version",
@@ -184,7 +226,6 @@ mozc_cc_library(
     ],
     deps = [
         ":client_interface",
-        "//ipc",
         "//protocol:commands_cc_proto",
         "//protocol:config_cc_proto",
         "//testing:gunit",
