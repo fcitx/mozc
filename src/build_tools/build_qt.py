@@ -48,13 +48,14 @@ or so.
 """
 
 import argparse
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Sequence
 import dataclasses
 import functools
 import os
 import pathlib
 import platform
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -75,7 +76,7 @@ ABS_QT6_ARCHIVE_PATH = ABS_MOZC_SRC_DIR.joinpath(
     'third_party_cache', 'qtbase-everywhere-src-6.9.1.tar.xz'
 )
 ABS_DEFAULT_NINJA_DIR = ABS_MOZC_SRC_DIR.joinpath('third_party', 'ninja')
-QT_CONFIGURE_COMMON = [
+QT_CONFIGURE_COMMON = (
     '-opensource',
     '-c++std',
     'c++20',
@@ -92,6 +93,7 @@ QT_CONFIGURE_COMMON = [
     '-no-feature-effects',
     '-no-feature-fontcombobox',
     '-no-feature-fontdialog',
+    '-no-feature-freetype',
     '-no-feature-identityproxymodel',
     '-no-feature-image_heuristic_mask',
     '-no-feature-imageformatplugin',
@@ -103,7 +105,9 @@ QT_CONFIGURE_COMMON = [
     '-no-feature-mimetype',
     '-no-feature-movie',
     '-no-feature-network',
+    '-no-feature-permissions',
     '-no-feature-poll-exit-on-error',
+    '-no-feature-printsupport',
     '-no-feature-qmake',
     '-no-feature-sha3-fast',
     '-no-feature-sharedmemory',
@@ -139,7 +143,7 @@ QT_CONFIGURE_COMMON = [
     'examples',
     '-nomake',
     'tests',
-]
+)
 
 
 def is_windows() -> bool:
@@ -158,7 +162,7 @@ def is_linux() -> bool:
 
 
 def qt_extract_filter(
-    members: Iterator[tarfile.TarInfo],
+    members: Iterable[tarfile.TarInfo],
 ) -> Iterator[tarfile.TarInfo]:
   """Custom extract filter for the Qt Tar file.
 
@@ -212,7 +216,7 @@ class StatefulQtExtractionFilter:
       member: tarfile.TarInfo,
       dest_path: Union[str, pathlib.Path],
   ) -> Union[tarfile.TarInfo, None]:
-    data = tarfile.data_filter(member, dest_path)
+    data = tarfile.data_filter(member, str(dest_path))
     if data is None:
       return data
 
@@ -231,6 +235,65 @@ class StatefulQtExtractionFilter:
       return None
     self.printer.print_line('extracting ' + new_path)
     return member.replace(name=new_path, deep=False)
+
+
+def _make_writable(path: str) -> None:
+  """Ensures a non-symlink path is writable (and traversable if a directory)."""
+  if os.path.islink(path):
+    return
+  st_mode = os.stat(path).st_mode
+  extra_bits = stat.S_IRWXU if stat.S_ISDIR(st_mode) else stat.S_IWRITE
+  os.chmod(path, st_mode | extra_bits)
+
+
+def remove_tree(path: pathlib.Path, dryrun: bool = False) -> None:
+  """Removes a directory tree or symlink if it exists, handling read-only files."""
+  if path.is_symlink():
+    if dryrun:
+      print(f'dryrun: unlink({path})')
+    else:
+      path.unlink()
+    return
+  if not path.exists():
+    return
+  if dryrun:
+    print(f'dryrun: shutil.rmtree({path})')
+    return
+
+  root = os.path.abspath(path)
+
+  def _handle_remove_readonly(func: Any, target_path: str, exc: Any) -> None:
+    del exc  # Unused.
+    _make_writable(target_path)
+    parent = os.path.dirname(os.path.abspath(target_path))
+    if parent == root or parent.startswith(root + os.sep):
+      _make_writable(parent)
+    func(target_path)
+
+  if sys.version_info >= (3, 12):
+    shutil.rmtree(path, onexc=_handle_remove_readonly)
+  else:
+    # pylint: disable=deprecated-argument
+    shutil.rmtree(path, onerror=_handle_remove_readonly)
+    # pylint: enable=deprecated-argument
+
+
+def _prepare_build_dir(
+    qt_src_dir: pathlib.Path,
+    target_dir: pathlib.Path,
+    suffix: str,
+    dryrun: bool,
+) -> pathlib.Path:
+  """Creates and returns a clean out-of-source build directory when possible."""
+  if qt_src_dir == target_dir:
+    return qt_src_dir
+  build_dir = qt_src_dir.parent.joinpath(f'{qt_src_dir.name}_{suffix}')
+  remove_tree(build_dir, dryrun)
+  if dryrun:
+    print(f'dryrun: mkdir {build_dir}')
+  else:
+    build_dir.mkdir(parents=True, exist_ok=True)
+  return build_dir
 
 
 @dataclasses.dataclass
@@ -295,6 +358,49 @@ def get_qt_version(args: argparse.Namespace) -> QtVersion:
   )
 
 
+def resolve_macos_cpus(args: argparse.Namespace) -> list[str]:
+  """Resolves target CPU architectures for macOS builds.
+
+  Args:
+    args: build options to be used to customize configure options of Qt.
+
+  Returns:
+    Ordered list of target macOS CPU architectures.
+
+  Raises:
+    ValueError: When --macos_cpus=arm64 is set on Intel64 mac.
+  """
+  # Set the target CPUs for macOS
+  # Host: arm64  -> Targets: --macos_cpus or ["x86_64", "arm64"]
+  # Host: x86_64 -> Targets: --macos_cpus or ["x86_64"]
+  host_arch = os.uname().machine
+  macos_cpus = ['x86_64', 'arm64'] if host_arch == 'arm64' else ['x86_64']
+  macos_cpus_arg = getattr(args, 'macos_cpus', None)
+  if macos_cpus_arg:
+    macos_cpus = [cpu for cpu in macos_cpus_arg.split(',') if cpu]
+    if host_arch == 'x86_64' and macos_cpus == ['arm64']:
+      # Haven't figured out how to make this work...
+      raise ValueError('--macos_cpus=arm64 on Intel64 mac is not supported.')
+    # 'x86_64' needs to be the first entry if exists.
+    # https://doc-snapshots.qt.io/qt6-6.5/macos-building.html#step-2-build-the-qt-library
+    if 'x86_64' in macos_cpus and macos_cpus[0] != 'x86_64':
+      macos_cpus.remove('x86_64')
+      macos_cpus = ['x86_64'] + macos_cpus
+  return macos_cpus
+
+
+def needs_separate_host_build(args: argparse.Namespace) -> bool:
+  """Returns True when a separate host-tools build (QT_HOST_PATH) is needed."""
+  if is_mac():
+    return resolve_macos_cpus(args) != [os.uname().machine]
+  if is_windows():
+    host_arch = normalize_win_arch(platform.uname().machine)
+    target_arch = normalize_win_arch(args.target_arch)
+    has_release_abi = args.release or args.fastbuild
+    return (host_arch != target_arch) or (args.debug and not has_release_abi)
+  return False
+
+
 def make_host_configure_options(args: argparse.Namespace) -> list[str]:
   """Makes necessary configure options to build Qt host tools based on args.
 
@@ -312,7 +418,8 @@ def make_host_configure_options(args: argparse.Namespace) -> list[str]:
   if qt_version.major != 6:
     raise ValueError(f'Only Qt6 is supported but specified {qt_version}.')
 
-  qt_configure_options = QT_CONFIGURE_COMMON + [
+  qt_configure_options = [
+      *QT_CONFIGURE_COMMON,
       '-no-accessibility',
       '-no-gui',
       '-no-widgets',
@@ -335,8 +442,6 @@ def make_host_configure_options(args: argparse.Namespace) -> list[str]:
     ]
   elif is_windows():
     qt_configure_options += [
-        '-no-freetype',
-        '-no-harfbuzz',
         '-platform',
         'win32-msvc',
     ]
@@ -369,7 +474,7 @@ def make_configure_options(args: argparse.Namespace) -> list[str]:
   if qt_version.major != 6:
     raise ValueError(f'Only Qt6 is supported but specified {qt_version}.')
 
-  qt_configure_options = QT_CONFIGURE_COMMON
+  qt_configure_options = list(QT_CONFIGURE_COMMON)
   cmake_options = []
 
   if is_mac():
@@ -379,32 +484,18 @@ def make_configure_options(args: argparse.Namespace) -> list[str]:
         '-qt-libpng',
         '-qt-pcre',
     ]
-
-    # Set the target CPUs for macOS
-    # Host: arm64  -> Targets: --macos_cpus or ["x86_64", "arm64"]
-    # Host: x86_64 -> Targets: --macos_cpus or ["x86_64"]
-    host_arch = os.uname().machine
-    macos_cpus = ['x86_64', 'arm64'] if host_arch == 'arm64' else ['x86_64']
-    if args.macos_cpus:
-      macos_cpus = args.macos_cpus.split(',')
-      if host_arch == 'x86_64' and macos_cpus == ['arm64']:
-        # Haven't figured out how to make this work...
-        raise ValueError('--macos_cpus=arm64 on Intel64 mac is not supported.')
-      # 'x86_64' needs to be the first entry if exists.
-      # https://doc-snapshots.qt.io/qt6-6.5/macos-building.html#step-2-build-the-qt-library
-      if 'x86_64' in macos_cpus and macos_cpus[0] != 'x86_64':
-        macos_cpus.remove('x86_64')
-        macos_cpus = ['x86_64'] + macos_cpus
+    macos_cpus = resolve_macos_cpus(args)
     cmake_options += [
         '-DCMAKE_OSX_ARCHITECTURES:STRING=' + ';'.join(macos_cpus),
     ]
 
   elif is_windows():
+    if not args.fastbuild:
+      qt_configure_options += [
+          '-force-debug-info',
+          '-ltcg',  # Note: ignored in debug build
+      ]
     qt_configure_options += [
-        '-force-debug-info',
-        '-ltcg',  # Note: ignored in debug build
-        '-no-freetype',
-        '-no-harfbuzz',
         '-platform',
         'win32-msvc',
     ]
@@ -418,7 +509,7 @@ def make_configure_options(args: argparse.Namespace) -> list[str]:
     qt_configure_options += ['-debug-and-release']
   elif args.debug:
     qt_configure_options += ['-debug']
-  elif args.release:
+  elif args.release or args.fastbuild:
     qt_configure_options += ['-release']
 
   if args.release:
@@ -434,7 +525,7 @@ def make_configure_options(args: argparse.Namespace) -> list[str]:
   )
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Union[Sequence[str], None] = None) -> argparse.Namespace:
   """Parse command line options."""
   parser = argparse.ArgumentParser()
   parser.add_argument(
@@ -450,6 +541,16 @@ def parse_args() -> argparse.Namespace:
       default=False,
       action='store_true',
       help='make release build',
+  )
+  parser.add_argument(
+      '--fastbuild',
+      dest='fastbuild',
+      default=False,
+      action='store_true',
+      help=(
+          'make fast release-ABI build without shipping-only options '
+          '(-ltcg, -force-debug-info, and -optimize-size)'
+      ),
   )
   parser.add_argument(
       '--qt_src_dir',
@@ -509,7 +610,10 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
     )
-  return parser.parse_args()
+  args = parser.parse_args(argv)
+  if args.fastbuild and (args.debug or args.release):
+    parser.error('--fastbuild cannot be combined with --debug or --release.')
+  return args
 
 
 def get_ninja_dir(args: argparse.Namespace) -> Union[pathlib.Path, None]:
@@ -544,8 +648,6 @@ def build_host_on_mac(args: argparse.Namespace) -> None:
   Raises:
     FileNotFoundError: when any required file is not found.
   """
-  extract_qt_src(args)
-
   qt_src_dir = pathlib.Path(args.qt_src_dir).resolve()
   qt_host_dir = pathlib.Path(args.qt_host_dir).resolve()
 
@@ -559,38 +661,44 @@ def build_host_on_mac(args: argparse.Namespace) -> None:
   if ninja_dir:
     env['PATH'] = str(ninja_dir) + os.pathsep + env['PATH']
 
-  configure_cmds = ['./configure'] + make_host_configure_options(args)
+  configure_cmds = [
+      str(qt_src_dir.joinpath('configure'))
+  ] + make_host_configure_options(args)
   cmake = str(shutil.which('cmake', path=env['PATH']))
   build_cmds = [cmake, '--build', '.', '--parallel']
   install_cmds = [cmake, '--install', '.']
 
-  exec_command(configure_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
-  exec_command(build_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+  build_dir = _prepare_build_dir(
+      qt_src_dir, qt_host_dir, 'build_host', args.dryrun
+  )
+  try:
+    exec_command(configure_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
+    exec_command(build_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
 
-  if qt_src_dir == qt_host_dir:
-    # No need to run 'install' command.
-    return
+    if qt_src_dir == qt_host_dir:
+      # No need to run 'install' command.
+      return
 
-  if qt_host_dir.exists():
-    if args.dryrun:
-      print(f'dryrun: delete {qt_host_dir}')
-    else:
-      shutil.rmtree(qt_host_dir)
-
-  exec_command(install_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+    remove_tree(qt_host_dir, args.dryrun)
+    exec_command(install_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
+  finally:
+    if build_dir != qt_src_dir:
+      remove_tree(build_dir, args.dryrun)
 
 
-def build_on_mac(args: argparse.Namespace) -> None:
+def build_on_mac(
+    args: argparse.Namespace,
+    use_separate_host: bool = True,
+) -> None:
   """Build Qt from the source code on Mac.
 
   Args:
     args: build options to be used to customize configure options of Qt.
+    use_separate_host: True to use prebuilt host tools in qt_host_dir.
 
   Raises:
     FileNotFoundError: when any required file is not found.
   """
-  extract_qt_src(args)
-
   qt_src_dir = pathlib.Path(args.qt_src_dir).resolve()
   qt_dest_dir = pathlib.Path(args.qt_dest_dir).resolve()
   qt_host_dir = pathlib.Path(args.qt_host_dir).resolve()
@@ -605,46 +713,52 @@ def build_on_mac(args: argparse.Namespace) -> None:
   if ninja_dir:
     env['PATH'] = str(ninja_dir) + os.pathsep + env['PATH']
 
-  env['QT_HOST_PATH'] = str(qt_host_dir)
+  if use_separate_host:
+    env['QT_HOST_PATH'] = str(qt_host_dir)
+  else:
+    env.pop('QT_HOST_PATH', None)
+    if os.uname().machine == 'arm64':
+      env.setdefault('CMAKE_APPLE_SILICON_PROCESSOR', 'arm64')
 
-  configure_cmds = ['./configure'] + make_configure_options(args)
+  configure_cmds = [
+      str(qt_src_dir.joinpath('configure'))
+  ] + make_configure_options(args)
   cmake = str(shutil.which('cmake', path=env['PATH']))
   build_cmds = [cmake, '--build', '.', '--parallel']
   install_cmds = [cmake, '--install', '.']
 
-  exec_command(configure_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
-  exec_command(build_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+  build_dir = _prepare_build_dir(
+      qt_src_dir, qt_dest_dir, 'build_target', args.dryrun
+  )
+  try:
+    exec_command(configure_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
+    exec_command(build_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
 
-  if qt_src_dir != qt_dest_dir:
-    if qt_dest_dir.exists():
-      if args.dryrun:
-        print(f'dryrun: delete {qt_dest_dir}')
-      else:
-        shutil.rmtree(qt_dest_dir)
+    if qt_src_dir != qt_dest_dir:
+      remove_tree(qt_dest_dir, args.dryrun)
+      exec_command(install_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
 
-    exec_command(install_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+      # Copy installed framework headers into include/<Module> as well.
+      for include in ('QtCore', 'QtGui', 'QtWidgets'):
+        src = qt_dest_dir.joinpath('lib', f'{include}.framework', 'Headers')
+        dest = qt_dest_dir.joinpath('include', include)
+        if args.dryrun:
+          print(f'dryrun: copy {src} => {dest}')
+        else:
+          shutil.copytree(src=src.resolve(), dst=dest)
 
-    # Copy include files.
-    for include in ['QtCore', 'QtGui', 'QtPrintSupport', 'QtWidgets']:
-      src = qt_src_dir.joinpath('include').joinpath(include)
-      dest = qt_dest_dir.joinpath('include').joinpath(include)
-      if args.dryrun:
-        print(f'dryrun: copy {src} => {dest}')
-      else:
-        shutil.copytree(src=src, dst=dest)
-
-  for tool in ['moc', 'rcc', 'uic']:
-    src = qt_host_dir.joinpath('libexec').joinpath(tool)
-    dest = qt_dest_dir.joinpath('libexec').joinpath(tool)
-    if args.dryrun:
-      print(f'dryrun: copy {src} => {dest}')
-    else:
-      shutil.copy2(src=src, dst=dest)
-
-  if args.dryrun:
-    print(f'dryrun: shutil.rmtree({qt_host_dir})')
-  else:
-    shutil.rmtree(qt_host_dir)
+    if use_separate_host:
+      for tool in ('moc', 'rcc', 'uic'):
+        src = qt_host_dir.joinpath('libexec', tool)
+        dest = qt_dest_dir.joinpath('libexec', tool)
+        if args.dryrun:
+          print(f'dryrun: copy {src} => {dest}')
+        else:
+          shutil.copy2(src=src, dst=dest)
+      remove_tree(qt_host_dir, args.dryrun)
+  finally:
+    if build_dir != qt_src_dir:
+      remove_tree(build_dir, args.dryrun)
 
 
 def exec_command(
@@ -682,8 +796,6 @@ def build_host_on_windows(args: argparse.Namespace) -> None:
   Raises:
     FileNotFoundError: when any required file is not found.
   """
-  extract_qt_src(args)
-
   qt_src_dir = pathlib.Path(args.qt_src_dir).resolve()
   qt_host_dir = pathlib.Path(args.qt_host_dir).resolve()
 
@@ -704,28 +816,31 @@ def build_host_on_windows(args: argparse.Namespace) -> None:
 
   cmd = str(shutil.which('cmd.exe', path=env['PATH']))
 
-  configure_cmds = [cmd, '/C', 'configure.bat'] + make_host_configure_options(
-      args
-  )
-  exec_command(configure_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
-
+  configure_cmds = [
+      cmd,
+      '/C',
+      str(qt_src_dir.joinpath('configure.bat')),
+  ] + make_host_configure_options(args)
   cmake = str(shutil.which('cmake.exe', path=env['PATH']))
   build_cmds = [cmake, '--build', '.', '--parallel']
   install_cmds = [cmake, '--install', '.']
 
-  exec_command(build_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+  build_dir = _prepare_build_dir(
+      qt_src_dir, qt_host_dir, 'build_host', args.dryrun
+  )
+  try:
+    exec_command(configure_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
+    exec_command(build_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
 
-  if qt_src_dir == qt_host_dir:
-    # No need to run 'install' command.
-    return
+    if qt_src_dir == qt_host_dir:
+      # No need to run 'install' command.
+      return
 
-  if qt_host_dir.exists():
-    if args.dryrun:
-      print(f'dryrun: shutil.rmtree({qt_host_dir})')
-    else:
-      shutil.rmtree(qt_host_dir)
-
-  exec_command(install_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+    remove_tree(qt_host_dir, args.dryrun)
+    exec_command(install_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
+  finally:
+    if build_dir != qt_src_dir:
+      remove_tree(build_dir, args.dryrun)
 
 
 def normalize_win_arch(arch: str) -> str:
@@ -750,17 +865,19 @@ def normalize_win_arch(arch: str) -> str:
   return normalized
 
 
-def build_on_windows(args: argparse.Namespace) -> None:
+def build_on_windows(
+    args: argparse.Namespace,
+    use_separate_host: bool = True,
+) -> None:
   """Build Qt from the source code on Windows.
 
   Args:
     args: build options to be used to customize configure options of Qt.
+    use_separate_host: True to use prebuilt host tools in qt_host_dir.
 
   Raises:
     FileNotFoundError: when any required file is not found.
   """
-  extract_qt_src(args)
-
   qt_src_dir = pathlib.Path(args.qt_src_dir).resolve()
   qt_dest_dir = pathlib.Path(args.qt_dest_dir).resolve()
   qt_host_dir = pathlib.Path(args.qt_host_dir).resolve()
@@ -784,45 +901,52 @@ def build_on_windows(args: argparse.Namespace) -> None:
 
   cmd = str(shutil.which('cmd.exe', path=env['PATH']))
 
-  env['QT_HOST_PATH'] = str(qt_host_dir)
+  if use_separate_host:
+    env['QT_HOST_PATH'] = str(qt_host_dir)
+  else:
+    env.pop('QT_HOST_PATH', None)
 
-  configure_cmds = [cmd, '/C', 'configure.bat'] + make_configure_options(args)
-
-  exec_command(configure_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
-
+  configure_cmds = [
+      cmd,
+      '/C',
+      str(qt_src_dir.joinpath('configure.bat')),
+  ] + make_configure_options(args)
   cmake = str(shutil.which('cmake.exe', path=env['PATH']))
   build_cmds = [cmake, '--build', '.', '--parallel']
   install_cmds = [cmake, '--install', '.']
 
-  exec_command(build_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+  build_dir = _prepare_build_dir(
+      qt_src_dir, qt_dest_dir, 'build_target', args.dryrun
+  )
+  try:
+    exec_command(configure_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
+    exec_command(build_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
 
-  if qt_src_dir != qt_dest_dir:
-    if qt_dest_dir.exists():
-      if args.dryrun:
-        print(f'dryrun: shutil.rmtree({qt_dest_dir})')
-      else:
-        shutil.rmtree(qt_dest_dir)
+    if qt_src_dir != qt_dest_dir:
+      remove_tree(qt_dest_dir, args.dryrun)
+      exec_command(install_cmds, cwd=build_dir, env=env, dryrun=args.dryrun)
 
-    exec_command(install_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
+      # When both '--debug' and '--release' are specified for Qt6, we need to
+      # run the command again with '--config debug' option to install debug
+      # DLLs.
+      if args.debug and args.release:
+        debug_install_cmds = install_cmds + ['--config', 'debug']
+        exec_command(
+            debug_install_cmds, cwd=build_dir, env=env, dryrun=args.dryrun
+        )
 
-    # When both '--debug' and '--release' are specified for Qt6, we need to run
-    # the command again with '--config debug' option to install debug DLLs.
-    if args.debug and args.release:
-      install_cmds += ['--config', 'debug']
-      exec_command(install_cmds, cwd=qt_src_dir, env=env, dryrun=args.dryrun)
-
-  for tool in ['moc.exe', 'rcc.exe', 'uic.exe']:
-    src = qt_host_dir.joinpath('bin').joinpath(tool)
-    dest = qt_dest_dir.joinpath('bin').joinpath(tool)
-    if args.dryrun:
-      print(f'dryrun: copy {src} => {dest}')
-    else:
-      shutil.copy2(src=src, dst=dest)
-
-  if args.dryrun:
-    print(f'dryrun: shutil.rmtree({qt_host_dir})')
-  else:
-    shutil.rmtree(qt_host_dir)
+    if use_separate_host:
+      for tool in ('moc.exe', 'rcc.exe', 'uic.exe'):
+        src = qt_host_dir.joinpath('bin', tool)
+        dest = qt_dest_dir.joinpath('bin', tool)
+        if args.dryrun:
+          print(f'dryrun: copy {src} => {dest}')
+        else:
+          shutil.copy2(src=src, dst=dest)
+      remove_tree(qt_host_dir, args.dryrun)
+  finally:
+    if build_dir != qt_src_dir:
+      remove_tree(build_dir, args.dryrun)
 
 
 def extract_qt_src(args: argparse.Namespace) -> None:
@@ -832,11 +956,7 @@ def extract_qt_src(args: argparse.Namespace) -> None:
     args: build options to be used to customize configure options of Qt.
   """
   qt_src_dir = pathlib.Path(args.qt_src_dir).absolute()
-  if qt_src_dir.exists():
-    if args.dryrun:
-      print(f'dryrun: delete {qt_src_dir}')
-    else:
-      shutil.rmtree(qt_src_dir)
+  remove_tree(qt_src_dir, args.dryrun)
 
   if args.dryrun:
     print(f'dryrun: extracting {args.qt_archive_path} to {qt_src_dir}')
@@ -846,8 +966,8 @@ def extract_qt_src(args: argparse.Namespace) -> None:
       # tarfile.data_filter is available in Python 3.12+.
       # See https://peps.python.org/pep-0706/ for details.
       if getattr(tarfile, 'data_filter', None):
-        with StatefulQtExtractionFilter() as filter:
-          f.extractall(path=qt_src_dir, filter=filter)
+        with StatefulQtExtractionFilter() as extract_filter:
+          f.extractall(path=qt_src_dir, filter=extract_filter)
       else:
         f.extractall(path=qt_src_dir, members=qt_extract_filter(f))
   # TODO: https://github.com/google/mozc/issues/1457 - Remove this.
@@ -882,23 +1002,28 @@ def apply_patch_to_qt_src(
   qyieldcpu_h.write_text(content, encoding='utf-8')
 
 
-def main():
+def main() -> None:
   if is_linux():
     print('On Linux, please use shared library provided by distributions.')
     sys.exit(1)
 
   args = parse_args()
 
-  if not (args.debug or args.release):
-    print('neither --release nor --debug is specified.')
+  if not (args.debug or args.release or args.fastbuild):
+    print('none of --release, --debug, or --fastbuild is specified.')
     sys.exit(1)
 
+  extract_qt_src(args)
+  use_separate_host = needs_separate_host_build(args)
+
   if is_mac():
-    build_host_on_mac(args)
-    build_on_mac(args)
+    if use_separate_host:
+      build_host_on_mac(args)
+    build_on_mac(args, use_separate_host=use_separate_host)
   elif is_windows():
-    build_host_on_windows(args)
-    build_on_windows(args)
+    if use_separate_host:
+      build_host_on_windows(args)
+    build_on_windows(args, use_separate_host=use_separate_host)
 
 
 if __name__ == '__main__':
